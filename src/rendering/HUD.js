@@ -316,7 +316,8 @@ export class HUD {
     line.className = 'log-line ' + cls;
     line.textContent = '• ' + text;
     this.logEl.insertBefore(line, this.logEl.firstChild);
-    while (this.logEl.children.length > 5) this.logEl.lastChild.remove();
+    // keep enough lines to fill the CRT top-to-bottom (see #cons-log-wrap)
+    while (this.logEl.children.length > 6) this.logEl.lastChild.remove();
     requestAnimationFrame(() => line.classList.add('in'));
   }
 
