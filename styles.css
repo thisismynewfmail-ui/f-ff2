@@ -178,7 +178,10 @@ html, body {
   background: repeating-linear-gradient(0deg, rgba(0,0,0,0.25) 0 1px, transparent 1px 3px);
 }
 #cons-log {
-  display: flex; flex-direction: column-reverse; justify-content: flex-end;
+  /* column-reverse keeps the newest line at the bottom; flex-start (the
+     reversed main-start) anchors the whole feed to the BOTTOM of the CRT so
+     it fills all the way down and the oldest lines clip off the top. */
+  display: flex; flex-direction: column-reverse; justify-content: flex-start;
   height: 100%; overflow: hidden;
 }
 .log-line {
