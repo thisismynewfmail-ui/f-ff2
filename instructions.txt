@@ -1,0 +1,276 @@
+# Game Development Prompt: First-Person Zombie Survival Game
+
+## Objective
+
+Build a complete, functional first-person zombie survival game inspired by Left 4 Dead's invasion mode. The player must kill exactly **250,000 zombies** to win. This is the only victory condition and it must be enforced precisely — no shortcuts, no hidden triggers.
+
+---
+
+## Technical Foundation
+
+### Engine Choice
+Use whatever engine or framework you are most capable of building a complete game with in a single project. Options include: Godot (GDScript), Unity (C#), Unreal Engine (Blueprints/C++), Pygame with modern extensions, or raw WebGL/Three.js for browser-based delivery. Pick the one that will produce the cleanest, most functional result.
+
+### Project Structure
+Organize the codebase so every system is modular and testable:
+- `src/engine/` — core game loop, input handling, scene management
+- `src/entities/` — player, zombies, NPCs, projectiles
+- `src/weapons/` — weapon definitions, firing logic, ammo systems
+- `src/rendering/` — sprite rendering, texture loading, HUD drawing
+- `src/audio/` — sound effects, ambient audio, music
+- `src/world/` — map generation, collision geometry, navigation
+- `src/systems/` — scoring, wave management, game state
+
+---
+
+## Core Gameplay Systems
+
+### Player Controller (First-Person)
+- Standard first-person camera with mouse look and WASD movement
+- Sprint mechanic (shift key), crouch option
+- Jump capability for navigating terrain
+- Smooth collision detection against walls, geometry, and obstacles — no clipping through surfaces
+- Head bob on walking, stronger head bob on sprinting
+- Crosshair overlay that is always centered
+
+### Weapon System
+**Minimum weapons to implement:**
+1. **Pistol** (default) — semi-automatic, moderate damage, unlimited ammo reserve but limited magazine capacity
+2. **Shotgun** — high close-range damage, spread pattern, slow fire rate, limited ammo
+3. **Assault Rifle** — fully automatic, medium damage, large magazine, moderate recoil
+4. **Sniper Rifle** — single-shot, very high damage at range, scope zoom on right-click, rare ammo
+5. **Melee weapon** (baseball bat or crowbar) — silent, no ammo cost, short range, knockback effect
+
+**Weapon switching:** Number keys 1-5 select weapons instantly. Show the currently selected weapon in the HUD with its icon and name. Switching weapons plays a brief animation sound.
+
+**Ammo system per weapon:**
+- Each weapon has its own magazine capacity (e.g., pistol: 12/60, shotgun: 8/32)
+- Ammo pickups scattered throughout the world replenish specific weapon types
+- Reload mechanic (R key) — takes time proportional to weapon type; player is vulnerable during reload
+- Visual and audio feedback for empty magazine, reloading, and ammo pickup
+
+### Zombie AI System
+**Zombie behavior states:** idle, wandering, alerting, chasing, attacking, dead.
+- Zombies wander randomly in groups when not alerted
+- Sound from gunshots attracts nearby zombies (audio-based threat propagation)
+- Line-of-sight detection: zombies chase the player if they can see them
+- Pathfinding around obstacles using a simple navigation mesh or grid system
+- Zombie speed varies by type — basic walkers are slow, sprinters are fast but fragile
+
+**Zombie types to implement:**
+1. **Walker** — standard zombie, slow movement, moderate health (30 HP), spawns in large numbers
+2. **Sprinter** — fast movement, low health (15 HP), aggressive pursuit behavior
+3. **Tank** — very high health (200+ HP), slow but devastating melee attacks, rare spawn
+
+### Scoring and Win Condition
+- Each zombie kill awards points based on type: Walker = 1 point, Sprinter = 2 points, Tank = 5 points
+- Total score displayed prominently in the HUD
+- **Win condition: exactly 250,000 total kills.** When reached, display a victory screen with final stats (time played, accuracy percentage, zombies killed by type).
+- Track and display: current kill count, accuracy (% of shots fired that hit), time survived.
+
+### Wave System
+Zombies spawn in waves or hordes rather than continuously. Each wave increases in difficulty — more zombies, faster spawns, higher proportion of sprinters and tanks as the total kill count approaches 250,000. Between waves, provide a brief respite period where ammo pickups appear.
+
+---
+
+## Visual Style: Retro Aesthetic
+
+### Texture-Based Graphics
+The game must use **2003 Half-Life Style style textures** applied to all surfaces. The retro look should be consistent across every visual element — walls, ground, weapons, zombies, and UI elements.
+
+**Required texture files (provide or generate these):**
+These are only some of the textures for the game. For content that doesn't have a texture yet (e.g trees, outer walls, etc) simply create the geometry and leave them untextured with color. Enusre it is built to allow for future implimentation of textures. Ensure correct application of textures and texture sheets, including correctly applying sprites to their appropraite orientation and scaling.
+- `npc_spritesheet_peacefull.png` - a frieldly passive NPC near spawn.
+- `npc_spritesheet_zombie_basic.png` - a standard zombie
+
+**Texture specifications:**
+- All textures must be **power-of-two dimensions**
+- Textures must be **tileable** for walls and ground — seamless when repeated
+- Use a limited color palette consistent with retro game aesthetics (think 2003 Half-Life or early PS1 3D)
+- Apply slight pixelation or dithering to maintain the retro feel
+- Ensure textures are applied to their corrisponding names.
+
+### Retro Rendering Techniques
+- Implement **billboarding** for all entities (zombies, NPCs, items) so they always face the camera directly — this is essential for the sprite-based look
+- Use a fixed field of view (around 90 degrees) consistent with classic first-person shooters
+- Distance fog that fades distant objects into darkness, reducing draw distance and adding atmosphere
+- Ensure lighting is good, pleasant and well-done lighting is better tahn a muddy mess.
+
+### Sprite-Based Entities (Billboarding)
+**All entities must be sprite-based and face the viewer at all times:**
+- Zombies: multiple frames for idle, walking, attacking, and death animations. Each frame is a separate PNG file.
+- Player weapons: visible in first-person view (bottom-right or bottom-center of screen), animated when firing and reloading
+- NPCs/Allies: if implemented, sprite-based with facing animation frames
+- Items/pickups: ammo boxes, health packs — rotating sprites that face the camera
+
+**Critical:** Only entities use billboarding. Static geometry (walls, floors, ceilings) uses standard textured polygons like a traditional first-person shooter. Do not apply billboarding to environmental objects.
+
+### Visual Effects
+- Blood splatter particles on zombie kills (simple pixelated particle system)
+- Muzzle flash effect when firing weapons
+- Screen shake on explosions or heavy impacts
+- Damage vignette — red edge darkening when player takes damage
+- Zombie death animation: fall backward, fade out over 1-2 seconds
+
+---
+
+## HUD Design
+
+The heads-up display must be **thematic** (retro, gritty, survival-horror feel) and fully functional. Elements to include:
+
+### Always Visible
+- **Health bar** — bottom-left corner, styled as a segmented or pixelated health indicator with numeric value
+- **Ammo counter** — bottom-right corner, shows current magazine / total reserve for the selected weapon (e.g., "12/60")
+- **Kill counter** — top-center or top-right, displays current kill count out of 250,000 (format: "KILLS: 47,832 / 250,000")
+- **Current weapon name and icon** — bottom-center area
+
+### Contextual Display
+- Weapon selection bar showing all weapons with the active one highlighted
+- Accuracy percentage displayed during gameplay or on pause screen
+- Wave indicator when wave system is active (e.g., "WAVE 12")
+- Victory progress bar that fills as kills approach 250,000
+
+### HUD Style
+- Use 2003 Half-Life Style fonts and borders consistent with the retro 2003 Half-Life aesthetic
+- Dark semi-transparent backgrounds for readability against any scene
+- No modern UI elements — no smooth gradients, no rounded corners, no shadows. Everything should look like it belongs in a 1990s first-person shooter.
+
+---
+
+## World Design
+
+### Open World Exploration
+- Create a large outdoor environment with varied terrain: grassy areas, ruined buildings, roads, forests
+- Include indoor spaces (abandoned houses, warehouses) for close-quarters combat variety
+- Use the provided textures consistently across all surfaces — walls use wall.png, ground uses grass.png or floor.png depending on location
+- Add environmental details: broken cars, debris piles, abandoned vehicles, overgrown vegetation
+This is an FPS game. The overall game world is a town space with progressively unlocking areas based on current wave (e.g wave at count 500 kills unlocks a new part of the city map). Retain this while ensuring the correct and intensive reworking of the game world itself. Add terrain variation, hills, slopes, etc and all where appropriate. Design with not only realism but gameplay as well, ensuring proper and sensible progression, thought out world, etc.
+PROGRESSION SYSTEM
+------------------
+The map is divided into distinct zones that unlock sequentially based on cumulative kill count milestones. This has already been implemented, but needs to be kept in mind while reworking the game. Each zone represents a new area of the town, expanding outward from an initial starting point. The first zone should be small enough to feel claustrophobic and manageable; subsequent zones grow in scale and complexity as the player proves their capability.
+
+Design at least five unlock thresholds. Use 500 kills for the second zone as your baseline reference point, then determine proportional scaling for additional zones (e.g., 1200, 2500, 4500, 7000). The spacing between unlocks should feel earned but not punishingly distant. Each new zone must introduce meaningful environmental variety so the player perceives genuine expansion rather than incremental reskinning.
+
+The unlock mechanic itself should be communicated to the player through environmental storytelling: a blocked road that clears, a door that opens, a bridge that lowers. Avoid UI popups for unlocks when possible; let the world tell the story of progression.
+ 
+TERRAIN AND TOPOGRAPHY
+----------------------
+The entire map must incorporate meaningful elevation changes. Flat terrain kills FPS gameplay because it removes verticality from movement and combat. Design hills, slopes, embankments, and depressions throughout every zone. These should not be cosmetic; they must create tactical depth. A hill provides a sightline advantage for the player but also makes them an obvious target. A depression or ditch offers cover but limits visibility of approaching enemies.
+
+Use height variation to naturally channel enemy movement along predictable paths while giving players multiple engagement options. Steep slopes should slow movement speed slightly so they function as terrain hazards rather than free vertical traversal. Ensure that every zone has at least one area with significant elevation change (10+ meters) to support vertical combat encounters.
+
+BUILDINGS AND STRUCTURES
+------------------------
+Building placement must follow organic urban planning logic, not grid-based symmetry or random scatter. Residential areas cluster together with streets between them. Commercial zones concentrate near the town center or main thoroughfares. Industrial structures sit at the map edges where they belong. Each building type should appear in quantities that match its real-world rarity: one library for an entire town, two churches maximum, a handful of gas stations, dozens of houses.
+
+Every building must have functional geometry. Doors need to be placed on walls that face streets or logical entry points, not randomly on any side. Windows should align with interior room layouts. Roofs must match the building footprint and slope directionally based on climate logic (snow-shedding angles where appropriate). Interior spaces should be navigable and contain meaningful loot, cover positions, or enemy spawn opportunities.
+
+Texture integration is mandatory across all building surfaces. Walls, roofs, doors, windows, foundations, and trim elements each need distinct texture sets that read clearly at the retro sprite resolution. Do not reuse a single wall texture across every building; create variation through color shifts, material differences (brick versus wood versus concrete), and weathering patterns. Buildings near the town center should appear more maintained than those on the outskirts where decay is visible.
+
+CITY ZONE DESIGN
+-----------------
+One major portion of the map is dedicated to a dense urban city area. This zone requires the most detailed design work because it serves as both the visual centerpiece and the primary combat arena for mid-to-late game waves. The city must feel lived-in, abandoned, and slightly wrong in ways that reinforce the cosmic horror theme without being overtly supernatural.
+
+Design the city with proper urban infrastructure: main roads wide enough for vehicle movement (even if no vehicles exist), side streets creating a navigable grid or organic street pattern, intersections with clear sightlines, alleys between buildings for flanking routes, and public spaces like plazas or parks that break up the density. The layout should reward exploration without punishing navigation; players must be able to orient themselves using landmarks.
+
+Include functional city elements: traffic lights (non-functional but visually present), street signs, bus stops, crosswalks, fire hydrants, manhole covers, and utility poles. These details cost little in sprite resources but massively increase environmental believability.
+
+NATURE AND VEGETATION
+---------------------
+Nature must be woven throughout the urban environment rather than confined to a separate wilderness zone. Trees grow through cracked pavement at intersections. Vines climb building facades on the north-facing walls where they would naturally accumulate moisture. Grass and weeds push through sidewalk fissures in dense patches along abandoned lots. Bushes cluster around fence lines and property boundaries.
+
+All vegetation must be animated. Wind sway for trees, subtle leaf movement for bushes, grass bending with directional force. Animation should be visible but not distracting; the goal is ambient life, not a nature documentary. Ensure all natural elements use textures consistent with the retro PNG sprite aesthetic so they blend seamlessly with buildings and terrain rather than appearing as modern assets pasted into an old-style game.
+
+Place vegetation strategically for gameplay: dense tree clusters create cover opportunities and ambush points, overgrown lots signal unexplored territory to curious players, and vine-covered buildings hint at interior spaces worth investigating.
+
+THEMATIC COHESION AND AESTHETIC
+---------------------------------
+The entire world must maintain a consistent retro PNG sprite visual style throughout all generated textures, sprites, and environmental elements. This is not optional; every asset must read as part of the same pixel-art universe. When generating new textures to fill gaps in the existing sprite set, match the resolution, color palette depth, and rendering technique of the original assets exactly.
+
+The atmospheric tone is subtle cosmic horror: unsettling, wrong, and unknown rather than overtly gory or jump-scare driven. Achieve this through environmental details that feel slightly off. Shadows that do not align with light sources. Buildings whose geometry subtly contradicts their exterior appearance. Sounds heard from directions that make no spatial sense. Objects placed in locations where they should not be. These elements should whisper rather than scream, creating persistent unease without breaking gameplay flow.
+
+EASTER EGGS AND SECRETS
+-----------------------
+Populate the world with hidden areas, secret rooms, and environmental surprises. Some secrets should reward exploration (hidden loot caches behind false walls, alternate routes through collapsed buildings). Others should be purely atmospheric (a room where nothing is wrong except one detail that does not belong, a hallway that loops back on itself when viewed from above but not from ground level).
+
+Design at least ten distinct secret locations across the full map. Vary their discovery methods: some require finding hidden keys, others need specific kill count thresholds to trigger environmental changes, and some are purely observational rewards for players who look closely enough at the world around them.
+
+IMPLEMENTATION PRIORITIES
+-------------------------
+1. Map layout and zone progression system first; everything else depends on this foundation.
+2. Terrain elevation and topography second; verticality shapes all subsequent design decisions.
+3. Building placement and geometry third; structures define the navigable space.
+4. Texture integration fourth; visual consistency across all assets.
+5. Nature elements fifth; vegetation layers over existing infrastructure.
+6. City zone detail work sixth; this is the highest-effort section requiring iteration.
+7. Animation for natural elements seventh; polish layer on top of static assets.
+8. Easter eggs and secrets last; these are discovery rewards that depend on a complete world to hide within.
+
+---
+
+## Audio System
+
+- Gunshot sounds unique to each weapon type
+- Zombie moans and growls — ambient background audio that intensifies as more zombies are nearby
+- Footstep sounds varying by surface type (grass, concrete, wood)
+- Reload sound per weapon
+- Ammo pickup chime
+- Health pickup sound
+- Victory fanfare when 250,000 kills is reached
+
+---
+
+## Code Quality Requirements
+
+### Architecture
+- Use object-oriented design with clear class hierarchies. Every entity type should inherit from a base Entity class.
+- Implement an event system for decoupled communication between systems (e.g., zombie death triggers score update and possible loot drop).
+- Separate game logic from rendering — the render layer should not contain gameplay code.
+
+### Extensibility
+The codebase must be designed so that:
+- Adding new weapons requires only defining a weapon config object (damage, fire rate, magazine size, sound references) without modifying core systems
+- Adding new zombie types requires only creating a Zombie subclass with overridden stats and behavior methods
+- Texture replacement is trivial — all textures load from a single configuration file or directory. Changing wall.png should update every wall in the game instantly without code changes
+- New entity sprites (NPCs, items) can be added by placing PNG files in the appropriate assets folder
+
+### Performance Considerations
+- Implement object pooling for projectiles and particles to avoid garbage collection spikes
+- Use frustum culling — do not render entities outside the camera's view
+- Limit zombie draw distance with fog fade-out; zombies beyond a certain range should not be updated or rendered
+- Target stable 60 FPS on modest hardware
+
+---
+
+## Deliverables Checklist
+
+Verify every item before considering this complete:
+
+1. [ ] First-person player controller with mouse look and WASD movement
+2. [ ] At least 5 weapons switchable via number keys (1-5)
+3. [ ] Functional ammo system per weapon with magazine capacity, reserve ammo, and reload mechanic
+4. [ ] Zombie AI with wandering, chasing, and attacking behaviors
+5. [ ] Multiple zombie types with different stats and behaviors
+6. [ ] Retro 2003 Half-Life Style texture rendering on all surfaces
+7. [ ] All textures are power-of-two dimensions and tileable where applicable
+8. [ ] Entity billboarding — zombies, NPCs, items always face the camera
+9. [ ] Static geometry uses standard textured polygons (not billboards)
+10. [ ] HUD with health bar, ammo counter, kill counter, weapon display
+11. [ ] Kill counter tracks to exactly 250,000 and triggers victory screen at that number
+12. [ ] Victory screen displays final stats when win condition is met
+13. [ ] Sound effects for all weapons, zombie sounds, pickups
+14. [ ] Visual effects: muzzle flash, blood particles, damage vignette
+15. [ ] Code is modular and extensible — new weapons/zombies/textures can be added without core changes
+
+---
+
+## Notes on Implementation Priority
+
+Build in this order to ensure a working product at every stage:
+1. **Phase 1:** Player controller + basic first-person camera + one weapon + one zombie type + simple arena map with textures
+2. **Phase 2:** Add remaining weapons, ammo system, HUD elements, kill counter
+3. **Phase 3:** Add zombie AI behaviors, multiple zombie types, wave system
+4. **Phase 4:** Expand world to open environment, add audio, visual effects, polish
+5. **Phase 5:** Final testing — verify 250,000 kill win condition works precisely, performance optimization
+
+Do not skip phases or attempt to build everything at once. Each phase must produce a playable game before moving forward.
