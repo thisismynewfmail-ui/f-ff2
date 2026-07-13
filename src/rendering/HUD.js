@@ -309,14 +309,17 @@ export class HUD {
     }
   }
 
-  /** Prepend a line to the green CRT message log; keep the last few. */
+  /** Prepend a line to the green CRT message log; keep the last few. Each line
+   *  stretches to share the CRT height (see .log-line) so the feed fills the
+   *  box top-to-bottom; the text rides in a span so it can ellipsize. */
   logMsg(text, cls = '') {
     if (!this.logEl) return;
     const line = document.createElement('div');
     line.className = 'log-line ' + cls;
-    line.textContent = '• ' + text;
+    const span = document.createElement('span');
+    span.textContent = '• ' + text;
+    line.appendChild(span);
     this.logEl.insertBefore(line, this.logEl.firstChild);
-    // keep enough lines to fill the CRT top-to-bottom (see #cons-log-wrap)
     while (this.logEl.children.length > 6) this.logEl.lastChild.remove();
     requestAnimationFrame(() => line.classList.add('in'));
   }

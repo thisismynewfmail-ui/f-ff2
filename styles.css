@@ -180,18 +180,20 @@ html, body {
   background: repeating-linear-gradient(0deg, rgba(0,0,0,0.25) 0 1px, transparent 1px 3px);
 }
 #cons-log {
-  /* column-reverse keeps the newest line at the bottom; flex-start (the
-     reversed main-start) anchors the whole feed to the BOTTOM of the CRT so
-     it fills all the way down and the oldest lines clip off the top. */
+  /* column-reverse keeps the newest line at the bottom (oldest clips off the
+     top). Each line grows to share the CRT height, so the feed fills the box
+     top-to-bottom for the whole message backlog instead of clustering. */
   display: flex; flex-direction: column-reverse; justify-content: flex-start;
   height: 100%; overflow: hidden;
 }
 .log-line {
-  font-size: 12px; line-height: 1.32; color: #6ad06a;
+  flex: 1 1 0; max-height: 22px;          /* stretch to fill the CRT height */
+  display: flex; align-items: center;      /* keep text centred in its share */
+  font-size: 12px; color: #6ad06a;
   text-shadow: 0 0 4px rgba(70,220,90,0.5);
   opacity: 0; transform: translateX(-4px); transition: opacity 0.2s, transform 0.2s;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
+.log-line > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
 .log-line.in { opacity: 1; transform: none; }
 .log-line.good { color: #7be07b; }
 .log-line.gold { color: #e6c84a; text-shadow: 0 0 4px rgba(224,184,64,0.5); }
