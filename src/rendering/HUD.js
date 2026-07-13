@@ -5,9 +5,14 @@ import { hudTextures } from './HudTextures.js';
 /**
  * Retro survival-horror HUD, rendered as a DOM overlay.
  *
- * The centrepiece is a full-width bottom CONSOLE BAR modelled on the
- * reference Fallout-style interface (see the provided images): a rusted,
- * riveted cast-iron panel carrying, left to right —
+ * Everything lives in a bottom INSTRUMENT DOCK: the main CONSOLE BAR flanked
+ * by two SIDE HUDs (WAVE on the left, CONFIRMED KILLS on the right), kept
+ * separate by the dock's gaps and scaled together to fit any window width
+ * (see _layoutDock). No readouts sit at the top of the screen.
+ *
+ * The centrepiece is the CONSOLE BAR, modelled on the reference Fallout-style
+ * interface (see the provided images): a rusted, riveted cast-iron panel
+ * carrying, left to right —
  *
  *   - a "CLEAN / HURT" condition tab and a green CRT MESSAGE LOG (the flavour
  *     feed: pickups, sightings, secrets, orders)
@@ -19,10 +24,12 @@ import { hudTextures } from './HudTextures.js';
  *   - a WEAPON panel: the live weapon silhouette + its fire mode
  *   - an ARMS panel: the six-slot armoury grid with per-weapon reserves
  *
- * Kept above the bar: the 250,000 kill counter + victory progress
- * (top-centre), wave/zone (top-left), the fly-in ARMORY names, subtitles,
- * damage vignette, scope overlay and the menu/pause/death/victory screens.
- * Run stats stay on the pause screen as circular gauges (never on the HUD).
+ * The two flanking SIDE HUDs share the console's brass/iron instrument look:
+ * the left carries wave/zone + wave-progress, the right the 250,000 kill
+ * counter + victory progress. Free-floating over the scene: the fly-in
+ * ARMORY names, subtitles, damage vignette, scope overlay and the
+ * menu/pause/death/victory screens. Run stats stay on the pause screen as
+ * circular gauges (never on the HUD).
  */
 export class HUD {
   constructor(events, root, actions) {
@@ -55,9 +62,16 @@ export class HUD {
     this._el('div', 'healflash');
     this._el('div', 'crosshair').innerHTML = '<span></span>';
 
-    // top-left: WAVE gauge + zone + wave-progress counter (themed to match
-    // the console: rusted-iron ground, brass frame, green CRT readouts)
-    const tl = this._el('div', 'hud-tl', null, 'gauge-panel');
+    // Bottom instrument dock: the two status meters ride at the BOTTOM as
+    // side HUDs flanking the main console — WAVE on the left, CONFIRMED KILLS
+    // on the right. The inner row keeps its authored width; _layoutDock()
+    // scales the whole assembly to fit narrow windows so nothing overlaps.
+    const dock = this._el('div', 'hud-dock');
+    this.dockInner = this._el('div', 'hud-dock-inner', dock);
+
+    // left side HUD: WAVE gauge + zone + wave-progress counter (themed to
+    // match the console: rusted-iron ground, brass frame, green CRT readouts)
+    const tl = this._el('div', 'hud-tl', this.dockInner, 'gauge-panel side-hud');
     tl.style.backgroundImage = `url(${this._tex.bar})`;
     const waveHead = this._el('div', null, tl, 'gauge-head');
     this._el('div', null, waveHead, 'gauge-title').textContent = 'WAVE';
@@ -73,8 +87,11 @@ export class HUD {
     this.waveQuotaEl = wpLabel.querySelector('#wave-quota');
     this.respiteEl = this._el('div', 'respite', tl);
 
-    // top-center: confirmed-kills counter toward 250,000 (themed gauge)
-    const tc = this._el('div', 'hud-tc', null, 'gauge-panel');
+    // main HUD: the full console bar sits in the centre of the dock
+    this._buildConsole(this.dockInner);
+
+    // right side HUD: confirmed-kills counter toward 250,000 (themed gauge)
+    const tc = this._el('div', 'hud-tc', this.dockInner, 'gauge-panel side-hud');
     tc.style.backgroundImage = `url(${this._tex.bar})`;
     this._el('div', null, tc, 'gauge-title').textContent = 'CONFIRMED KILLS';
     const killRow = this._el('div', null, tc, 'kills-row');
@@ -84,7 +101,10 @@ export class HUD {
     const prog = this._el('div', 'progress', tc);
     this.progFill = this._el('div', 'progress-fill', prog);
 
-    this._buildConsole();
+    // fit the dock to the window now, and keep it fitted on every resize
+    this._layoutDock();
+    window.addEventListener('resize', () => this._layoutDock());
+    requestAnimationFrame(() => this._layoutDock());
 
     // top-center: fly-in ARMORY names on weapon switch (detail-on-demand;
     // the persistent grid lives in the console ARMS panel).
@@ -105,9 +125,19 @@ export class HUD {
     this._buildScreens();
   }
 
+  /** Scale the bottom dock so the two side HUDs + main console always fit the
+   *  window width without overlapping (caps at 1:1 on wide-enough screens). */
+  _layoutDock() {
+    if (!this.dockInner) return;
+    const natural = this.dockInner.offsetWidth; // layout width, ignores scale
+    if (!natural) return;
+    const scale = Math.min(1, (window.innerWidth - 16) / natural);
+    this.dockInner.style.setProperty('--dock-scale', scale.toFixed(4));
+  }
+
   /** The bottom console bar and all of its instruments. */
-  _buildConsole() {
-    const bar = this._el('div', 'console-bar');
+  _buildConsole(parent) {
+    const bar = this._el('div', 'console-bar', parent);
     bar.style.backgroundImage = `url(${this._tex.bar})`;
 
     // condition tab (top-left corner of the bar)
@@ -279,14 +309,18 @@ export class HUD {
     }
   }
 
-  /** Prepend a line to the green CRT message log; keep the last few. */
+  /** Prepend a line to the green CRT message log; keep the last few. Each line
+   *  stretches to share the CRT height (see .log-line) so the feed fills the
+   *  box top-to-bottom; the text rides in a span so it can ellipsize. */
   logMsg(text, cls = '') {
     if (!this.logEl) return;
     const line = document.createElement('div');
     line.className = 'log-line ' + cls;
-    line.textContent = '• ' + text;
+    const span = document.createElement('span');
+    span.textContent = '• ' + text;
+    line.appendChild(span);
     this.logEl.insertBefore(line, this.logEl.firstChild);
-    while (this.logEl.children.length > 5) this.logEl.lastChild.remove();
+    while (this.logEl.children.length > 6) this.logEl.lastChild.remove();
     requestAnimationFrame(() => line.classList.add('in'));
   }
 

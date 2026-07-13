@@ -53,29 +53,51 @@ html, body {
   padding: 6px 10px;
 }
 
-/* themed gauge panels — rusted iron ground, brass frame, brass rivets,
-   matching the console bar. Shared by the WAVE (top-left) and CONFIRMED
-   KILLS (top-centre) readouts. */
+/* ===================================================================
+   BOTTOM INSTRUMENT DOCK — the two status meters ride at the bottom as
+   SIDE HUDs flanking the main console (WAVE left, CONFIRMED KILLS right).
+   The inner row keeps its authored width and is scaled by JS (--dock-scale)
+   so the whole assembly always fits the window without overlapping.
+   =================================================================== */
+#hud-dock {
+  position: absolute; left: 0; right: 0; bottom: 10px; z-index: 21;
+  display: flex; justify-content: center; align-items: flex-end;
+  pointer-events: none;
+}
+#hud-dock-inner {
+  display: flex; align-items: stretch; gap: 14px;
+  transform-origin: bottom center;
+  transform: scale(var(--dock-scale, 1));
+}
+#hud-dock-inner > * { pointer-events: none; }
+
+/* themed gauge panels — rusted iron ground, brass frame, brass rivets, the
+   same instrument family as the console bar. These are the two SIDE HUDs:
+   WAVE (left) and CONFIRMED KILLS (right). They stand full console height and
+   stay separate from the main HUD via the dock's gaps. */
 .gauge-panel {
-  position: absolute; top: 12px; z-index: 20;
+  position: relative; z-index: 20;
+  display: flex; flex-direction: column; justify-content: center; gap: 7px;
+  flex: 0 0 230px; width: 230px; align-self: stretch;
   background-color: #34312f; background-size: cover; background-position: center;
-  border: 2px solid #6a5a38; border-radius: 4px;
-  padding: 6px 12px 8px; image-rendering: pixelated;
-  box-shadow: inset 0 2px 0 rgba(0,0,0,0.4), inset 0 0 12px rgba(0,0,0,0.5), 0 2px 6px rgba(0,0,0,0.5);
+  border: 3px solid #6a5a38; border-radius: 8px;
+  padding: 8px 14px 14px; image-rendering: pixelated;
+  box-shadow:
+    inset 0 3px 0 rgba(0,0,0,0.5), inset 0 -3px 12px rgba(0,0,0,0.6),
+    0 4px 14px rgba(0,0,0,0.6);
 }
 .gauge-panel > * { image-rendering: auto; }
-.gauge-panel::before, .gauge-panel::after { /* brass corner rivets */
-  content: ''; position: absolute; width: 5px; height: 5px; border-radius: 50%;
+.gauge-panel::before, .gauge-panel::after { /* brass corner rivets (bottom) */
+  content: ''; position: absolute; width: 6px; height: 6px; border-radius: 50%;
   background: radial-gradient(circle at 35% 35%, #d8b552, #6a5324);
-  top: 4px;
+  bottom: 6px;
 }
-.gauge-panel::before { left: 4px; }
-.gauge-panel::after { right: 4px; }
+.gauge-panel::before { left: 6px; }
+.gauge-panel::after { right: 6px; }
 .gauge-title {
   font-size: 10px; letter-spacing: 4px; color: #b6a068; text-align: center;
 }
 
-#hud-tl { left: 12px; min-width: 190px; }
 .gauge-head { display: flex; align-items: baseline; justify-content: center; gap: 8px; }
 #wave {
   font-size: 26px; font-weight: bold; color: #e8e2c8; letter-spacing: 1px;
@@ -93,10 +115,12 @@ html, body {
 .wave-prog-fill.done { background: linear-gradient(#4a8a3a, #6ac84a); }
 #respite { font-size: 10px; color: #d8b552; letter-spacing: 1px; text-align: center; margin-top: 4px; }
 
-#hud-tc { left: 50%; transform: translateX(-50%); text-align: center; min-width: 240px; }
-.kills-row { display: flex; align-items: baseline; justify-content: center; gap: 8px; margin-top: 2px; }
+.kills-row {
+  display: flex; align-items: baseline; justify-content: center; gap: 8px;
+  margin-top: 2px; white-space: nowrap;
+}
 .kills-odo {
-  font-size: 26px; font-weight: bold; letter-spacing: 2px; color: #e8e2c8;
+  font-size: 22px; font-weight: bold; letter-spacing: 2px; color: #e8e2c8;
   text-shadow: 0 0 6px rgba(224,184,64,0.4);
 }
 #kill-goal { font-size: 12px; color: #8a9478; letter-spacing: 1px; }
@@ -111,9 +135,9 @@ html, body {
    Rusted riveted iron ground, brass trim, green CRT insets.
    =================================================================== */
 #console-bar {
-  position: absolute; left: 50%; transform: translateX(-50%); bottom: 10px;
-  width: min(1180px, calc(100% - 24px)); height: 132px;
-  z-index: 21; display: flex; align-items: stretch; justify-content: center; gap: 6px;
+  position: relative; flex: 0 0 auto;
+  width: 1180px; height: 132px;
+  display: flex; align-items: stretch; justify-content: center; gap: 6px;
   padding: 8px 12px;
   background-color: #34312f; background-size: cover; background-position: center;
   border: 3px solid #6a5a38; border-radius: 8px;
@@ -147,22 +171,29 @@ html, body {
   border: 2px solid #24261e; border-radius: 2px;
   background-color: #060c07; background-size: cover;
   box-shadow: inset 0 0 18px rgba(0,0,0,0.8); overflow: hidden;
-  position: relative; padding: 6px 8px;
+  /* tight vertical padding so the feed fills the full CRT height (6 lines,
+     see HUD.logMsg) top-to-bottom rather than leaving a gap up top */
+  position: relative; padding: 3px 8px;
 }
 #cons-log-wrap::after { /* CRT scanlines */
   content: ''; position: absolute; inset: 0; pointer-events: none;
   background: repeating-linear-gradient(0deg, rgba(0,0,0,0.25) 0 1px, transparent 1px 3px);
 }
 #cons-log {
-  display: flex; flex-direction: column-reverse; justify-content: flex-end;
+  /* column-reverse keeps the newest line at the bottom (oldest clips off the
+     top). Each line grows to share the CRT height, so the feed fills the box
+     top-to-bottom for the whole message backlog instead of clustering. */
+  display: flex; flex-direction: column-reverse; justify-content: flex-start;
   height: 100%; overflow: hidden;
 }
 .log-line {
-  font-size: 12px; line-height: 1.32; color: #6ad06a;
+  flex: 1 1 0; max-height: 22px;          /* stretch to fill the CRT height */
+  display: flex; align-items: center;      /* keep text centred in its share */
+  font-size: 12px; color: #6ad06a;
   text-shadow: 0 0 4px rgba(70,220,90,0.5);
   opacity: 0; transform: translateX(-4px); transition: opacity 0.2s, transform 0.2s;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
+.log-line > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
 .log-line.in { opacity: 1; transform: none; }
 .log-line.good { color: #7be07b; }
 .log-line.gold { color: #e6c84a; text-shadow: 0 0 4px rgba(224,184,64,0.5); }
