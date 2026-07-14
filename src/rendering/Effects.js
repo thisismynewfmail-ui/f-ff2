@@ -129,6 +129,9 @@ export class Effects {
     this.shake = 0;
     this.muzzleLight = new THREE.PointLight(0xffc860, 0, 14);
     scene.add(this.muzzleLight);
+    // A small, short-lived muzzle glow for NPC gunfire (the Spitter's pistols).
+    this.npcMuzzleLight = new THREE.PointLight(0xffd070, 0, 9);
+    scene.add(this.npcMuzzleLight);
     // A short red pop of light at each death, sold alongside the gib burst.
     this.deathLight = new THREE.PointLight(0xff3524, 0, 9);
     scene.add(this.deathLight);
@@ -163,6 +166,12 @@ export class Effects {
       this.explosionLight.intensity = 30;
       const d = Math.hypot(pos.x - this.player.position.x, pos.z - this.player.position.z);
       this.addShake(Math.max(0, 0.14 * (1 - d / 16)));
+    });
+    events.on('spitter:fire', ({ pos }) => {
+      // A quick additive muzzle pop + a brief glow at the Spitter's guns.
+      this.flash.spawn({ x: pos.x, y: pos.y, z: pos.z }, 0.85, 0.12);
+      this.npcMuzzleLight.position.set(pos.x, pos.y, pos.z);
+      this.npcMuzzleLight.intensity = 9;
     });
     events.on('impact', ({ pos }) => this.dust.spawn(pos, 4, 1.4, 1.4, 0.5));
     events.on('secret:rubble', (pos) => this.dust.spawn(pos, 30, 3, 1.2, 1.2));
@@ -207,6 +216,7 @@ export class Effects {
     if (camPos) this.flash.update(dt, camPos);
     this.shake = Math.max(0, this.shake - dt * 0.35);
     this.muzzleLight.intensity = Math.max(0, this.muzzleLight.intensity - dt * 220);
+    this.npcMuzzleLight.intensity = Math.max(0, this.npcMuzzleLight.intensity - dt * 90);
     this.deathLight.intensity = Math.max(0, this.deathLight.intensity - dt * 42);
     this.explosionLight.intensity = Math.max(0, this.explosionLight.intensity - dt * 60);
   }

@@ -26,6 +26,9 @@ const HEAT_SPAN = 3000;         // kills over which heat climbs 0 → 1 past the
 // Exploders stay out of the mix until the player has this many kills under
 // their belt, then join the spawn table with a modest, slowly-growing share.
 export const EXPLODER_KILL_GATE = 120;
+// The Spitter (ranged dual-pistol enemy) only starts spawning once the player
+// has made this many kills, then joins the table with a small, growing share.
+export const SPITTER_KILL_GATE = 100;
 // The opening waves stream a small surplus over the quota so the early field
 // feels a touch busier — a few bodies still standing when the wave clears.
 const EARLY_WAVES = 5;
@@ -82,7 +85,13 @@ export class WaveSystem {
     // little with overall progress.
     const exploder = this.score.kills >= EXPLODER_KILL_GATE
       ? Math.min(0.2, 0.07 + this.progress * 0.13) : 0;
-    return { walker: Math.max(0, 1 - sprinter - tank - exploder), sprinter, tank, exploder };
+    // Spitters join once past their (earlier) kill gate, with a similar ramp.
+    const spitter = this.score.kills >= SPITTER_KILL_GATE
+      ? Math.min(0.18, 0.06 + this.progress * 0.12) : 0;
+    return {
+      walker: Math.max(0, 1 - sprinter - tank - exploder - spitter),
+      sprinter, tank, exploder, spitter,
+    };
   }
 
   /** True while the director still owes this wave zombies. */

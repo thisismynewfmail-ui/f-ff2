@@ -33,6 +33,7 @@ export class AudioManager {
     on('player:died', () => this.deathSting());
     on('zombie:death', ({ pos }) => this.zombieDeath(pos));
     on('exploder:explode', ({ pos }) => this.explosion(pos));
+    on('spitter:fire', ({ pos }) => this.spitterShot(pos));
     on('zombie:aggro', ({ pos }) => this.growl(pos));
     on('wave:start', () => this.horn());
     on('zone:unlock', () => this.rumble());
@@ -341,6 +342,22 @@ export class AudioManager {
     this._noise(0.12, 'lowpass', 2200, 0.8, 0.5 * v, 0, pan, 300); // crack
     this._noise(0.6, 'lowpass', 700, 0.6, 0.3 * v, 0.05, pan, 120); // rumble tail
     this._noise(0.35, 'highpass', 3000, 1, 0.16 * v, 0.02, pan);    // debris crackle
+  }
+
+  /**
+   * The Spitter's dual-pistol shot: two quick snappy cracks a hair apart (both
+   * pistols), spatialised and attenuated by distance so a shot across the street
+   * reads quieter and off to the side.
+   */
+  spitterShot(pos) {
+    const s = this._spatial(pos, 60);
+    if (!s) return;
+    const v = s.vol, pan = s.pan;
+    this._punch(320, 80, 0.05, 0.32 * v, 0, pan, 'triangle');       // first barrel body
+    this._noise(0.045, 'bandpass', 3400, 1.2, 0.34 * v, 0, pan);    // ...its crack
+    this._punch(300, 76, 0.05, 0.26 * v, 0.035, pan, 'triangle');   // second barrel body
+    this._noise(0.04, 'bandpass', 3600, 1.2, 0.26 * v, 0.035, pan); // ...its crack
+    this._tone('sine', 4800, 0.05, 0.03 * v, 0.05, pan, 3200);      // bright nickel ring
   }
 
   moan(pan, vol) {

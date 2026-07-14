@@ -125,6 +125,19 @@ There is deliberately no command that touches the kill counter — the
   **sniper ammo, but only when the player kills it** (not when it self-detonates
   as an attack), moves only **slightly faster than your walk**, and starts
   appearing once you pass **120 kills**.
+- **Spitter:** a CS:GO-styled **dual-pistol ranged enemy** built on the zombie
+  stack. Instead of closing to melee it **kites to hold a short ~6–8 ft standoff
+  band** — back-pedalling when you crowd it, closing when you back off, and
+  **circle-strafing** in between for organic movement — while walking a touch
+  **slower than you**, so you can still run it down. Crucially it **never moves
+  and shoots at once**: it plants itself, **pauses a quarter-second to aim**
+  (raised-pistols pose), then fires. Each shot carries a few degrees of **spread**
+  and is aimed where you *were* when the pause began, so **juking during the tell
+  can dodge it** and not every shot lands. It reads a dedicated sheet with the
+  usual directional walk rows plus a top row of front-facing **aim/fire poses**
+  (it turns to face you to shoot), fires with its own **twin-pistol report** and a
+  muzzle flash, takes the normal hit/blood/gib feedback, and starts appearing once
+  you pass **100 kills**.
 - **Friendly NPC:** the survivor by the well runs the same stack — Flee ▸
   Wander ▸ Idle behaviours arbitrated by her Senses. She flees any zombie that
   comes hunting and keeps running until it is out of sight, then returns to
@@ -164,8 +177,9 @@ There is deliberately no command that touches the kill counter — the
   then a short respite with a supply drop before the next, larger wave. Past
   **250 kills** the horde "heats up" — faster spawns, bigger waves and a higher
   active cap — ramping over the waves that follow without overflowing.
-  Sprinter/tank share rises with wave number and progress toward 250,000, and
-  exploders join the table once you clear 120 kills.
+  Sprinter/tank share rises with wave number and progress toward 250,000,
+  spitters join the table once you clear 100 kills, and exploders once you
+  clear 120 kills.
 - **Checkpoints & death:** the run is checkpointed every **tenth wave**. When
   you die, every zombie on the map is cleared and the run rolls back to the last
   checkpoint — kills, score and wave all restored — then that wave respawns from
@@ -191,7 +205,7 @@ lib/three.module.js vendored Three.js r169
 scripts/            generate_textures.mjs — regenerates assets/textures/
 src/engine/         game loop, input, event bus
 src/ai/             sensory system: senses, steering, behaviour arbiter
-src/entities/       player, zombies, exploder, NPC, cockroach, pickups
+src/entities/       player, zombies, exploder, spitter, NPC, cockroach, pickups
 src/weapons/        weapon configs + firing/ammo/hit resolution
 src/rendering/      renderer, texture pipeline, billboards, HUD (console bar +
                     Portrait CRT + HudTextures), 3D weapon view + PBR weapon
@@ -210,7 +224,12 @@ tests/              Playwright smoke test (boot, combat, exact win condition)
   materials in `WeaponMaterials.js`). WeaponView, the HUD menu and audio pick
   it up from the config.
 - **New zombie type:** add a config to `src/entities/ZombieTypes.js`
-  (stats + tint); the spawn director and HUD pick it up.
+  (stats + tint); the spawn director and HUD pick it up. For a distinct
+  behaviour (like the Exploder or Spitter) subclass `Zombie` and register the
+  class in the spawn director's constructor map — it inherits the shared Senses,
+  steering, LOS, pathfinding and score/hit/death pipelines and only overrides
+  what differs. A subclass on a differently-laid-out sprite sheet overrides
+  `_makeBillboard` and declares its layout in `TextureConfig.js`.
 - **New NPC / behaviour:** give the entity a `Senses` from `src/ai/` and a
   `Brain` composed of `Behavior`s (each scores itself from the sensory
   context; highest wins). Reuse `seek`/`flee`/`avoidObstacles` for movement.

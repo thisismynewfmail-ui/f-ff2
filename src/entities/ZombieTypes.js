@@ -87,4 +87,35 @@ export const ZOMBIE_TYPES = {
     explodeDamage: 80,     // damage at the centre, linear falloff to the edge
     explodeKnockback: 6,   // shove imparted to caught zombies
   },
+  // The Spitter: a CS:GO-styled dual-pistol ranged enemy (see
+  // src/entities/Spitter.js). It kites to hold a short standoff band, moves a
+  // touch slower than the player, and — crucially — never moves and shoots at
+  // once: it plants itself, pauses a quarter-second to aim, then fires a spread
+  // shot. The fields below the standard block are Spitter-only tunables.
+  spitter: {
+    name: 'Spitter',
+    hp: 26,
+    points: 3,
+    damage: 8,             // per shot that lands
+    reach: 1.6,            // unused by the class; kept sane for shared helpers
+    wanderSpeed: 1.0,
+    chaseSpeed: 4.4,       // SLIGHTLY slower than the player's 5.0 walk
+    sightRange: 60,
+    height: 1.72,
+    scale: 1.0,
+    tint: null,            // the sheet is already coloured
+    walkFps: 6,
+    attackWindup: 0.25,    // unused by the class; the real pause is aimTime
+    attackCooldown: 1.2,   // unused by the class; the real gap is fireCooldown
+    knockbackResist: 0,
+    // --- Spitter-only ---
+    standoffMin: 1.9,      // ~6 ft: closer than this and it back-pedals
+    standoffMax: 2.6,      // ~8.5 ft: farther than this and it closes the gap
+    disengageRange: 9.0,   // abandon an aim if the target slips past this
+    aimTime: 0.25,         // quarter-second pause (windup) before the shot
+    firePoseTime: 0.14,    // how long the muzzle-flash pose lingers after a shot
+    fireCooldown: 1.15,    // gap between shots
+    spread: 7.0,           // firing spread in degrees (variance → dodgeable)
+    strafe: 0.7,           // sideways weight for organic circling between shots
+  },
 };

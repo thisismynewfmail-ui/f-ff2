@@ -80,8 +80,17 @@ export class Zombie extends Entity {
       interval: 0.15,
     });
 
-    this.billboard = new SpriteBillboard(baseMaterial, this.height, 0.62);
+    this.billboard = this._makeBillboard(baseMaterial);
     this.mesh = this.billboard.mesh;
+  }
+
+  /**
+   * Build this entity's sprite billboard. Split out so archetypes on a
+   * differently-laid-out sheet (e.g. the Spitter) can swap in their own layout
+   * and aspect without duplicating the rest of the constructor.
+   */
+  _makeBillboard(baseMaterial) {
+    return new SpriteBillboard(baseMaterial, this.height, 0.62);
   }
 
   placeAt(x, z) {

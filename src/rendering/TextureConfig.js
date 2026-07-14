@@ -90,6 +90,7 @@ export const SPRITES = {
   npcPeaceful: 'npc_spritesheet_peacefull.png',
   zombieBasic: 'npc_spritesheet_zombie_basic.png',
   npcExploder: 'npc_exploder.png',
+  spitter: 'npc_csgo_midrange_double_pistol_gunholder.png',
 };
 
 /** Layout of the 3x4 walk-cycle sheets (RPG-Maker style). */
@@ -100,4 +101,38 @@ export const SHEET_LAYOUT = {
   row: { front: 0, left: 1, right: 2, back: 3 },
   // frame column sequence for a walk cycle
   walkFrames: [0, 1, 2, 1],
+};
+
+/**
+ * Layout of the Spitter sheet (npc_csgo_midrange_double_pistol_gunholder.png,
+ * 512x1500). It is a standard 3-column walk-cycle sheet with an EXTRA top row
+ * of front-facing combat poses:
+ *
+ *   row 0 — special: col 0 = FIRE (dual muzzle flash), col 1 = AIM (guns raised)
+ *   row 1 — front walk cycle
+ *   row 2 — left  walk cycle
+ *   row 3 — right walk cycle
+ *   row 4 — back  walk cycle
+ *
+ * The hand-drawn rows are NOT evenly pitched, so instead of a naive uniform
+ * grid each row is addressed by its own feet baseline (`rowBottom`, the image-Y
+ * of the sprite's feet) and a shared cell size. Billboard UVs are derived from
+ * these anchors, which keeps every frame the same scale and feet-aligned so the
+ * character never jumps as it switches between walking, aiming and firing.
+ */
+export const SPITTER_LAYOUT = {
+  cols: 3,
+  rows: 5,
+  imgW: 512,
+  imgH: 1500,
+  cellW: 512 / 3,           // ~170.67px per column
+  cellH: 236,               // uniform cell height (tallest row band)
+  rowBottom: [429, 730, 985, 1241, 1499], // feet baseline (image-Y) per row
+  // Walk rows sit one below the standard sheet because row 0 is the pose row.
+  row: { front: 1, left: 2, right: 3, back: 4 },
+  walkFrames: [0, 1, 2, 1],
+  // Static combat poses, front-facing (the Spitter faces the player to shoot).
+  pose: { fire: { col: 0, row: 0 }, aim: { col: 1, row: 0 } },
+  // Cell aspect (width/height) so the billboard plane never distorts the sprite.
+  aspect: (512 / 3) / 236,
 };
