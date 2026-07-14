@@ -109,13 +109,15 @@ export const ZOMBIE_TYPES = {
     attackCooldown: 1.2,   // unused by the class; the real gap is fireCooldown
     knockbackResist: 0,
     // --- Spitter-only ---
-    standoffMin: 1.9,      // ~6 ft: closer than this and it back-pedals
-    standoffMax: 2.6,      // ~8.5 ft: farther than this and it closes the gap
-    disengageRange: 9.0,   // abandon an aim if the target slips past this
+    standoffMin: 5.0,      // ~16 ft: closer than this and it back-pedals away
+    standoffMax: 8.0,      // ~26 ft: farther than this and it closes the gap
+    disengageRange: 12.0,  // abandon an aim only if the target slips well past
     aimTime: 0.25,         // quarter-second pause (windup) before the shot
     firePoseTime: 0.14,    // how long the muzzle-flash pose lingers after a shot
     fireCooldown: 1.15,    // gap between shots
-    spread: 7.0,           // firing spread in degrees (variance → dodgeable)
+    // Spread in degrees. Tuned for the standoff range: near the min it lands
+    // tightly, out toward the max it opens up so a distant shot is dodgeable.
+    spread: 5.5,
     strafe: 0.7,           // sideways weight for organic circling between shots
   },
 };

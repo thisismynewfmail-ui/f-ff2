@@ -454,19 +454,21 @@ const spit = await page.evaluate(async () => {
   const cfg = sp.config;
   const mid = (cfg.standoffMin + cfg.standoffMax) / 2;
 
-  // 3. Distance-keeping. Too close → it opens back up to ~the standoff band and
-  //    never lets the player sit on top of it; too far → it closes the gap.
-  setup(sp, 0.8); sp._cd = 999; // muzzle off so it purely kites here
-  for (let i = 0; i < 70; i++) sp.update(0.05, mkCtx());
+  // 3. Distance-keeping. Too close → it opens back up to the (now much farther)
+  //    standoff band and never lets the player sit on top of it; too far → it
+  //    closes the gap back toward the band.
+  setup(sp, 1.0); sp._cd = 999; // muzzle off so it purely kites here
+  for (let i = 0; i < 110; i++) sp.update(0.05, mkCtx());
   const dClose = sp.distanceTo(player);
-  out.keepsAwayWhenClose = dClose >= cfg.standoffMin - 0.4;
+  out.keepsAwayWhenClose = dClose >= cfg.standoffMin - 0.6;
   out.doesntFleeForever = dClose <= cfg.standoffMax + 3;
 
-  setup(sp, 7); sp._cd = 999;
+  setup(sp, cfg.standoffMax + 6); sp._cd = 999; // start well beyond the band
   const dFar0 = sp.distanceTo(player);
-  for (let i = 0; i < 70; i++) sp.update(0.05, mkCtx());
+  for (let i = 0; i < 110; i++) sp.update(0.05, mkCtx());
   const dFar1 = sp.distanceTo(player);
   out.closesWhenFar = dFar1 < dFar0 - 1 && dFar1 <= cfg.standoffMax + 1.5;
+  out.holdsRangedDistance = cfg.standoffMin >= 4.5; // stays genuinely back, not melee
 
   // 4. Planted quarter-second aim pause, then a shot — and it does NOT move
   //    while aiming or firing (the walk/turn/shoot states never overlap).
@@ -486,10 +488,10 @@ const spit = await page.evaluate(async () => {
   out.plantedWhileShooting = aimMoved < 0.05;
   out.firesAShot = firedHere;
 
-  // 5. A stationary in-band target gets hit; damage flows through the player
-  //    pipeline (spread at point-blank is tight enough to always connect).
-  setup(sp, mid); sp._cd = 0;
-  for (let i = 0; i < 60 && player.health === 100; i++) sp.update(0.05, mkCtx());
+  // 5. A stationary target near the standoff minimum gets hit; damage flows
+  //    through the player pipeline (there the cone is tight enough to connect).
+  setup(sp, cfg.standoffMin); sp._cd = 0;
+  for (let i = 0; i < 90 && player.health === 100; i++) sp.update(0.05, mkCtx());
   out.hitsStationaryTarget = player.health < 100;
 
   // 6. Dodge: once the aim locks onto where the player stood, jinking clear of
@@ -517,6 +519,7 @@ check('spitter joins the spawn table at 100 kills', spit.gateOn);
 check('spawnOne builds a real Spitter', spit.spawned);
 check('spitter walks slightly slower than the player', spit.slowerThanPlayer);
 check('spitter uses the 5-row ranged sprite sheet', spit.rangedSheet);
+check('spitter holds a genuinely ranged standoff (well back from melee)', spit.holdsRangedDistance);
 check('spitter keeps its distance when the player is too close', spit.keepsAwayWhenClose, `${spit.keepsAwayWhenClose}`);
 check('spitter does not flee to infinity', spit.doesntFleeForever);
 check('spitter closes in when the player is too far', spit.closesWhenFar);

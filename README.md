@@ -126,8 +126,8 @@ There is deliberately no command that touches the kill counter — the
   as an attack), moves only **slightly faster than your walk**, and starts
   appearing once you pass **120 kills**.
 - **Spitter:** a CS:GO-styled **dual-pistol ranged enemy** built on the zombie
-  stack. Instead of closing to melee it **kites to hold a short ~6–8 ft standoff
-  band** — back-pedalling when you crowd it, closing when you back off, and
+  stack. Instead of closing to melee it **kites to hold a ranged standoff band
+  (~16–26 ft back)** — back-pedalling when you crowd it, closing when you back off, and
   **circle-strafing** in between for organic movement — while walking a touch
   **slower than you**, so you can still run it down. Crucially it **never moves
   and shoots at once**: it plants itself, **pauses a quarter-second to aim**
