@@ -445,6 +445,15 @@ const spit = await page.evaluate(async () => {
   while (g.score.kills < 100 && !g.score.victory) g.score.registerKill('Walker', 1);
   out.gateOn = g.waves.typeWeights().spitter > 0;
 
+  // 1b. Spawn share steps UP past the ramp gate (120 kills). Read the weight at
+  //     synthetic kill counts and restore, so real progression (and the later
+  //     exploder-gate check, which needs < 120) is untouched.
+  const kReal = g.score.kills;
+  g.score.kills = 110; const shareBelow = g.waves.typeWeights().spitter;
+  g.score.kills = 130; const shareAbove = g.waves.typeWeights().spitter;
+  g.score.kills = kReal;
+  out.rampsUpAfter120 = shareAbove > shareBelow + 0.05;
+
   // 2. It's a real Spitter, slightly slower than the 5.0 walk, on the 5-row sheet.
   player.teleport(PX, groundAt(PX, PZ), PZ); player.alive = true;
   const sp = g.spawner.spawnOne('spitter', player);
@@ -516,6 +525,7 @@ const spit = await page.evaluate(async () => {
 });
 check('spitter stays out of the spawn table before 100 kills', spit.gateOff);
 check('spitter joins the spawn table at 100 kills', spit.gateOn);
+check('spitter spawn share steps up after 120 kills', spit.rampsUpAfter120);
 check('spawnOne builds a real Spitter', spit.spawned);
 check('spitter walks slightly slower than the player', spit.slowerThanPlayer);
 check('spitter uses the 5-row ranged sprite sheet', spit.rangedSheet);

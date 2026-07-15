@@ -137,7 +137,7 @@ There is deliberately no command that touches the kill counter — the
   usual directional walk rows plus a top row of front-facing **aim/fire poses**
   (it turns to face you to shoot), fires with its own **twin-pistol report** and a
   muzzle flash, takes the normal hit/blood/gib feedback, and starts appearing once
-  you pass **100 kills**.
+  you pass **100 kills** — with its **spawn share stepping up past 120 kills**.
 - **Friendly NPC:** the survivor by the well runs the same stack — Flee ▸
   Wander ▸ Idle behaviours arbitrated by her Senses. She flees any zombie that
   comes hunting and keeps running until it is out of sight, then returns to
@@ -178,8 +178,8 @@ There is deliberately no command that touches the kill counter — the
   **250 kills** the horde "heats up" — faster spawns, bigger waves and a higher
   active cap — ramping over the waves that follow without overflowing.
   Sprinter/tank share rises with wave number and progress toward 250,000,
-  spitters join the table once you clear 100 kills, and exploders once you
-  clear 120 kills.
+  spitters join the table once you clear 100 kills (their share stepping up
+  past 120), and exploders once you clear 120 kills.
 - **Checkpoints & death:** the run is checkpointed every **tenth wave**. When
   you die, every zombie on the map is cleared and the run rolls back to the last
   checkpoint — kills, score and wave all restored — then that wave respawns from

@@ -29,6 +29,9 @@ export const EXPLODER_KILL_GATE = 120;
 // The Spitter (ranged dual-pistol enemy) only starts spawning once the player
 // has made this many kills, then joins the table with a small, growing share.
 export const SPITTER_KILL_GATE = 100;
+// ...and past this kill count the Spitter's spawn share steps up markedly, so
+// ranged pressure ramps once the player is established.
+export const SPITTER_RAMP_GATE = 120;
 // The opening waves stream a small surplus over the quota so the early field
 // feels a touch busier — a few bodies still standing when the wave clears.
 const EARLY_WAVES = 5;
@@ -85,9 +88,13 @@ export class WaveSystem {
     // little with overall progress.
     const exploder = this.score.kills >= EXPLODER_KILL_GATE
       ? Math.min(0.2, 0.07 + this.progress * 0.13) : 0;
-    // Spitters join once past their (earlier) kill gate, with a similar ramp.
-    const spitter = this.score.kills >= SPITTER_KILL_GATE
-      ? Math.min(0.18, 0.06 + this.progress * 0.12) : 0;
+    // Spitters join once past their (earlier) kill gate at a modest share, then
+    // their spawn rate steps up once the player is past SPITTER_RAMP_GATE kills.
+    let spitter = 0;
+    if (this.score.kills >= SPITTER_KILL_GATE) {
+      const base = this.score.kills >= SPITTER_RAMP_GATE ? 0.15 : 0.06;
+      spitter = Math.min(0.22, base + this.progress * 0.12);
+    }
     return {
       walker: Math.max(0, 1 - sprinter - tank - exploder - spitter),
       sprinter, tank, exploder, spitter,
