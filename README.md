@@ -11,12 +11,23 @@ polygon geometry.
 
 ## Running
 
-Any static file server from the repo root works:
+Use the bundled dev server (zero dependencies, Node only):
 
 ```
-python3 -m http.server 8000
-# then open http://localhost:8000/
+node scripts/serve.mjs        # http://localhost:8000/  (or: node scripts/serve.mjs 9000)
 ```
+
+It serves the repo with `Cache-Control: no-store`, so **every reload re-fetches
+from disk** — edit a texture in `assets/`, reload, and the change shows up
+immediately.
+
+Any static file server also works (`python3 -m http.server 8000`), but note the
+catch: those servers let the browser cache images and JS modules
+heuristically, so an edited texture can keep showing the **stale cached copy**
+even after you restart the server. The loader cache-busts image URLs to work
+around this (`src/rendering/assetUrl.js`), but if the browser also cached the
+old JavaScript you may need one hard reload (Ctrl/Cmd-Shift-R) the first time —
+or just use `scripts/serve.mjs`, which sidesteps caching entirely.
 
 (ES modules require http://, so opening index.html from disk won't work.)
 
