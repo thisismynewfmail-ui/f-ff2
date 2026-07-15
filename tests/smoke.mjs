@@ -659,6 +659,33 @@ check('player kill drops sniper ammo', exp.playerKillDropsAmmo);
 check('killed exploder blows up during its death animation', exp.deathExplodes);
 check('self-detonation as an attack drops no ammo', exp.attackDropsNothing);
 
+// SPAWN SURGE: on top of "heat" (which barely moves before ~3000 kills), a
+// second ramp on the OVERALL spawn rate kicks in past ~400 kills — shorter
+// spawn interval, fatter batches, higher concurrent cap. Read the pacing at
+// synthetic kill counts (wave held fixed to isolate the kills-driven surge)
+// and restore, so real progression is untouched.
+const surge = await page.evaluate(() => {
+  const g = window.__game;
+  const kR = g.score.kills, wR = g.waves.wave;
+  g.waves.wave = 20; // fixed so only the kills-driven terms move
+  const at = (k) => {
+    g.score.kills = k;
+    return { surge: g.waves.surge, intv: g.waves.spawnInterval(), cap: g.waves.activeCap(),
+      // batchSize has a random component; measure only its deterministic floor
+      batchFloor: 2 + Math.round(g.waves.heat * 3) + Math.round(g.waves.surge * 3) };
+  };
+  const a400 = at(400), a401 = at(401), a2000 = at(2000);
+  g.score.kills = kR; g.waves.wave = wR;
+  return { a400, a401, a2000 };
+});
+check('spawn surge is dormant until ~400 kills', surge.a400.surge === 0 && surge.a401.surge > 0,
+  JSON.stringify({ at400: surge.a400.surge, at401: surge.a401.surge }));
+check('spawn surge shortens the spawn interval past 400 kills', surge.a2000.intv < surge.a400.intv - 0.05,
+  `${surge.a400.intv.toFixed(2)}s -> ${surge.a2000.intv.toFixed(2)}s`);
+check('spawn surge raises the concurrent cap and batch size past 400 kills',
+  surge.a2000.cap >= surge.a400.cap + 20 && surge.a2000.batchFloor > surge.a400.batchFloor,
+  `cap ${surge.a400.cap}->${surge.a2000.cap}, batchFloor ${surge.a400.batchFloor}->${surge.a2000.batchFloor}`);
+
 // 4 + 5. win condition, exact — via the same registerKill pipeline that
 // 'zombie:death' events call, in batches to keep the page responsive.
 const win = await page.evaluate(async () => {

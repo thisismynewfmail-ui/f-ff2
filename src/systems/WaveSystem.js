@@ -23,6 +23,10 @@ const CHECKPOINT_RESPITE = 3;   // brief breather when a checkpoint respawns a w
 // The kill count past which the horde starts ramping up harder.
 export const HEAT_GATE = 250;
 const HEAT_SPAN = 3000;         // kills over which heat climbs 0 → 1 past the gate
+// A second, steeper ramp on the OVERALL spawn rate that kicks in here — where
+// heat has barely moved — and climbs over SURGE_SPAN kills, thickening the horde.
+export const SURGE_GATE = 400;
+const SURGE_SPAN = 1600;        // kills over which the surge climbs 0 → 1 past the gate
 // Exploders stay out of the mix until the player has this many kills under
 // their belt, then join the spawn table with a modest, slowly-growing share.
 export const EXPLODER_KILL_GATE = 120;
@@ -62,26 +66,38 @@ export class WaveSystem {
   /** 0 below the gate, ramping to 1 over HEAT_SPAN kills past it. */
   get heat() { return Math.min(1, Math.max(0, (this.score.kills - HEAT_GATE) / HEAT_SPAN)); }
 
+  /**
+   * A second, harder ramp on the OVERALL spawn rate that kicks in past
+   * SURGE_GATE (~400 kills), where heat has barely moved. It shortens the spawn
+   * interval, fattens each batch and lifts the concurrent cap on top of heat, so
+   * the horde tangibly thickens once the player is deep into a run. 0 below the
+   * gate, climbing to 1 over SURGE_SPAN kills past it.
+   */
+  get surge() { return Math.min(1, Math.max(0, (this.score.kills - SURGE_GATE) / SURGE_SPAN)); }
+
   /** Kills needed to clear wave n — grows with the wave, steepened by heat. */
   waveQuota(n) {
     const base = 8 + n * 3;
     return Math.round(Math.min(320, base * (1 + this.heat * 0.6 + this.progress * 2)));
   }
 
-  /** Seconds between spawn pulses — falls with the wave, progress and heat. */
+  /** Seconds between spawn pulses — falls with the wave, progress, heat and the
+   *  post-400-kill surge (which drops the floor so pulses can come faster). */
   spawnInterval() {
     const perWave = 0.08 + this.heat * 0.05;   // waves ramp faster once past the gate
-    return Math.max(0.4, 2.1 - this.wave * perWave - this.progress * 0.8 - this.heat * 0.7);
+    return Math.max(0.3, 2.1 - this.wave * perWave - this.progress * 0.8 - this.heat * 0.7 - this.surge * 0.6);
   }
 
-  /** Zombies per spawn pulse — a bigger trickle once the horde heats up. */
+  /** Zombies per spawn pulse — a bigger trickle once the horde heats up, bigger
+   *  still once the surge kicks in past ~400 kills. */
   batchSize() {
-    return 2 + Math.round(this.heat * 3) + ((Math.random() * 4) | 0);
+    return 2 + Math.round(this.heat * 3) + Math.round(this.surge * 3) + ((Math.random() * 4) | 0);
   }
 
-  /** Concurrent-zombie cap — lifts modestly with heat, never overflowing. */
+  /** Concurrent-zombie cap — lifts with heat and again with the post-400-kill
+   *  surge, so the thicker spawn stream has room to stay on the field. */
   activeCap() {
-    return Math.round(55 + this.heat * 22);
+    return Math.round(55 + this.heat * 22 + this.surge * 22);
   }
 
   typeWeights() {

@@ -177,8 +177,11 @@ There is deliberately no command that touches the kill counter — the
   clears the moment you hit it, so racking up kills is what advances the wave;
   then a short respite with a supply drop before the next, larger wave. Past
   **250 kills** the horde "heats up" — faster spawns, bigger waves and a higher
-  active cap — ramping over the waves that follow without overflowing.
-  Sprinter/tank share rises with wave number and progress toward 250,000,
+  active cap — ramping over the waves that follow without overflowing, and past
+  **~400 kills** a second, steeper **surge** on the overall spawn rate kicks in
+  (shorter spawn interval, fatter batches, higher concurrent cap) so the field
+  thickens tangibly deeper into a run. Sprinter/tank share rises with wave
+  number and progress toward 250,000,
   spitters join the table once you clear 100 kills (their share stepping up
   past 120), and exploders once you clear 120 kills (their share stepping up
   past 150).
