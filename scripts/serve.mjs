@@ -57,6 +57,7 @@ const server = createServer(async (req, res) => {
     let target = filePath;
     const info = await stat(target).catch(() => null);
     if (info && info.isDirectory()) target = join(target, 'index.html');
+    const fileInfo = await stat(target);
     const buf = await readFile(target);
     res.writeHead(200, {
       'Content-Type': MIME[extname(target).toLowerCase()] || 'application/octet-stream',
@@ -66,13 +67,25 @@ const server = createServer(async (req, res) => {
       'Expires': '0',
     });
     res.end(buf);
+    // Diagnostic log for image requests: the EXACT absolute file served, its
+    // size and last-modified time. If a texture isn't updating, this tells you
+    // precisely which file on disk the server is reading — compare it to where
+    // your image editor is actually saving. A stale size/mtime here means your
+    // edit never reached this file (wrong copy, wrong folder, or saved
+    // elsewhere), which no browser refresh can fix.
+    if (/\.(png|jpe?g|gif|svg)$/i.test(target)) {
+      console.log(`GET ${req.url}  ->  ${target}  (${fileInfo.size} bytes, modified ${fileInfo.mtime.toISOString()})`);
+    }
   } catch (err) {
     res.writeHead(err.code === 'ENOENT' ? 404 : 500);
     res.end(err.code === 'ENOENT' ? 'Not found' : 'Server error');
+    console.log(`${err.code === 'ENOENT' ? '404' : '500'} ${req.url}`);
   }
 });
 
 server.listen(PORT, () => {
   console.log(`F-FPS dev server (no-cache) → http://localhost:${PORT}/`);
-  console.log('Every reload re-fetches from disk, so edited textures/sprites/code show up immediately.');
+  console.log(`Serving from: ${ROOT}`);
+  console.log('Every reload re-fetches from disk. Image requests are logged with the exact');
+  console.log('file served + its size/mtime, so you can confirm your edits are reaching it.');
 });
