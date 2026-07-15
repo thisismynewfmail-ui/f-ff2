@@ -458,6 +458,7 @@ const spit = await page.evaluate(async () => {
   player.teleport(PX, groundAt(PX, PZ), PZ); player.alive = true;
   const sp = g.spawner.spawnOne('spitter', player);
   out.spawned = !!sp && sp.config.name === 'Spitter' && sp.tags.has('spitter') && typeof sp._fire === 'function';
+  out.tankyHealth = sp.config.hp === 104 && sp.hp === 104; // 4x a basic body
   out.slowerThanPlayer = sp.config.chaseSpeed < 5.0 && sp.config.chaseSpeed >= 4.0;
   out.rangedSheet = sp.billboard.layout.rows === 5 && sp.billboard.layout.row.front === 1;
   const cfg = sp.config;
@@ -527,6 +528,7 @@ check('spitter stays out of the spawn table before 100 kills', spit.gateOff);
 check('spitter joins the spawn table at 100 kills', spit.gateOn);
 check('spitter spawn share steps up after 120 kills', spit.rampsUpAfter120);
 check('spawnOne builds a real Spitter', spit.spawned);
+check('spitter has 4x health (104 HP)', spit.tankyHealth);
 check('spitter walks slightly slower than the player', spit.slowerThanPlayer);
 check('spitter uses the 5-row ranged sprite sheet', spit.rangedSheet);
 check('spitter holds a genuinely ranged standoff (well back from melee)', spit.holdsRangedDistance);
@@ -562,6 +564,14 @@ const exp = await page.evaluate(async () => {
   out.gateOff = g.waves.typeWeights().exploder === 0;
   while (g.score.kills < 121 && !g.score.victory) g.score.registerKill('Walker', 1);
   out.gateOn = g.waves.typeWeights().exploder > 0;
+
+  // 1b. Exploder share steps UP past 150 kills. Read the weight at synthetic
+  //     kill counts and restore, so real progression stays untouched.
+  const ekReal = g.score.kills;
+  g.score.kills = 140; const eBelow = g.waves.typeWeights().exploder;
+  g.score.kills = 170; const eAbove = g.waves.typeWeights().exploder;
+  g.score.kills = ekReal;
+  out.rampsUpAfter150 = eAbove > eBelow + 0.05;
 
   // 2. It really is an Exploder, and only slightly faster than the 5.0 walk.
   player.teleport(0, groundAt(0, 20), 20); player.alive = true;
@@ -635,6 +645,7 @@ const exp = await page.evaluate(async () => {
 });
 check('exploder stays out of the spawn table before 120 kills', exp.gateOff);
 check('exploder joins the spawn table at 120 kills', exp.gateOn);
+check('exploder spawn share steps up after 150 kills', exp.rampsUpAfter150);
 check('spawnOne builds a real Exploder', exp.spawned);
 check('exploder speed is only slightly above walking', exp.speedSlightlyAboveWalk);
 check('exploder skirts to a flank instead of charging head-on', exp.flanks);

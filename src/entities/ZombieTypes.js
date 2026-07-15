@@ -94,7 +94,7 @@ export const ZOMBIE_TYPES = {
   // shot. The fields below the standard block are Spitter-only tunables.
   spitter: {
     name: 'Spitter',
-    hp: 26,
+    hp: 104,                // a tanky ranged threat — 4x a basic walker-ish body
     points: 3,
     damage: 8,             // per shot that lands
     reach: 1.6,            // unused by the class; kept sane for shared helpers

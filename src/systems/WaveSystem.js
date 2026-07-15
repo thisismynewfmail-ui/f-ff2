@@ -26,6 +26,9 @@ const HEAT_SPAN = 3000;         // kills over which heat climbs 0 → 1 past the
 // Exploders stay out of the mix until the player has this many kills under
 // their belt, then join the spawn table with a modest, slowly-growing share.
 export const EXPLODER_KILL_GATE = 120;
+// ...and past this kill count the Exploder's spawn share steps up, so blast
+// pressure ramps alongside the Spitter's.
+export const EXPLODER_RAMP_GATE = 150;
 // The Spitter (ranged dual-pistol enemy) only starts spawning once the player
 // has made this many kills, then joins the table with a small, growing share.
 export const SPITTER_KILL_GATE = 100;
@@ -84,10 +87,13 @@ export class WaveSystem {
   typeWeights() {
     const sprinter = Math.min(0.38, 0.04 + this.wave * 0.012 + this.progress * 0.34);
     const tank = Math.min(0.15, Math.max(0, (this.wave - 3) * 0.008 + this.progress * 0.12));
-    // Only spawn exploders once past the kill gate; then ramp their share a
-    // little with overall progress.
-    const exploder = this.score.kills >= EXPLODER_KILL_GATE
-      ? Math.min(0.2, 0.07 + this.progress * 0.13) : 0;
+    // Only spawn exploders once past the kill gate at a modest share, then step
+    // their spawn rate up once the player is past EXPLODER_RAMP_GATE kills.
+    let exploder = 0;
+    if (this.score.kills >= EXPLODER_KILL_GATE) {
+      const base = this.score.kills >= EXPLODER_RAMP_GATE ? 0.16 : 0.07;
+      exploder = Math.min(0.24, base + this.progress * 0.13);
+    }
     // Spitters join once past their (earlier) kill gate at a modest share, then
     // their spawn rate steps up once the player is past SPITTER_RAMP_GATE kills.
     let spitter = 0;

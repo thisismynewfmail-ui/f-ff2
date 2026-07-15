@@ -124,7 +124,8 @@ There is deliberately no command that touches the kill counter — the
   light pop, screen shake, a death sound *and* an explosion boom. It drops
   **sniper ammo, but only when the player kills it** (not when it self-detonates
   as an attack), moves only **slightly faster than your walk**, and starts
-  appearing once you pass **120 kills**.
+  appearing once you pass **120 kills** — with its **spawn share stepping up
+  past 150 kills**.
 - **Spitter:** a CS:GO-styled **dual-pistol ranged enemy** built on the zombie
   stack. Instead of closing to melee it **kites to hold a ranged standoff band
   (~16–26 ft back)** — back-pedalling when you crowd it, closing when you back off, and
@@ -179,7 +180,8 @@ There is deliberately no command that touches the kill counter — the
   active cap — ramping over the waves that follow without overflowing.
   Sprinter/tank share rises with wave number and progress toward 250,000,
   spitters join the table once you clear 100 kills (their share stepping up
-  past 120), and exploders once you clear 120 kills.
+  past 120), and exploders once you clear 120 kills (their share stepping up
+  past 150).
 - **Checkpoints & death:** the run is checkpointed every **tenth wave**. When
   you die, every zombie on the map is cleared and the run rolls back to the last
   checkpoint — kills, score and wave all restored — then that wave respawns from
