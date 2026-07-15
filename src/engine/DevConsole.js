@@ -111,6 +111,7 @@ const COMMANDS = {
     con.print('tp <x> <z>      teleport to map coordinates (spawn is 0 20)');
     con.print('speed <mult>    movement speed multiplier (0.1 – 10)');
     con.print('cull <s|off>    remove zombies blind to the player for s seconds');
+    con.print('spawn <type> [n] spawn n enemies near you (walker/sprinter/tank/exploder/spitter)');
     con.print('kill [n]        add n kills through the scoring pipeline (default 1)');
     con.print('time <0-24>     set the time of day (6=dawn, 12=noon, 0=midnight)');
     con.print('pos             print current position');
@@ -159,6 +160,17 @@ const COMMANDS = {
     if (!Number.isFinite(m) || m < 0.1 || m > 10) throw new Error('usage: speed <0.1 – 10>');
     game.player.speedMult = m;
     con.print('speed multiplier: ' + m, 'ok');
+  },
+
+  spawn(con, game, args) {
+    const type = (args[0] || '').toLowerCase();
+    const valid = ['walker', 'sprinter', 'tank', 'exploder', 'spitter'];
+    if (!valid.includes(type)) throw new Error('usage: spawn <' + valid.join('|') + '> [count]');
+    const n = args[1] ? Math.floor(Number(args[1])) : 1;
+    if (!Number.isFinite(n) || n < 1 || n > 40) throw new Error('count must be 1–40');
+    let made = 0;
+    for (let i = 0; i < n; i++) if (game.spawner.spawnOne(type, game.player)) made++;
+    con.print(`spawned ${made} ${type}${made === 1 ? '' : 's'}`, made ? 'ok' : 'err');
   },
 
   kill(con, game, args) {

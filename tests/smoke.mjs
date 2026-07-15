@@ -414,6 +414,133 @@ check('graphic death FX pools present', fx.deathFx);
 check('run stats are not on the HUD', fx.noHudStats);
 check('pause screen shows circular stat gauges', fx.pauseRings);
 
+// SPITTER: the CS:GO-styled dual-pistol ranged enemy. Spawn gate at 100 kills,
+// a kited ~6–8 ft standoff band, a slightly-slower-than-player walk, a planted
+// quarter-second aim pause (it never moves and shoots at once), and a spread
+// shot aimed where the player WAS when the pause began — so juking during the
+// tell can dodge it. Driven deterministically with the frame loop paused.
+const spit = await page.evaluate(async () => {
+  const g = window.__game;
+  const world = g.world, player = g.player, cam = g.renderer.camera;
+  const groundAt = (x, z) => world.groundHeightFor(x, z, 1e9);
+  const mkCtx = () => ({ player, camPos: cam.position, pathBudget: { n: 4 }, time: g.time,
+    zombies: g.spawner.zombies, friendlies: g.friendlies });
+  const out = {};
+  g.state.state = 'paused'; // drive by hand
+
+  let fires = 0;
+  g.events.on('spitter:fire', () => { fires++; });
+
+  const PX = 150, PZ = 90; // the open knoll field (confirmed clear sightlines)
+  const setup = (sp, d) => {
+    player.teleport(PX, groundAt(PX, PZ), PZ); player.alive = true; player.health = 100;
+    player.invulnTime = 0; player.godMode = false;
+    sp.placeAt(PX, PZ - d);
+    sp.state = 'chasing'; sp.victim = null; sp._aim = -1; sp._firePose = 0;
+    sp._losTimer = 0; sp._hasLos = true;
+  };
+
+  // 1. Spawn gate: absent below 100 kills, present at/after 100.
+  out.gateOff = g.waves.typeWeights().spitter === 0 && g.score.kills < 100;
+  while (g.score.kills < 100 && !g.score.victory) g.score.registerKill('Walker', 1);
+  out.gateOn = g.waves.typeWeights().spitter > 0;
+
+  // 1b. Spawn share steps UP past the ramp gate (120 kills). Read the weight at
+  //     synthetic kill counts and restore, so real progression (and the later
+  //     exploder-gate check, which needs < 120) is untouched.
+  const kReal = g.score.kills;
+  g.score.kills = 110; const shareBelow = g.waves.typeWeights().spitter;
+  g.score.kills = 130; const shareAbove = g.waves.typeWeights().spitter;
+  g.score.kills = kReal;
+  out.rampsUpAfter120 = shareAbove > shareBelow + 0.05;
+
+  // 2. It's a real Spitter, slightly slower than the 5.0 walk, on the 5-row sheet.
+  player.teleport(PX, groundAt(PX, PZ), PZ); player.alive = true;
+  const sp = g.spawner.spawnOne('spitter', player);
+  out.spawned = !!sp && sp.config.name === 'Spitter' && sp.tags.has('spitter') && typeof sp._fire === 'function';
+  out.tankyHealth = sp.config.hp === 104 && sp.hp === 104; // 4x a basic body
+  out.slowerThanPlayer = sp.config.chaseSpeed < 5.0 && sp.config.chaseSpeed >= 4.0;
+  out.rangedSheet = sp.billboard.layout.rows === 5 && sp.billboard.layout.row.front === 1;
+  const cfg = sp.config;
+  const mid = (cfg.standoffMin + cfg.standoffMax) / 2;
+
+  // 3. Distance-keeping. Too close → it opens back up to the (now much farther)
+  //    standoff band and never lets the player sit on top of it; too far → it
+  //    closes the gap back toward the band.
+  setup(sp, 1.0); sp._cd = 999; // muzzle off so it purely kites here
+  for (let i = 0; i < 110; i++) sp.update(0.05, mkCtx());
+  const dClose = sp.distanceTo(player);
+  out.keepsAwayWhenClose = dClose >= cfg.standoffMin - 0.6;
+  out.doesntFleeForever = dClose <= cfg.standoffMax + 3;
+
+  setup(sp, cfg.standoffMax + 6); sp._cd = 999; // start well beyond the band
+  const dFar0 = sp.distanceTo(player);
+  for (let i = 0; i < 110; i++) sp.update(0.05, mkCtx());
+  const dFar1 = sp.distanceTo(player);
+  out.closesWhenFar = dFar1 < dFar0 - 1 && dFar1 <= cfg.standoffMax + 1.5;
+  out.holdsRangedDistance = cfg.standoffMin >= 4.5; // stays genuinely back, not melee
+
+  // 4. Planted quarter-second aim pause, then a shot — and it does NOT move
+  //    while aiming or firing (the walk/turn/shoot states never overlap).
+  setup(sp, mid); sp._cd = 0;
+  let sawAim = false, aimPos = null, aimMoved = 0, firedHere = false;
+  const firesBefore = fires;
+  for (let i = 0; i < 40; i++) {
+    sp.update(0.05, mkCtx());
+    if (sp.state === 'aiming' || sp.state === 'firing') {
+      if (!aimPos) aimPos = { x: sp.position.x, z: sp.position.z };
+      else aimMoved = Math.max(aimMoved, Math.hypot(sp.position.x - aimPos.x, sp.position.z - aimPos.z));
+      if (sp.state === 'aiming') sawAim = true;
+    }
+    if (fires > firesBefore) { firedHere = true; break; }
+  }
+  out.pausesToAim = sawAim;
+  out.plantedWhileShooting = aimMoved < 0.05;
+  out.firesAShot = firedHere;
+
+  // 5. A stationary target near the standoff minimum gets hit; damage flows
+  //    through the player pipeline (there the cone is tight enough to connect).
+  setup(sp, cfg.standoffMin); sp._cd = 0;
+  for (let i = 0; i < 90 && player.health === 100; i++) sp.update(0.05, mkCtx());
+  out.hitsStationaryTarget = player.health < 100;
+
+  // 6. Dodge: once the aim locks onto where the player stood, jinking clear of
+  //    that sampled point before the shot lands makes it MISS.
+  setup(sp, mid); sp._cd = 0;
+  const hpBefore = player.health; let dodged = false;
+  for (let i = 0; i < 90; i++) {
+    if (sp.state === 'aiming' && sp._aimAt) { player.position.x = sp._aimAt.x + 4; player.position.z = sp._aimAt.z + 4; }
+    sp.update(0.05, mkCtx());
+    if (sp.state === 'firing') { dodged = player.health === hpBefore; break; }
+  }
+  out.dodgeableByJuking = dodged;
+
+  // tidy up: remove the spitters we spawned so later sections start clean
+  for (let i = g.spawner.zombies.length - 1; i >= 0; i--) {
+    const z = g.spawner.zombies[i];
+    if (z.tags && z.tags.has('spitter')) { g.renderer.scene.remove(z.mesh); z.dispose(); g.spawner.zombies.splice(i, 1); }
+  }
+  player.teleport(0, groundAt(0, 20), 20); player.alive = true; player.health = 100; player.godMode = false;
+  g.state.state = 'playing';
+  return out;
+});
+check('spitter stays out of the spawn table before 100 kills', spit.gateOff);
+check('spitter joins the spawn table at 100 kills', spit.gateOn);
+check('spitter spawn share steps up after 120 kills', spit.rampsUpAfter120);
+check('spawnOne builds a real Spitter', spit.spawned);
+check('spitter has 4x health (104 HP)', spit.tankyHealth);
+check('spitter walks slightly slower than the player', spit.slowerThanPlayer);
+check('spitter uses the 5-row ranged sprite sheet', spit.rangedSheet);
+check('spitter holds a genuinely ranged standoff (well back from melee)', spit.holdsRangedDistance);
+check('spitter keeps its distance when the player is too close', spit.keepsAwayWhenClose, `${spit.keepsAwayWhenClose}`);
+check('spitter does not flee to infinity', spit.doesntFleeForever);
+check('spitter closes in when the player is too far', spit.closesWhenFar);
+check('spitter pauses to aim before firing', spit.pausesToAim);
+check('spitter never moves while aiming or firing', spit.plantedWhileShooting);
+check('spitter fires a shot', spit.firesAShot);
+check('spitter hits a stationary in-band target', spit.hitsStationaryTarget);
+check('spitter shot is dodgeable by juking during the tell', spit.dodgeableByJuking);
+
 // EXPLODER: the Creeper-like suicide bomber. Spawn gate at 120 kills, a paused
 // quarter-second fuse that detonates through the real damage pipeline (hurting
 // the player AND the surrounding horde), a death explosion ~0.5s into the death
@@ -437,6 +564,14 @@ const exp = await page.evaluate(async () => {
   out.gateOff = g.waves.typeWeights().exploder === 0;
   while (g.score.kills < 121 && !g.score.victory) g.score.registerKill('Walker', 1);
   out.gateOn = g.waves.typeWeights().exploder > 0;
+
+  // 1b. Exploder share steps UP past 150 kills. Read the weight at synthetic
+  //     kill counts and restore, so real progression stays untouched.
+  const ekReal = g.score.kills;
+  g.score.kills = 140; const eBelow = g.waves.typeWeights().exploder;
+  g.score.kills = 170; const eAbove = g.waves.typeWeights().exploder;
+  g.score.kills = ekReal;
+  out.rampsUpAfter150 = eAbove > eBelow + 0.05;
 
   // 2. It really is an Exploder, and only slightly faster than the 5.0 walk.
   player.teleport(0, groundAt(0, 20), 20); player.alive = true;
@@ -510,6 +645,7 @@ const exp = await page.evaluate(async () => {
 });
 check('exploder stays out of the spawn table before 120 kills', exp.gateOff);
 check('exploder joins the spawn table at 120 kills', exp.gateOn);
+check('exploder spawn share steps up after 150 kills', exp.rampsUpAfter150);
 check('spawnOne builds a real Exploder', exp.spawned);
 check('exploder speed is only slightly above walking', exp.speedSlightlyAboveWalk);
 check('exploder skirts to a flank instead of charging head-on', exp.flanks);
@@ -522,6 +658,33 @@ check('explosion damages a neighbouring zombie', exp.gibbedZombie);
 check('player kill drops sniper ammo', exp.playerKillDropsAmmo);
 check('killed exploder blows up during its death animation', exp.deathExplodes);
 check('self-detonation as an attack drops no ammo', exp.attackDropsNothing);
+
+// SPAWN SURGE: on top of "heat" (which barely moves before ~3000 kills), a
+// second ramp on the OVERALL spawn rate kicks in past ~400 kills — shorter
+// spawn interval, fatter batches, higher concurrent cap. Read the pacing at
+// synthetic kill counts (wave held fixed to isolate the kills-driven surge)
+// and restore, so real progression is untouched.
+const surge = await page.evaluate(() => {
+  const g = window.__game;
+  const kR = g.score.kills, wR = g.waves.wave;
+  g.waves.wave = 20; // fixed so only the kills-driven terms move
+  const at = (k) => {
+    g.score.kills = k;
+    return { surge: g.waves.surge, intv: g.waves.spawnInterval(), cap: g.waves.activeCap(),
+      // batchSize has a random component; measure only its deterministic floor
+      batchFloor: 2 + Math.round(g.waves.heat * 3) + Math.round(g.waves.surge * 3) };
+  };
+  const a400 = at(400), a401 = at(401), a2000 = at(2000);
+  g.score.kills = kR; g.waves.wave = wR;
+  return { a400, a401, a2000 };
+});
+check('spawn surge is dormant until ~400 kills', surge.a400.surge === 0 && surge.a401.surge > 0,
+  JSON.stringify({ at400: surge.a400.surge, at401: surge.a401.surge }));
+check('spawn surge shortens the spawn interval past 400 kills', surge.a2000.intv < surge.a400.intv - 0.05,
+  `${surge.a400.intv.toFixed(2)}s -> ${surge.a2000.intv.toFixed(2)}s`);
+check('spawn surge raises the concurrent cap and batch size past 400 kills',
+  surge.a2000.cap >= surge.a400.cap + 20 && surge.a2000.batchFloor > surge.a400.batchFloor,
+  `cap ${surge.a400.cap}->${surge.a2000.cap}, batchFloor ${surge.a400.batchFloor}->${surge.a2000.batchFloor}`);
 
 // 4 + 5. win condition, exact — via the same registerKill pipeline that
 // 'zombie:death' events call, in batches to keep the page responsive.

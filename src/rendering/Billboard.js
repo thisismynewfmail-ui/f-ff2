@@ -13,9 +13,10 @@ import { SHEET_LAYOUT } from './TextureConfig.js';
  * cloned material (per-entity fade/tint) but shares the GPU texture.
  */
 export class SpriteBillboard {
-  constructor(baseMaterial, height, aspect = 2 / 3) {
+  constructor(baseMaterial, height, aspect = 2 / 3, layout = SHEET_LAYOUT) {
     this.height = height;
     this.width = height * aspect;
+    this.layout = layout;
     const geo = new THREE.PlaneGeometry(this.width, this.height);
     geo.translate(0, this.height / 2, 0); // pivot at the feet
     this.material = baseMaterial.clone();
@@ -26,17 +27,36 @@ export class SpriteBillboard {
     this._col = -1;
     this._row = -1;
     this.walkTime = 0;
-    this.setCell(1, SHEET_LAYOUT.row.front);
+    this.setCell(1, layout.row.front);
+  }
+
+  /**
+   * UV rectangle for a sheet cell. Uniform grid by default; sheets that declare
+   * per-row feet baselines (`rowBottom`) are addressed by those anchors instead,
+   * so unevenly-pitched hand-drawn rows stay the same scale and feet-aligned.
+   */
+  _cellUV(col, row) {
+    const L = this.layout;
+    const u0 = col / L.cols, u1 = (col + 1) / L.cols;
+    let v0, v1;
+    if (L.rowBottom) {
+      const yBottom = L.rowBottom[row];
+      const yTop = yBottom - L.cellH;
+      v1 = 1 - yTop / L.imgH;    // cell top edge (higher v)
+      v0 = 1 - yBottom / L.imgH; // cell bottom edge / feet (lower v)
+    } else {
+      // Row 0 is the top of the image; three.js v runs bottom-up.
+      v1 = 1 - row / L.rows;
+      v0 = 1 - (row + 1) / L.rows;
+    }
+    return { u0, u1, v0, v1 };
   }
 
   setCell(col, row) {
     if (col === this._col && row === this._row) return;
     this._col = col;
     this._row = row;
-    const { cols, rows } = SHEET_LAYOUT;
-    const u0 = col / cols, u1 = (col + 1) / cols;
-    // Row 0 is the top of the image; three.js v runs bottom-up.
-    const v1 = 1 - row / rows, v0 = 1 - (row + 1) / rows;
+    const { u0, u1, v0, v1 } = this._cellUV(col, row);
     const uv = this.mesh.geometry.attributes.uv;
     // PlaneGeometry vertex order: TL, TR, BL, BR
     uv.setXY(0, u0, v1);
@@ -58,7 +78,7 @@ export class SpriteBillboard {
 
     let rel = entityYaw - toCamYaw;
     rel = Math.atan2(Math.sin(rel), Math.cos(rel));
-    const R = SHEET_LAYOUT.row;
+    const R = this.layout.row;
     let row;
     const a = Math.abs(rel);
     if (a < Math.PI / 4) row = R.front;        // facing the viewer
@@ -68,9 +88,20 @@ export class SpriteBillboard {
     let col = 1; // standing frame
     if (moving) {
       this.walkTime += dt * walkFps;
-      const seq = SHEET_LAYOUT.walkFrames;
+      const seq = this.layout.walkFrames;
       col = seq[Math.floor(this.walkTime) % seq.length];
     }
+    this.setCell(col, row);
+  }
+
+  /**
+   * Turn to the camera and show one explicit (col,row) cell with no walk
+   * animation — used for static poses (e.g. the Spitter's front-facing aim and
+   * muzzle-flash frames while it stands its ground to shoot).
+   */
+  poseCell(camPos, col, row) {
+    const m = this.mesh;
+    m.rotation.y = Math.atan2(camPos.x - m.position.x, camPos.z - m.position.z);
     this.setCell(col, row);
   }
 

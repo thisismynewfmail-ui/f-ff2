@@ -1,5 +1,6 @@
 import { Zombie } from '../entities/Zombie.js';
 import { Exploder } from '../entities/Exploder.js';
+import { Spitter } from '../entities/Spitter.js';
 import { ZOMBIE_TYPES } from '../entities/ZombieTypes.js';
 import { makeSpriteMaterial } from '../rendering/Billboard.js';
 
@@ -39,6 +40,7 @@ export class SpawnSystem {
       sprinter: makeSpriteMaterial(texLib.tinted('zombieBasic', 'sprinter')),
       tank: makeSpriteMaterial(texLib.tinted('zombieBasic', 'tank')),
       exploder: makeSpriteMaterial(texLib.get('npcExploder')),
+      spitter: makeSpriteMaterial(texLib.get('spitter')),
     };
 
     events.on('noise', ({ pos, radius }) => {
@@ -60,6 +62,7 @@ export class SpawnSystem {
     if (r < acc) return 'tank';
     acc += w.sprinter; if (r < acc) return 'sprinter';
     acc += w.exploder || 0; if (r < acc) return 'exploder';
+    acc += w.spitter || 0; if (r < acc) return 'spitter';
     return 'walker';
   }
 
@@ -100,7 +103,7 @@ export class SpawnSystem {
   spawnOne(typeName, player) {
     const p = this.pickSpawnPoint(player);
     if (!p) return null;
-    const Ctor = typeName === 'exploder' ? Exploder : Zombie;
+    const Ctor = typeName === 'exploder' ? Exploder : typeName === 'spitter' ? Spitter : Zombie;
     const z = new Ctor(ZOMBIE_TYPES[typeName], this.materials[typeName], this.world, this.events);
     z.placeAt(p.x + (Math.random() - 0.5) * 2, p.z + (Math.random() - 0.5) * 2);
     if (this.cullBlindSeconds > 0) z.flags.cullBlindSeconds = this.cullBlindSeconds;
