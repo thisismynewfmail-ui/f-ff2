@@ -1,5 +1,6 @@
 import * as THREE from '../../lib/three.module.js';
 import { TEXTURES, SPRITES, TEXTURE_DIR, SPRITE_DIR } from './TextureConfig.js';
+import { assetUrl } from './assetUrl.js';
 
 /**
  * Loads every texture named in TextureConfig and prepares it for the retro
@@ -101,10 +102,20 @@ function loadImage(url) {
     const img = new Image();
     img.onload = () => resolve(img);
     img.onerror = () => reject(new Error(`Failed to load ${url}`));
-    img.src = url;
+    // Cache-bust so an edited PNG on disk is actually re-fetched on reload
+    // instead of served stale from the browser cache.
+    img.src = assetUrl(url);
   });
 }
 
+/**
+ * Wrap a source image/canvas as a retro texture. Resolution-independent: the
+ * source may be any power-of-two size (16 up to 512x512 and beyond) — nothing
+ * here or downstream assumes a fixed pixel size, so dropping a 512x512
+ * grass.png in place of the 128x128 one tiles seamlessly with zero code
+ * changes. Tiling relies on RepeatWrapping, which every power-of-two size
+ * supports.
+ */
 function makeTexture(img) {
   const t = new THREE.Texture(img);
   t.magFilter = THREE.NearestFilter;

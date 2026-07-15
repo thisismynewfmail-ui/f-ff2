@@ -242,9 +242,13 @@ tests/              Playwright smoke test (boot, combat, exact win condition)
   factions are just a tag; new opt-in switches are just a flag.
 - **Reskin:** every texture path lives in
   `src/rendering/TextureConfig.js`; replace a PNG on disk (e.g. the brick
-  wall) and every wall in the game changes. New white-background sprite
-  sheets dropped into `assets/sprites/` are keyed automatically (edge flood
-  fill preserves interior whites).
+  wall) and every wall in the game changes. The loader cache-busts each asset
+  URL per page load (`src/rendering/assetUrl.js`), so an edited PNG shows up on
+  the next reload instead of being served stale from the browser cache. Any
+  power-of-two size works — swap the 128×128 `grass.png` for a 512×512 one and
+  it tiles seamlessly with no code changes. New white-background sprite sheets
+  dropped into `assets/sprites/` are keyed automatically (edge flood fill
+  preserves interior whites).
 - **Regenerate textures:** `node scripts/generate_textures.mjs`.
 
 ## Performance
