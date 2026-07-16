@@ -16,6 +16,8 @@
  * Only the >50% band animates, exactly because the lower-health heads have no
  * left/right variants.
  */
+import { assetUrl } from './assetUrl.js';
+
 const SRC = {
   forward: 'player_imgs/fullhealth_looking_forwards_default.png',
   left: 'player_imgs/fullhealth_looking_left.png',
@@ -44,7 +46,8 @@ export class Portrait {
       const img = new Image();
       img.onload = () => { this.keyed[name] = keyGreen(img); this._loaded++; if (this._loaded >= 5) this.ready = true; };
       img.onerror = () => { this._loaded++; if (this._loaded >= 5) this.ready = true; };
-      img.src = url;
+      // Cache-bust so an edited portrait PNG is re-fetched on reload.
+      img.src = assetUrl(url);
     }
   }
 

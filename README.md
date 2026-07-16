@@ -11,12 +11,23 @@ polygon geometry.
 
 ## Running
 
-Any static file server from the repo root works:
+Use the bundled dev server (zero dependencies, Node only):
 
 ```
-python3 -m http.server 8000
-# then open http://localhost:8000/
+node scripts/serve.mjs        # http://localhost:8000/  (or: node scripts/serve.mjs 9000)
 ```
+
+It serves the repo with `Cache-Control: no-store`, so **every reload re-fetches
+from disk** — edit a texture in `assets/`, reload, and the change shows up
+immediately.
+
+Any static file server also works (`python3 -m http.server 8000`), but note the
+catch: those servers let the browser cache images and JS modules
+heuristically, so an edited texture can keep showing the **stale cached copy**
+even after you restart the server. The loader cache-busts image URLs to work
+around this (`src/rendering/assetUrl.js`), but if the browser also cached the
+old JavaScript you may need one hard reload (Ctrl/Cmd-Shift-R) the first time —
+or just use `scripts/serve.mjs`, which sidesteps caching entirely.
 
 (ES modules require http://, so opening index.html from disk won't work.)
 
@@ -242,9 +253,13 @@ tests/              Playwright smoke test (boot, combat, exact win condition)
   factions are just a tag; new opt-in switches are just a flag.
 - **Reskin:** every texture path lives in
   `src/rendering/TextureConfig.js`; replace a PNG on disk (e.g. the brick
-  wall) and every wall in the game changes. New white-background sprite
-  sheets dropped into `assets/sprites/` are keyed automatically (edge flood
-  fill preserves interior whites).
+  wall) and every wall in the game changes. The loader cache-busts each asset
+  URL per page load (`src/rendering/assetUrl.js`), so an edited PNG shows up on
+  the next reload instead of being served stale from the browser cache. Any
+  power-of-two size works — swap the 128×128 `grass.png` for a 512×512 one and
+  it tiles seamlessly with no code changes. New white-background sprite sheets
+  dropped into `assets/sprites/` are keyed automatically (edge flood fill
+  preserves interior whites).
 - **Regenerate textures:** `node scripts/generate_textures.mjs`.
 
 ## Performance

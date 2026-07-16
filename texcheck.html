@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>F-FPS — Texture Check</title>
+<link rel="icon" href="data:,">
+<style>
+  body { margin: 0; padding: 20px; background: #14171c; color: #dfe4ea; font: 14px/1.5 system-ui, sans-serif; }
+  h1 { margin: 0 0 6px; font-size: 20px; }
+  p { margin: 4px 0; color: #9aa4b2; max-width: 900px; }
+  code { background: #23272e; padding: 1px 5px; border-radius: 4px; color: #e6b673; }
+  #summary { margin: 14px 0; padding: 10px 14px; background: #1b1f26; border-radius: 8px; font-size: 15px; }
+  #grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin-top: 16px; }
+  .cell { background: #1b1f26; border: 1px solid #2a2f38; border-radius: 8px; padding: 8px; }
+  .cell img { width: 100%; height: 110px; object-fit: contain; image-rendering: pixelated; background:
+    conic-gradient(#2a2f38 25%, #23272e 0 50%, #2a2f38 0 75%, #23272e 0) 0 0/16px 16px; border-radius: 4px; }
+  .meta { margin-top: 6px; font-size: 12px; word-break: break-all; }
+  .name { font-weight: 700; color: #fff; }
+  .dim { font-size: 15px; font-weight: 700; }
+  .big { color: #6dd36d; }   /* >=256px — a "512 variant" */
+  .std { color: #e6b673; }   /* original small texture */
+  .err { color: #ff6b6b; }
+  .url { color: #6b7686; }
+  .cc  { color: #7f8aa0; }
+</style>
+</head>
+<body>
+  <h1>F-FPS — Texture Check</h1>
+  <p>This page fetches every texture the game uses, straight from <code>assets/textures/</code> and
+     <code>assets/sprites/</code>, with <code>cache: 'no-store'</code> and a unique cache-buster — so it shows the
+     <b>current file on disk as your server serves it</b>, bypassing every cache and the game's module code.</p>
+  <p><b>How to read it:</b> the thumbnail is the actual served image; the big number is its real pixel size.
+     If you replaced <code>grass.png</code> with a 512×512 file, its cell should show your art at
+     <span class="big">512×512</span>. If it still shows the old 128×128 image here, then your server is
+     <b>not serving your edited file</b> (wrong folder, wrong server, or a deployed/cached copy) — that is the
+     real problem, and no game-side change can fix it. If it shows your new file <b>here</b> but not in game,
+     it's the browser caching the game's JS — hard-reload the game tab (Ctrl/Cmd-Shift-R) or run it via
+     <code>node scripts/serve.mjs</code>.</p>
+  <div id="summary">Loading…</div>
+  <div id="grid"></div>
+
+<script type="module">
+  const bust = Date.now();
+  let cfg;
+  try {
+    cfg = await import('./src/rendering/TextureConfig.js?v=' + bust);
+  } catch (e) {
+    document.getElementById('summary').innerHTML =
+      '<span class="err">Could not import TextureConfig.js — are you serving from the repo root over http://? ' + e + '</span>';
+    throw e;
+  }
+  const { TEXTURES, SPRITES, TEXTURE_DIR, SPRITE_DIR } = cfg;
+  const grid = document.getElementById('grid');
+  const summary = document.getElementById('summary');
+  let ok = 0, fail = 0, cached = 0, big = 0;
+
+  async function check(name, url) {
+    const cell = document.createElement('div');
+    cell.className = 'cell';
+    try {
+      const resp = await fetch(url + '?v=' + bust, { cache: 'no-store' });
+      const cc = resp.headers.get('cache-control') || '—';
+      const lm = resp.headers.get('last-modified') || '';
+      const blob = await resp.blob();
+      const objURL = URL.createObjectURL(blob);
+      const img = new Image();
+      await new Promise((res, rej) => { img.onload = res; img.onerror = () => rej(new Error('decode failed')); img.src = objURL; });
+      const w = img.naturalWidth, h = img.naturalHeight;
+      const isBig = Math.max(w, h) >= 256;
+      if (isBig) big++;
+      if (cc === '—' || /max-age=[1-9]/.test(cc)) cached++;
+      ok++;
+      cell.innerHTML =
+        `<img src="${objURL}" alt="${name}">
+         <div class="meta">
+           <div class="name">${name}</div>
+           <div class="dim ${isBig ? 'big' : 'std'}">${w}×${h}px</div>
+           <div>${(blob.size / 1024).toFixed(1)} KB · HTTP ${resp.status}</div>
+           <div class="cc">Cache-Control: ${cc}</div>
+           ${lm ? `<div class="cc">Last-Modified: ${lm}</div>` : ''}
+           <div class="url">${url}</div>
+         </div>`;
+    } catch (e) {
+      fail++;
+      cell.innerHTML = `<div class="meta"><div class="name">${name}</div><div class="err">FAILED: ${e.message}</div><div class="url">${url}</div></div>`;
+    }
+    grid.appendChild(cell);
+  }
+
+  for (const [n, f] of Object.entries(TEXTURES)) await check(n, TEXTURE_DIR + f);
+  for (const [n, f] of Object.entries(SPRITES)) await check(n, SPRITE_DIR + f);
+
+  summary.innerHTML =
+    `<b>${ok}</b> textures fetched, <b>${fail}</b> failed. ` +
+    `<b>${big}</b> are ≥256px ("512 variants"). ` +
+    (cached
+      ? `<span class="err">⚠ ${cached} response(s) had a cacheable Cache-Control header — your server is letting the browser cache. Use <code>node scripts/serve.mjs</code>.</span>`
+      : `<span class="big">✓ All responses were sent no-store (uncacheable).</span>`);
+</script>
+</body>
+</html>
