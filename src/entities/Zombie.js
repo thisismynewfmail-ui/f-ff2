@@ -33,6 +33,11 @@ const ACTIVE_RANGE = 115;
 const DEATH_TIME = 1.3;
 const FRIENDLY_FOV = 3.66;   // ~210° detection cone for non-player targets
 const FRIENDLY_PROX = 6;     // ...but anything this close is felt regardless
+// Melee "jump" pounce: across each attack wind-up the sprite rises and lunges
+// forward on a sine arc, landing exactly as the strike connects. Purely
+// cosmetic — the AI, collision and hit test all read `position`, not the mesh.
+const JUMP_ARC = 0.18;       // apex height as a fraction of the body height
+const JUMP_LUNGE = 0.55;     // forward reach (m) of the pounce at the strike
 const EMPTY = [];
 
 export class Zombie extends Entity {
@@ -46,6 +51,12 @@ export class Zombie extends Entity {
     // mould — a shade under to a shade over the type's base height.
     this.sizeScale = 0.9 + Math.random() * 0.2;
     this.height = config.height * config.scale * this.sizeScale;
+    // Navigation-capsule height. Defaults to the visual height, but a type may
+    // set `collisionHeight` to keep an over-tall sprite (e.g. the eye-level
+    // Walker) navigating like a normal humanoid so it doesn't snag its head on
+    // overhead geometry. Only the capsule uses this; the billboard and the
+    // weapon hit test still use the full visual `height`.
+    this.collisionHeight = (config.collisionHeight ?? config.height) * config.scale * this.sizeScale;
     this.radius = 0.42 * config.scale * this.sizeScale;
     // Per-zombie gait so movement weaves instead of tracking a straight line.
     this.gaitPhase = Math.random() * Math.PI * 2;
@@ -61,6 +72,7 @@ export class Zombie extends Entity {
     this.repathTimer = 0;
     this.attackTimer = 0;
     this.windup = -1;
+    this.attackLunge = 0;     // eased forward offset (m) of the current pounce
     this.deathTimer = 0;
     this.toRemove = false;
     this.culled = false;
@@ -344,15 +356,28 @@ export class Zombie extends Entity {
       this.knockVX *= Math.pow(0.005, dt);
       this.knockVZ *= Math.pow(0.005, dt);
     }
-    this.world.collision.resolveCapsule(this.position, this.radius, this.height);
+    this.world.collision.resolveCapsule(this.position, this.radius, this.collisionHeight);
     this.position.y = this.world.groundHeightFor(this.position.x, this.position.z, this.position.y + 0.5);
 
-    // --- present
-    this.mesh.position.copy(this.position);
-    const anim = this.state === 'attacking'
-      ? (this.windup > 0 ? true : false)
-      : moving;
-    this.billboard.update(dt, camPos, this.yaw, anim, this.config.walkFps * (this.state === 'chasing' ? 1.4 : 1));
+    // --- present: melee attackers pounce on every strike (see JUMP_ARC above).
+    // The wind-up drives a sine arc that rises and lunges forward, peaking mid
+    // leap and landing (hop back to 0) at the instant the hit lands; the forward
+    // lunge then eases back out during the cooldown instead of snapping.
+    const attacking = this.state === 'attacking';
+    const leaping = attacking && this.windup > 0;
+    const p = leaping ? 1 - Math.max(0, this.windup) / this.config.attackWindup : 0;
+    const arc = Math.sin(Math.PI * p);          // 0 at take-off/land, 1 at the apex
+    const hop = JUMP_ARC * this.height * arc;
+    this.attackLunge += ((leaping ? JUMP_LUNGE * p : 0) - this.attackLunge) * Math.min(1, dt * 14);
+    const fwdX = Math.sin(this.yaw), fwdZ = Math.cos(this.yaw);
+    this.mesh.position.set(
+      this.position.x + fwdX * this.attackLunge,
+      this.position.y + hop,
+      this.position.z + fwdZ * this.attackLunge,
+    );
+    this.mesh.scale.set(1 - 0.06 * arc, 1 + 0.12 * arc, 1); // subtle stretch at the apex
+    const fps = this.config.walkFps * (leaping ? 2.2 : this.state === 'chasing' ? 1.4 : 1);
+    this.billboard.update(dt, camPos, this.yaw, leaping || moving, fps);
   }
 
   dispose() {

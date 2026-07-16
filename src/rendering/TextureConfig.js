@@ -88,7 +88,7 @@ export const TEXTURES = {
 
 export const SPRITES = {
   npcPeaceful: 'npc_spritesheet_peacefull.png',
-  zombieBasic: 'npc_spritesheet_zombie_basic.png',
+  zombieBasic: 'npc_zombie_basic_update.png',
   npcExploder: 'npc_exploder.png',
   spitter: 'npc_csgo_midrange_double_pistol_gunholder.png',
 };

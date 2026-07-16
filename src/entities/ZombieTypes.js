@@ -15,7 +15,20 @@ export const ZOMBIE_TYPES = {
     wanderSpeed: 0.8,
     chaseSpeed: 2.1,
     sightRange: 50,
-    height: 1.75,
+    // Sized so the enemy stands eye-to-eye with the player. The base sheet is a
+    // big-turban character whose eyes sit at ~0.59 of the sprite cell, and the
+    // billboard maps the whole cell onto `height` from the feet up — so the eyes
+    // land at 0.59 * height. The player's standing eye is at 1.62 m
+    // (Player EYE_STAND), which needs height ≈ 1.62 / 0.59 ≈ 2.75 for their
+    // gazes to meet. (The width scales with height, so the sprite stays in
+    // proportion.)
+    height: 2.75,
+    // `height` above is the VISUAL/hittable size only. The navigation capsule
+    // uses this humanoid height instead, so the tall sprite doesn't snag its
+    // head on awnings, eaves and door lintels the old 1.75 m walker cleared —
+    // otherwise the horde gets stuck near buildings and never reaches the
+    // player. See Zombie.collisionHeight.
+    collisionHeight: 1.75,
     scale: 1.0,
     tint: null,          // uses the sheet as-is
     walkFps: 5,
