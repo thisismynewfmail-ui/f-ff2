@@ -123,8 +123,13 @@ There is deliberately no command that touches the kill counter — the
   stuck behind geometry never stalls a wave. Deaths are graphic: a wide gib
   burst, an additive "digital" spark pop and a glitch-dissolve on the sprite,
   with a matching wet-crunch-plus-bitcrush death sound.
-- **Exploder:** a Creeper-like suicide bomber built on the zombie stack. It
-  chases like a Walker, but once it closes inside a few metres it **stops
+- **Exploder:** a Creeper-like suicide bomber built on the zombie stack, wearing
+  a **CS:GO-styled retexture** — a masked, turban'd bomber in a green vest
+  strapped with red charges — and standing **as tall as the other enemies**
+  (heads level with the eye-level horde, navigating on a normal humanoid capsule
+  so it doesn't snag on overhead geometry). Its sheet is the usual directional walk rows with the
+  front-facing **aim/fire frames on the top row**, which it shows you as it primes.
+  It chases like a Walker, but once it closes inside a few metres it **stops
   charging head-on and skirts to a flank**, spiralling up on your side; inside
   its trigger ring it **plants itself and cannot move while a quarter-second
   fuse burns**, flashing hot, then detonates. If you back out of range the fuse
