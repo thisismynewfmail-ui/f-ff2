@@ -178,10 +178,19 @@ There is deliberately no command that touches the kill counter — the
   panel (live silhouette + fire mode), and a six-slot ARMS armoury grid with
   per-weapon reserves. The portrait is driven by health — a well-spaced
   forward/left/right **look-around idle above 50% HP**, a stern face at ≤50%,
-  a drained face at ≤25% (the CRT tints green → amber → red to match). Above
-  it sit matching **themed gauge panels**: a **WAVE** readout with the zone and
-  a live wave-progress counter (kills banked toward the wave's quota), and a
-  **CONFIRMED KILLS** counter toward 250,000 with its victory progress bar. Run
+  a drained face at ≤25% (the CRT tints green → amber → red to match). Flanking
+  it sit two **field-device side HUDs** — scratched near-black gunmetal
+  housings with corner screws, coloured **bar meters**, round **icon lamps**
+  and an aged-ivory **analog needle gauge** behind glass. The left unit is the
+  **WAVE** device: the needle and red bar sweep with kills banked toward the
+  wave's quota (CLEARED x/y under the dial), the blue bar drains with the
+  respite countdown, the teal bar tracks secrets found, the lamps flag
+  calm / incoming (blinking through each respite) / combat, a green supply
+  chip lights while supplies are inbound, and the zone rides an etched
+  nameplate. The right unit is the **CONFIRMED KILLS** tally: a six-digit
+  mechanical odometer, the needle and teal bar sweeping toward 250,000, a red
+  bar through the current 1,000, a blue accuracy bar, lamps that blip on each
+  kill and flash at every 1,000-kill milestone, and a REMAINING nameplate. Run
   stats — accuracy, score, secrets, progress, time — live on the **pause screen
   as circular gauges**, not on the HUD.
 - **Waves:** **kill-driven** escalating hordes. Each wave sets a kill quota and

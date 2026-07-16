@@ -24,12 +24,20 @@ import { hudTextures } from './HudTextures.js';
  *   - a WEAPON panel: the live weapon silhouette + its fire mode
  *   - an ARMS panel: the six-slot armoury grid with per-weapon reserves
  *
- * The two flanking SIDE HUDs share the console's brass/iron instrument look:
- * the left carries wave/zone + wave-progress, the right the 250,000 kill
- * counter + victory progress. Free-floating over the scene: the fly-in
- * ARMORY names, subtitles, damage vignette, scope overlay and the
- * menu/pause/death/victory screens. Run stats stay on the pause screen as
- * circular gauges (never on the HUD).
+ * The two flanking SIDE HUDs are styled as hard-worn FIELD DEVICES modelled
+ * on the reference detector photo: a near-black scratched gunmetal housing
+ * with corner screws, a cluster of coloured BAR METERS and round INDICATOR
+ * LAMPS (icon glyphs on coloured lenses) on the left of each unit, and an
+ * ivory ANALOG NEEDLE GAUGE behind glass on the right. The left unit is the
+ * WAVE device (needle + red bar = kills banked toward the wave quota, blue
+ * bar = respite countdown, teal bar = secrets found, lamps = calm/incoming/
+ * combat, plus the zone nameplate and CLEARED x/y readout); the right unit
+ * is the CONFIRMED KILLS tally (mechanical odometer, needle + teal bar =
+ * progress toward 250,000, red bar = progress through the current 1,000,
+ * blue bar = accuracy, lamps = kill blip / 1k-milestone / power). Free-
+ * floating over the scene: the fly-in ARMORY names, subtitles, damage
+ * vignette, scope overlay and the menu/pause/death/victory screens. Run
+ * stats stay on the pause screen as circular gauges (never on the HUD).
  */
 export class HUD {
   constructor(events, root, actions) {
@@ -69,37 +77,14 @@ export class HUD {
     const dock = this._el('div', 'hud-dock');
     this.dockInner = this._el('div', 'hud-dock-inner', dock);
 
-    // left side HUD: WAVE gauge + zone + wave-progress counter (themed to
-    // match the console: rusted-iron ground, brass frame, green CRT readouts)
-    const tl = this._el('div', 'hud-tl', this.dockInner, 'gauge-panel side-hud');
-    tl.style.backgroundImage = `url(${this._tex.bar})`;
-    const waveHead = this._el('div', null, tl, 'gauge-head');
-    this._el('div', null, waveHead, 'gauge-title').textContent = 'WAVE';
-    this.waveEl = this._el('div', 'wave', waveHead, 'gauge-num');
-    this.zoneEl = this._el('div', 'zone', tl);
-    // wave-stats: kills banked toward the current wave's quota
-    const wp = this._el('div', 'wave-prog', tl);
-    const wpLabel = this._el('div', null, wp, 'wave-prog-label');
-    wpLabel.innerHTML = 'CLEARED <span id="wave-cleared">0</span> / <span id="wave-quota">0</span>';
-    const wpBar = this._el('div', null, wp, 'wave-prog-bar');
-    this.waveProgFill = this._el('div', null, wpBar, 'wave-prog-fill');
-    this.waveClearedEl = wpLabel.querySelector('#wave-cleared');
-    this.waveQuotaEl = wpLabel.querySelector('#wave-quota');
-    this.respiteEl = this._el('div', 'respite', tl);
+    // left side HUD: the WAVE field device (bars + lamps + analog gauge)
+    this._buildWaveDevice(this.dockInner);
 
     // main HUD: the full console bar sits in the centre of the dock
     this._buildConsole(this.dockInner);
 
-    // right side HUD: confirmed-kills counter toward 250,000 (themed gauge)
-    const tc = this._el('div', 'hud-tc', this.dockInner, 'gauge-panel side-hud');
-    tc.style.backgroundImage = `url(${this._tex.bar})`;
-    this._el('div', null, tc, 'gauge-title').textContent = 'CONFIRMED KILLS';
-    const killRow = this._el('div', null, tc, 'kills-row');
-    this.killsEl = this._el('div', 'kills', killRow, 'kills-odo');
-    this.killGoalEl = this._el('div', 'kill-goal', killRow);
-    this.killGoalEl.textContent = '/ ' + WIN_KILLS.toLocaleString('en-US');
-    const prog = this._el('div', 'progress', tc);
-    this.progFill = this._el('div', 'progress-fill', prog);
+    // right side HUD: the CONFIRMED KILLS tally device toward 250,000
+    this._buildKillDevice(this.dockInner);
 
     // fit the dock to the window now, and keep it fitted on every resize
     this._layoutDock();
@@ -133,6 +118,248 @@ export class HUD {
     if (!natural) return;
     const scale = Math.min(1, (window.innerWidth - 16) / natural);
     this.dockInner.style.setProperty('--dock-scale', scale.toFixed(4));
+  }
+
+  /* ==================================================================
+     SIDE HUD FIELD DEVICES — the reference-styled detector units: dark
+     scratched gunmetal housing, corner screws, coloured bar meters,
+     round icon lamps and an ivory analog needle gauge behind glass.
+     ================================================================== */
+
+  /** Shared device scaffolding: housing + corner screws + header strip. */
+  _device(parent, id) {
+    const el = this._el('div', id, parent, 'side-hud');
+    el.style.backgroundImage = `url(${this._tex.device})`;
+    for (const c of ['tl', 'tr', 'bl', 'br']) this._el('div', null, el, 'screw ' + c);
+    const head = this._el('div', null, el, 'dev-head');
+    return { el, head };
+  }
+
+  /** A coloured horizontal bar meter with a tiny stencil label; returns the fill. */
+  _deviceBar(parent, label, colorCls) {
+    const row = this._el('div', null, parent, 'dev-bar');
+    this._el('div', null, row, 'dev-bar-label').textContent = label;
+    const track = this._el('div', null, row, 'dev-bar-track');
+    return this._el('div', null, track, 'dev-bar-fill ' + colorCls);
+  }
+
+  /** A round indicator lamp (or square chip) with a dark icon glyph on the lens. */
+  _lamp(parent, colorCls, glyph, square = false) {
+    const el = this._el('div', null, parent, (square ? 'dev-chip ' : 'dev-lamp ') + colorCls);
+    const cv = document.createElement('canvas');
+    cv.width = 24; cv.height = 24; cv.className = 'dev-glyph';
+    this._drawLampGlyph(cv, glyph);
+    el.appendChild(cv);
+    return el;
+  }
+
+  /** Dark silhouette glyphs for the device lamps, authored in a 12x12 space. */
+  _drawLampGlyph(cv, kind) {
+    const ctx = cv.getContext('2d');
+    ctx.scale(2, 2);
+    ctx.fillStyle = ctx.strokeStyle = '#16160f';
+    ctx.lineJoin = 'round';
+    switch (kind) {
+      case 'plus':
+        ctx.fillRect(5, 2, 2.4, 8.4); ctx.fillRect(2, 5, 8.4, 2.4);
+        break;
+      case 'drop':
+        ctx.beginPath(); ctx.arc(6, 7.6, 3.1, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.moveTo(6, 1); ctx.lineTo(8.7, 6.4); ctx.lineTo(3.3, 6.4);
+        ctx.closePath(); ctx.fill();
+        break;
+      case 'radiation':
+        for (let k = 0; k < 3; k++) {
+          const a = (-90 + k * 120) * Math.PI / 180, h = 30 * Math.PI / 180;
+          ctx.beginPath();
+          ctx.arc(6, 6, 5.2, a - h, a + h);
+          ctx.arc(6, 6, 2.1, a + h, a - h, true);
+          ctx.closePath(); ctx.fill();
+        }
+        ctx.beginPath(); ctx.arc(6, 6, 1.3, 0, Math.PI * 2); ctx.fill();
+        break;
+      case 'flame':
+        ctx.beginPath(); ctx.arc(6, 7.8, 3.3, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.moveTo(6, 0.8); ctx.quadraticCurveTo(9.6, 4.8, 9, 7.5);
+        ctx.quadraticCurveTo(6, 5.5, 3, 7.5); ctx.quadraticCurveTo(2.4, 4.8, 6, 0.8);
+        ctx.closePath(); ctx.fill();
+        break;
+      case 'skull':
+        ctx.beginPath(); ctx.arc(6, 5.2, 3.7, 0, Math.PI * 2); ctx.fill();
+        ctx.fillRect(4.2, 7.6, 3.6, 2.8);
+        ctx.save(); ctx.globalCompositeOperation = 'destination-out';
+        ctx.beginPath(); ctx.arc(4.6, 5, 1, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(7.4, 5, 1, 0, Math.PI * 2); ctx.fill();
+        ctx.restore();
+        break;
+      case 'cross': // crosshair — kill confirm
+        ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.arc(6, 6, 3.4, 0, Math.PI * 2); ctx.stroke();
+        ctx.fillRect(5.4, 0.8, 1.2, 3); ctx.fillRect(5.4, 8.2, 1.2, 3);
+        ctx.fillRect(0.8, 5.4, 3, 1.2); ctx.fillRect(8.2, 5.4, 3, 1.2);
+        break;
+      case 'dot':
+      default:
+        ctx.beginPath(); ctx.arc(6, 6, 2.2, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+
+  /** Deterministic 0..1 hash for the aged-paper speckles on the gauge faces. */
+  _n01(i, j) {
+    let h = i * 374761393 + j * 668265263 + 1013904223;
+    h = (h ^ (h >> 13)) * 1274126177;
+    return ((h >>> 0) % 100000) / 100000;
+  }
+
+  /**
+   * The analog needle gauge module: an ivory dial card in a dark bezel with a
+   * red-tipped needle behind glass and a caption strip below. Returns the
+   * caption element and set(ratio) which sweeps the needle 0 → 1.
+   */
+  _deviceGauge(parent, opts) {
+    const mod = this._el('div', null, parent, 'dev-gauge');
+    const bezel = this._el('div', null, mod, 'dev-gauge-bezel');
+    const face = this._el('div', null, bezel, 'dev-gauge-face');
+    const cv = document.createElement('canvas');
+    cv.width = 192; cv.height = 128; cv.className = 'dev-gauge-dial';
+    this._drawGaugeFace(cv, opts);
+    face.appendChild(cv);
+    const needle = this._el('div', null, face, 'dev-needle');
+    this._el('div', null, face, 'dev-needle-cap');
+    this._el('div', null, face, 'dev-glass');
+    const caption = this._el('div', null, mod, 'dev-gauge-cap');
+    let last = null;
+    return {
+      caption,
+      set(ratio) {
+        const deg = (-55 + Math.max(0, Math.min(1, ratio)) * 110).toFixed(1);
+        if (last === deg) return;
+        last = deg;
+        needle.style.transform = `translateX(-50%) rotate(${deg}deg)`;
+      },
+    };
+  }
+
+  /** Bake the static gauge face: aged ivory card, condition band, tick arc,
+   *  scale numbers and unit label. Drawn once at 2x for crisp downscale. */
+  _drawGaugeFace(cv, { sub = '', majors = [], bands = [] }) {
+    const ctx = cv.getContext('2d');
+    ctx.save();
+    ctx.scale(2, 2);
+    const W = cv.width / 2, H = cv.height / 2;
+    // ivory dial card, yellowed toward the rim + foxing speckles
+    const age = ctx.createRadialGradient(W / 2, H - 5, 6, W / 2, H - 5, W * 0.72);
+    age.addColorStop(0, '#e6ddc1'); age.addColorStop(0.7, '#dcd2ae'); age.addColorStop(1, '#c2b58c');
+    ctx.fillStyle = age; ctx.fillRect(0, 0, W, H);
+    for (let i = 0; i < 26; i++) {
+      ctx.fillStyle = `rgba(122,96,54,${(0.03 + this._n01(i, 4) * 0.05).toFixed(3)})`;
+      ctx.beginPath();
+      ctx.arc(this._n01(i, 1) * W, this._n01(i, 2) * H, 1 + this._n01(i, 3) * 5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.strokeStyle = '#5a5140'; ctx.lineWidth = 1;
+    ctx.strokeRect(0.5, 0.5, W - 1, H - 1);
+    // needle sweep: -55° to +55° off vertical; the pivot sits at the bottom
+    // edge so its cap is half-hidden below the dial window, meter-style
+    const px = W / 2, py = H - 2;
+    const at = (t) => (-145 + 110 * t) * Math.PI / 180;
+    for (const b of bands) { // painted condition band under the ticks
+      ctx.beginPath(); ctx.arc(px, py, 48, at(b.from), at(b.to));
+      ctx.strokeStyle = b.color; ctx.lineWidth = 4.5; ctx.stroke();
+    }
+    ctx.strokeStyle = '#2e2a1e';
+    ctx.beginPath(); ctx.arc(px, py, 56, at(0), at(1)); ctx.lineWidth = 1.2; ctx.stroke();
+    const step = 20 / (majors.length - 1); // minor ticks per major interval
+    for (let i = 0; i <= 20; i++) {
+      const major = i % step === 0;
+      const a = at(i / 20), cos = Math.cos(a), sin = Math.sin(a);
+      const r1 = major ? 50.5 : 52.5;
+      ctx.beginPath();
+      ctx.moveTo(px + cos * r1, py + sin * r1);
+      ctx.lineTo(px + cos * 56, py + sin * 56);
+      ctx.lineWidth = major ? 1.8 : 1; ctx.stroke();
+    }
+    ctx.fillStyle = '#33301f'; ctx.font = 'bold 7px "Courier New", monospace';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    majors.forEach((m, k) => {
+      const a = at(k / (majors.length - 1));
+      ctx.fillText(m, px + Math.cos(a) * 42, py + Math.sin(a) * 42);
+    });
+    if (sub) { ctx.fillStyle = '#4a4430'; ctx.fillText(sub, px, py - 22); }
+    ctx.restore();
+  }
+
+  /** Left side HUD: the WAVE field device. Same stats as ever — wave number,
+   *  zone, CLEARED x/y toward the quota, respite countdown — now read out on
+   *  bar meters, state lamps and the analog wave-clearance gauge. */
+  _buildWaveDevice(parent) {
+    const { el, head } = this._device(parent, 'hud-tl');
+    // green plus chip: supplies inbound (lit through each wave-end respite)
+    this.supplyChip = this._lamp(head, 'chip-green', 'plus', true);
+    const title = this._el('div', null, head, 'dev-title');
+    title.innerHTML = 'WAVE <span id="wave">—</span>';
+    this.waveEl = title.querySelector('#wave');
+    this.respiteEl = this._el('div', 'respite', head);
+    const main = this._el('div', null, el, 'dev-main');
+    const cluster = this._el('div', null, main, 'dev-cluster');
+    this.waveBars = {
+      clr: this._deviceBar(cluster, 'CLR', 'fill-red'),   // kills banked toward the quota
+      rsp: this._deviceBar(cluster, 'RSP', 'fill-blue'),  // respite countdown draining
+      sec: this._deviceBar(cluster, 'SEC', 'fill-teal'),  // secrets found
+    };
+    const lamps = this._el('div', null, cluster, 'dev-lamps');
+    this.waveLamps = {
+      calm: this._lamp(lamps, 'lamp-blue', 'drop'),           // pre-fight grace
+      incoming: this._lamp(lamps, 'lamp-amber', 'radiation'), // respite — they are coming
+      combat: this._lamp(lamps, 'lamp-orange', 'flame'),      // wave active — hold the line
+    };
+    this.waveGauge = this._deviceGauge(main, {
+      sub: '% CLEAR',
+      majors: ['0', '20', '40', '60', '80', '100'],
+      bands: [
+        { from: 0, to: 0.35, color: '#a83428' },
+        { from: 0.35, to: 0.7, color: '#c1922f' },
+        { from: 0.7, to: 1, color: '#4f8f3a' },
+      ],
+    });
+    this.waveGauge.caption.innerHTML =
+      'CLEARED <span id="wave-cleared">0</span> / <span id="wave-quota">0</span>';
+    this.waveClearedEl = this.waveGauge.caption.querySelector('#wave-cleared');
+    this.waveQuotaEl = this.waveGauge.caption.querySelector('#wave-quota');
+    this.zoneEl = this._el('div', 'zone', el, 'dev-plate');
+  }
+
+  /** Right side HUD: the CONFIRMED KILLS tally device. The mechanical odometer
+   *  carries the count, the needle + teal bar the victory progress, and the
+   *  finer meters the current-thousand progress and accuracy. */
+  _buildKillDevice(parent) {
+    const { el, head } = this._device(parent, 'hud-tc');
+    this._el('div', null, head, 'dev-title').textContent = 'CONFIRMED KILLS';
+    const main = this._el('div', null, el, 'dev-main');
+    const cluster = this._el('div', null, main, 'dev-cluster');
+    this.killsOdo = this._el('div', 'kills', cluster, 'odometer kills');
+    this.killsOdo.style.backgroundImage = `url(${this._tex.inset})`;
+    this.killBars = {
+      k: this._deviceBar(cluster, '1K', 'fill-red'),      // through the current 1,000
+      acc: this._deviceBar(cluster, 'ACC', 'fill-blue'),  // running accuracy
+      tot: this._deviceBar(cluster, 'TOT', 'fill-teal'),  // toward 250,000
+    };
+    const lamps = this._el('div', null, cluster, 'dev-lamps');
+    this.killLamps = {
+      hit: this._lamp(lamps, 'lamp-green', 'cross'),   // blips on each confirmed kill
+      mile: this._lamp(lamps, 'lamp-amber', 'skull'),  // flashes crossing each 1,000
+      pwr: this._lamp(lamps, 'lamp-blue', 'dot'),      // unit power, slow pulse
+    };
+    this.killGauge = this._deviceGauge(main, {
+      sub: 'KILLS ×1000',
+      majors: ['0', '50', '100', '150', '200', '250'],
+      bands: [{ from: 0.94, to: 1, color: '#b98f2c' }],
+    });
+    this.killGoalEl = this.killGauge.caption;
+    this.killGoalEl.id = 'kill-goal';
+    this.killGoalEl.textContent = '/ ' + WIN_KILLS.toLocaleString('en-US');
+    this.remainEl = this._el('div', null, el, 'dev-plate');
+    this.remainEl.textContent = 'REMAINING ' + WIN_KILLS.toLocaleString('en-US');
   }
 
   /** The bottom console bar and all of its instruments. */
@@ -384,13 +611,19 @@ export class HUD {
     this.bannerEl.classList.add('show');
   }
 
-  /** Three fixed digits for the mechanical HP/ammo odometers. */
-  _odometer(el, value, infinite = false) {
-    if (infinite) { el.innerHTML = '<span class="digit inf">&#8734;</span>'; return; }
-    const s = String(Math.max(0, Math.min(999, value | 0))).padStart(3, '0');
+  /** Fixed-width mechanical counter digits (HP/ammo meters, the kill tally). */
+  _odoDigits(el, value, digits) {
+    const max = Math.pow(10, digits) - 1;
+    const s = String(Math.max(0, Math.min(max, value | 0))).padStart(digits, '0');
     if (el._last === s) return;
     el._last = s;
     el.innerHTML = [...s].map((d) => `<span class="digit">${d}</span>`).join('');
+  }
+
+  /** Three fixed digits for the mechanical HP/ammo odometers. */
+  _odometer(el, value, infinite = false) {
+    if (infinite) { el.innerHTML = '<span class="digit inf">&#8734;</span>'; return; }
+    this._odoDigits(el, value, 3);
   }
 
   _fillStats(el, stats) {
@@ -510,21 +743,53 @@ export class HUD {
       s.rsv.textContent = `${mag}·${rsv}`;
     });
 
-    // --- confirmed-kills counter + victory progress (top-center) ---
-    this.killsEl.textContent = d.kills.toLocaleString('en-US');
-    this.progFill.style.width = (Math.min(1, d.kills / WIN_KILLS) * 100).toFixed(3) + '%';
+    // --- right side HUD: CONFIRMED KILLS tally device ---
+    const now = performance.now();
+    this._odoDigits(this.killsOdo, d.kills, 6);
+    const killRatio = Math.min(1, d.kills / WIN_KILLS);
+    this.killGauge.set(killRatio);
+    this.killBars.tot.style.width = (killRatio * 100).toFixed(3) + '%';
+    this.killBars.k.style.width = (((d.kills % 1000) / 1000) * 100).toFixed(1) + '%';
+    this.killBars.acc.style.width = (Math.max(0, Math.min(1, d.accuracy)) * 100).toFixed(1) + '%';
+    if (this._lastKills === undefined) this._lastKills = d.kills;
+    if (d.kills > this._lastKills) {
+      this._killBlip = 0.35;
+      if (((d.kills / 1000) | 0) > ((this._lastKills / 1000) | 0)) this._milestone = 3;
+    }
+    this._lastKills = d.kills;
+    this._killBlip = Math.max(0, (this._killBlip || 0) - dt);
+    this._milestone = Math.max(0, (this._milestone || 0) - dt);
+    this.killLamps.hit.classList.toggle('lit', this._killBlip > 0);
+    this.killLamps.mile.classList.toggle('lit', this._milestone > 0 && Math.sin(now / 90) > -0.2);
+    this.killLamps.pwr.classList.add('lit');
+    this.killLamps.pwr.style.opacity = (0.78 + 0.22 * Math.sin(now / 640)).toFixed(2);
+    this.remainEl.textContent = 'REMAINING ' + Math.max(0, WIN_KILLS - d.kills).toLocaleString('en-US');
 
-    // --- WAVE gauge + zone + wave-progress (top-left) ---
-    this.waveEl.textContent = d.wave.n === 0 ? '—' : d.wave.n;
+    // --- left side HUD: WAVE field device ---
+    this.waveEl.textContent = d.wave.n === 0 ? '—' : String(d.wave.n).padStart(2, '0');
     this.zoneEl.textContent = d.zoneName.toUpperCase();
     const active = d.wave.state === 'active';
+    const respite = d.wave.state === 'respite';
     const quota = d.wave.quota || 0;
     const cleared = Math.min(d.wave.killsThisWave || 0, quota);
     this.waveClearedEl.textContent = active ? cleared : d.wave.n === 0 ? 0 : quota;
     this.waveQuotaEl.textContent = quota;
-    this.waveProgFill.style.width = (active && quota ? Math.min(1, cleared / quota) * 100 : d.wave.state === 'respite' ? 100 : 0).toFixed(1) + '%';
-    this.waveProgFill.classList.toggle('done', !active);
-    this.respiteEl.textContent = d.wave.state === 'respite'
+    // needle + red bar carry the same wave-clearance value the old bar did
+    const waveRatio = active && quota ? Math.min(1, cleared / quota) : respite ? 1 : 0;
+    this.waveGauge.set(waveRatio);
+    this.waveBars.clr.style.width = (waveRatio * 100).toFixed(1) + '%';
+    this.waveBars.clr.classList.toggle('done', !active);
+    // blue bar drains with the respite clock (10 s standard breather)
+    const respFrac = respite ? Math.max(0, Math.min(1, d.wave.respiteLeft / 10)) : 0;
+    this.waveBars.rsp.style.width = (respFrac * 100).toFixed(1) + '%';
+    const secFrac = d.secrets && d.secrets.total ? d.secrets.found / d.secrets.total : 0;
+    this.waveBars.sec.style.width = (secFrac * 100).toFixed(1) + '%';
+    // state lamps: calm (pre-fight grace) / incoming (respite, blinking) / combat
+    this.waveLamps.calm.classList.toggle('lit', respite && d.wave.n === 0);
+    this.waveLamps.incoming.classList.toggle('lit', respite && Math.sin(now / 160) > -0.25);
+    this.waveLamps.combat.classList.toggle('lit', active);
+    this.supplyChip.classList.toggle('lit', respite && d.wave.n > 0);
+    this.respiteEl.textContent = respite
       ? (d.wave.n === 0 ? 'THEY ARE COMING · ' : 'RESPITE · ') + Math.ceil(d.wave.respiteLeft) + 's'
       : 'HOLD THE LINE';
 

@@ -71,64 +71,146 @@ html, body {
 }
 #hud-dock-inner > * { pointer-events: none; }
 
-/* themed gauge panels — rusted iron ground, brass frame, brass rivets, the
-   same instrument family as the console bar. These are the two SIDE HUDs:
-   WAVE (left) and CONFIRMED KILLS (right). They stand full console height and
-   stay separate from the main HUD via the dock's gaps. */
-.gauge-panel {
+/* SIDE HUD FIELD DEVICES — the two flanking status units, modelled on the
+   reference detector: near-black scratched gunmetal housing with corner
+   screws, coloured bar meters + round icon lamps on the left, an ivory
+   analog needle gauge behind glass on the right, stencil readouts and an
+   etched nameplate along the bottom. WAVE (left), CONFIRMED KILLS (right). */
+.side-hud {
   position: relative; z-index: 20;
-  display: flex; flex-direction: column; justify-content: center; gap: 7px;
-  flex: 0 0 230px; width: 230px; align-self: stretch;
-  background-color: #34312f; background-size: cover; background-position: center;
-  border: 3px solid #6a5a38; border-radius: 8px;
-  padding: 8px 14px 14px; image-rendering: pixelated;
+  display: flex; flex-direction: column; justify-content: space-between;
+  flex: 0 0 252px; width: 252px; align-self: stretch;
+  background-color: #1d1e1c; background-size: cover; background-position: center;
+  border: 2px solid #0c0d0b; border-radius: 12px;
+  padding: 5px 11px 6px; image-rendering: pixelated;
   box-shadow:
-    inset 0 3px 0 rgba(0,0,0,0.5), inset 0 -3px 12px rgba(0,0,0,0.6),
-    0 4px 14px rgba(0,0,0,0.6);
+    inset 0 1px 0 rgba(255,255,255,0.07), inset 0 0 26px rgba(0,0,0,0.55),
+    inset 0 -3px 8px rgba(0,0,0,0.5), 0 4px 14px rgba(0,0,0,0.6);
 }
-.gauge-panel > * { image-rendering: auto; }
-.gauge-panel::before, .gauge-panel::after { /* brass corner rivets (bottom) */
-  content: ''; position: absolute; width: 6px; height: 6px; border-radius: 50%;
-  background: radial-gradient(circle at 35% 35%, #d8b552, #6a5324);
-  bottom: 6px;
+.side-hud > * { image-rendering: auto; }
+
+/* corner fixing screws, each seated at its own angle */
+.screw {
+  position: absolute; width: 9px; height: 9px; border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #8d8d84, #4a4a44 55%, #1e1e1a);
+  box-shadow: 0 1px 2px rgba(0,0,0,0.8), inset 0 0 1px #000;
 }
-.gauge-panel::before { left: 6px; }
-.gauge-panel::after { right: 6px; }
-.gauge-title {
-  font-size: 10px; letter-spacing: 4px; color: #b6a068; text-align: center;
+.screw::after { /* driver slot */
+  content: ''; position: absolute; left: 1px; right: 1px; top: 4px; height: 1px;
+  background: #14140f;
+}
+.screw.tl { top: 4px; left: 4px; transform: rotate(38deg); }
+.screw.tr { top: 4px; right: 4px; transform: rotate(-56deg); }
+.screw.bl { bottom: 4px; left: 4px; transform: rotate(-15deg); }
+.screw.br { bottom: 4px; right: 4px; transform: rotate(71deg); }
+
+/* header strip: chip + stencil title + status readout */
+.dev-head { display: flex; align-items: center; gap: 6px; padding: 0 8px; min-height: 15px; }
+.dev-title {
+  font-size: 9px; font-weight: bold; letter-spacing: 2px; color: #b3ab89;
+  text-shadow: 0 1px 0 rgba(0,0,0,0.8); white-space: nowrap;
+}
+.dev-title span { color: #e3dbb8; }
+#respite {
+  margin-left: auto; font-size: 8px; letter-spacing: 1px; color: #d8b552;
+  text-align: right; white-space: nowrap;
 }
 
-.gauge-head { display: flex; align-items: baseline; justify-content: center; gap: 8px; }
-#wave {
-  font-size: 26px; font-weight: bold; color: #e8e2c8; letter-spacing: 1px;
-  text-shadow: 0 0 6px rgba(224,184,64,0.4);
+/* main row: meter cluster on the left, analog gauge on the right */
+.dev-main { display: flex; align-items: stretch; gap: 8px; }
+.dev-cluster {
+  flex: 1 1 auto; min-width: 0; padding: 2px 0 2px 2px;
+  display: flex; flex-direction: column; justify-content: space-evenly; gap: 4px;
 }
-#zone { font-size: 11px; letter-spacing: 2px; color: #cfe0c0; text-align: center; margin-top: 1px; }
-.wave-prog { margin-top: 6px; }
-.wave-prog-label { font-size: 9px; letter-spacing: 1px; color: #8fa37a; text-align: center; }
-.wave-prog-label span { color: #7be07b; }
-.wave-prog-bar {
-  margin-top: 3px; height: 8px; padding: 1px;
-  background: #0a0f0a; border: 1px solid #4a4230; box-shadow: inset 0 0 5px rgba(0,0,0,0.8);
-}
-.wave-prog-fill { height: 100%; width: 0; background: linear-gradient(#b03030, #d05a4a); transition: width 0.3s; }
-.wave-prog-fill.done { background: linear-gradient(#4a8a3a, #6ac84a); }
-#respite { font-size: 10px; color: #d8b552; letter-spacing: 1px; text-align: center; margin-top: 4px; }
 
-.kills-row {
-  display: flex; align-items: baseline; justify-content: center; gap: 8px;
-  margin-top: 2px; white-space: nowrap;
+/* coloured bar meters (red / blue / teal, as on the reference unit) */
+.dev-bar { display: flex; align-items: center; gap: 4px; }
+.dev-bar-label { flex: 0 0 20px; font-size: 7px; letter-spacing: 1px; color: #8f8a72; text-align: right; }
+.dev-bar-track {
+  flex: 1; height: 8px; border-radius: 4px; padding: 1px;
+  background: #0b0c0a; border: 1px solid #000;
+  box-shadow: inset 0 1px 3px rgba(0,0,0,0.9), 0 1px 0 rgba(255,255,255,0.05);
 }
-.kills-odo {
-  font-size: 22px; font-weight: bold; letter-spacing: 2px; color: #e8e2c8;
-  text-shadow: 0 0 6px rgba(224,184,64,0.4);
+.dev-bar-fill {
+  height: 100%; width: 0; border-radius: 3px; transition: width 0.3s;
+  background-image: linear-gradient(rgba(255,255,255,0.35), rgba(255,255,255,0.06) 45%, rgba(0,0,0,0.25));
 }
-#kill-goal { font-size: 12px; color: #8a9478; letter-spacing: 1px; }
-#progress {
-  margin-top: 5px; height: 10px; padding: 1px;
-  background: #0a0f0a; border: 1px solid #4a4230; box-shadow: inset 0 0 5px rgba(0,0,0,0.8);
+.fill-red { background-color: #c23b2e; }
+.fill-blue { background-color: #2f6fc1; }
+.fill-teal { background-color: #2aa89a; }
+.dev-bar-fill.done { background-color: #57b04a; }
+#hud-tc .fill-teal { min-width: 1px; }
+
+/* round indicator lamps + the square header chip: coloured lens, dark glyph,
+   dimmed until lit (then the lens glows in its own colour) */
+.dev-lamps { display: flex; align-items: center; gap: 8px; padding-left: 24px; }
+.dev-lamp, .dev-chip {
+  width: 17px; height: 17px; border-radius: 50%; flex: 0 0 auto;
+  display: flex; align-items: center; justify-content: center;
+  border: 1px solid #000;
+  box-shadow:
+    inset 0 -2px 3px rgba(0,0,0,0.45), inset 0 2px 2px rgba(255,255,255,0.25),
+    0 1px 1px rgba(0,0,0,0.6);
+  filter: saturate(0.35) brightness(0.5); transition: filter 0.12s;
 }
-#progress-fill { height: 100%; width: 0; background: linear-gradient(#c8a03a, #e0b840); min-width: 1px; }
+.dev-chip { width: 15px; height: 15px; border-radius: 4px; }
+.dev-lamp.lit, .dev-chip.lit {
+  filter: none;
+  box-shadow:
+    inset 0 -2px 3px rgba(0,0,0,0.45), inset 0 2px 2px rgba(255,255,255,0.25),
+    0 1px 1px rgba(0,0,0,0.6), 0 0 9px 1px currentColor;
+}
+.lamp-blue { background: radial-gradient(circle at 38% 30%, #7ea4e8, #2c53a8); color: #4d7fd8; }
+.lamp-amber { background: radial-gradient(circle at 38% 30%, #f2d05e, #b8860f); color: #e8b62a; }
+.lamp-orange { background: radial-gradient(circle at 38% 30%, #f0a057, #b05a14); color: #e07828; }
+.lamp-green, .chip-green { background: radial-gradient(circle at 38% 30%, #8ed070, #3d8a2a); color: #5cc23c; }
+.dev-glyph { width: 12px; height: 12px; opacity: 0.85; }
+
+/* analog needle gauge: dark bezel, aged ivory dial (canvas), red-tipped
+   needle swept by JS (−55° … +55°), pivot cap and a glass glare on top */
+.dev-gauge { flex: 0 0 auto; display: flex; flex-direction: column; align-items: center; gap: 3px; }
+.dev-gauge-bezel {
+  padding: 4px; border-radius: 8px; background: #131411; border: 1px solid #000;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), 0 2px 4px rgba(0,0,0,0.6);
+}
+.dev-gauge-face { position: relative; width: 96px; height: 64px; border-radius: 3px; overflow: hidden; }
+.dev-gauge-dial { position: absolute; inset: 0; width: 96px; height: 64px; }
+.dev-needle {
+  position: absolute; left: 50%; bottom: 2px; width: 5px; height: 48px;
+  transform-origin: 50% 100%; transform: translateX(-50%) rotate(-55deg);
+  clip-path: polygon(50% 0, 88% 100%, 12% 100%);
+  background: linear-gradient(to top, #23231d 0 55%, #c23b2e 55%);
+  transition: transform 0.5s cubic-bezier(0.3, 1.4, 0.45, 1);
+}
+.dev-needle-cap {
+  position: absolute; left: 50%; bottom: -5px; width: 13px; height: 13px;
+  transform: translateX(-50%); border-radius: 50%;
+  background: radial-gradient(circle at 38% 30%, #6a6a5f, #22221d 70%);
+  border: 1px solid #000;
+}
+.dev-glass {
+  position: absolute; inset: 0; border-radius: 3px; pointer-events: none;
+  background: linear-gradient(112deg, rgba(255,255,255,0.16), rgba(255,255,255,0.03) 38%, transparent 55%);
+  box-shadow: inset 0 0 8px rgba(0,0,0,0.35);
+}
+.dev-gauge-cap { font-size: 8px; letter-spacing: 1px; color: #9a937a; text-align: center; white-space: nowrap; }
+.dev-gauge-cap span { color: #7be07b; }
+
+/* etched nameplate along the bottom (zone name / kills remaining) */
+.dev-plate {
+  margin: 0 6px; padding: 2px 4px 3px; text-align: center;
+  font-size: 8px; letter-spacing: 2px; color: #c9c1a0;
+  background: linear-gradient(#22231f, #191a17);
+  border: 1px solid #000; border-radius: 3px;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.06);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+/* the kill tally's six-digit mechanical counter */
+.odometer.kills { align-self: center; padding: 2px; gap: 1px; }
+.odometer.kills .digit {
+  width: 13px; height: 20px; line-height: 20px; font-size: 15px;
+}
 
 /* ===================================================================
    CONSOLE BAR — full-width bottom Fallout-style instrument panel.
