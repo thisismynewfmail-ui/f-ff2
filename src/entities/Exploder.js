@@ -24,6 +24,12 @@ import { avoidObstacles, gaitWobble, norm } from '../ai/Steering.js';
 const ACTIVE_RANGE = 115;   // matches the base zombie's dormancy radius
 const BOOM_LINGER = 0.35;   // corpse hangs a beat after the blast, then is culled
 const ABORT_FACTOR = 1.6;   // target this far past triggerRange aborts the fuse
+// The CS:GO sheet draws the bomber's feet flush to the very bottom edge of each
+// cell — no ground margin like the other sheets carry — so the billboard's foot
+// pivot sits a touch into the ground. Lift the sprite by this fraction of its
+// height (purely visual: the AI/collision/blast all read `position`, not the
+// mesh) to seat the feet ON the ground instead of clipping into it.
+const FOOT_LIFT = 0.015;
 const EMPTY = [];
 
 const clamp01 = (x) => (x < 0 ? 0 : x > 1 ? 1 : x);
@@ -339,6 +345,7 @@ export class Exploder extends Zombie {
 
   _present(dt, ctx, moving) {
     this.mesh.position.copy(this.position);
+    this.mesh.position.y += this.height * FOOT_LIFT; // seat the feet on the ground (see FOOT_LIFT)
     this.billboard.update(dt, ctx.camPos, this.yaw, moving, this.config.walkFps * (this.state === 'chasing' ? 1.4 : 1));
   }
 
