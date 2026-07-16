@@ -579,11 +579,15 @@ const exp = await page.evaluate(async () => {
   out.spawned = !!ex && ex.config.name === 'Exploder' && ex.tags.has('exploder') && typeof ex._explode === 'function';
   out.speedSlightlyAboveWalk = ex.config.chaseSpeed > 5.0 && ex.config.chaseSpeed <= 6.0;
 
-  // 2a. Retexture + stature: it stands as tall as the eye-level Walker (same
-  //     visual height) yet navigates on the shorter humanoid capsule, and it
-  //     renders the CS:GO retexture off the standard 3x4 walk-cycle sheet.
+  // 2a. Retexture + stature: it stands in the eye-level Walker's height class
+  //     (a tall enemy, not the old runt) yet navigates on the shorter humanoid
+  //     capsule, and it renders the CS:GO retexture off the standard 3x4 sheet.
+  //     Its height is a touch UNDER the Walker's on purpose — this sheet draws
+  //     the character filling more of its cell, so a smaller height renders at
+  //     the same on-screen stature (heads level, not towering).
   const wk = g.spawner.spawnOne('walker', player);
-  out.asTallAsOthers = ex.config.height === wk.config.height && ex.config.collisionHeight === 1.75;
+  out.asTallAsOthers = ex.config.height >= 2.4 && ex.config.height <= wk.config.height
+    && ex.config.collisionHeight === 1.75;
   out.capsuleShorterThanSprite = ex.collisionHeight < ex.height;
   out.retexturedSheet = ex.billboard.layout.rows === 4 && ex.billboard.layout.row.front === 0
     && ex.billboard.material.map.image.width === 512 && ex.billboard.material.map.image.height === 1024;
