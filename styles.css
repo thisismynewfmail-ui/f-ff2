@@ -219,9 +219,13 @@ html, body {
    =================================================================== */
 #console-bar {
   position: relative; flex: 0 0 auto;
-  width: 1310px; height: 132px;
-  display: flex; align-items: stretch; justify-content: center; gap: 6px;
-  padding: 8px 12px;
+  /* width hugs the instruments (max-content) so the chassis never carries
+     empty slack at its ends — the flanking tube banks always sit flush at
+     the panel edges instead of floating in dead space (justify-content is
+     moot once width == content, but kept for safety). */
+  width: max-content; height: 132px;
+  display: flex; align-items: stretch; justify-content: center; gap: 8px;
+  padding: 8px 20px;
   background-color: #1d1e1c; background-size: cover; background-position: center;
   border: 2px solid #0c0d0b; border-radius: 12px;
   box-shadow:
