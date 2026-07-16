@@ -1,9 +1,9 @@
 /**
- * Procedural rusted-iron / brass panel textures for the console HUD, baked
- * once to data-URIs and used as CSS backgrounds. Same synthesised-asset
- * philosophy as the rest of the game (no image files) and the same steampunk
- * palette as the weapons — pitted cast iron, oxidised brass trim, dark
- * bakelite inset screens.
+ * Procedural panel textures for the HUD, baked once to data-URIs and used as
+ * CSS backgrounds. Same synthesised-asset philosophy as the rest of the game
+ * (no image files). The whole instrument dock — the centre console bar and
+ * the two flanking field devices — shares one housing family: near-black
+ * scratched gunmetal, with dark bakelite inset screens behind the readouts.
  */
 
 function noise(x, y, s) {
@@ -66,10 +66,11 @@ function brassStrip(w, h, seed = 7) {
   return c;
 }
 
-/** Near-black scratched gunmetal for the side-HUD field devices — the dark,
- *  hard-worn detector housing of the reference unit: mottled charcoal steel,
- *  lighter worn patches, glinting nicks and long thin scratches. */
-function gunmetalPanel(w, h, seed = 21) {
+/** Near-black scratched gunmetal for the instrument-dock housings — the dark,
+ *  hard-worn detector casing of the reference unit: mottled charcoal steel,
+ *  lighter worn patches, glinting nicks and long thin scratches. Used by the
+ *  side-HUD field devices and the centre console bar alike. */
+function gunmetalPanel(w, h, seed = 21, scratches = 26) {
   const c = document.createElement('canvas'); c.width = w; c.height = h;
   const ctx = c.getContext('2d');
   const img = ctx.createImageData(w, h);
@@ -89,7 +90,7 @@ function gunmetalPanel(w, h, seed = 21) {
   }
   ctx.putImageData(img, 0, 0);
   // long thin scratches over the top
-  for (let s = 0; s < 26; s++) {
+  for (let s = 0; s < scratches; s++) {
     const x0 = noise(s, 1, seed) * w, y0 = noise(s, 2, seed) * h;
     const ang = noise(s, 3, seed) * Math.PI, len = 6 + noise(s, 4, seed) * 30;
     ctx.strokeStyle = `rgba(150,152,142,${(0.05 + noise(s, 5, seed) * 0.1).toFixed(3)})`;
@@ -105,7 +106,10 @@ let _cache = null;
 export function hudTextures() {
   if (_cache) return _cache;
   _cache = {
-    bar: ironPanel(256, 160, { seed: 5, base: [52, 49, 50] }).toDataURL(),
+    // the console bar wears the same gunmetal as the side devices (its own
+    // seed so the wear pattern doesn't visibly repeat; wider bake + more
+    // scratches because it stretches across the full 1180px panel)
+    bar: gunmetalPanel(512, 144, 5, 46).toDataURL(),
     inset: ironPanel(128, 128, { seed: 11, base: [30, 30, 33], rust: [60, 40, 28] }).toDataURL(),
     brass: brassStrip(256, 24, 7).toDataURL(),
     device: gunmetalPanel(256, 160, 21).toDataURL(),

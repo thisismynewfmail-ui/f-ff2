@@ -175,7 +175,8 @@ There is deliberately no command that touches the kill counter — the
   frees the mouse for the UI and freezes the world; Tab (or Esc) closes it and
   hands the mouse straight back to the game.
 - **HUD & stats:** a centred **Fallout-style console bar** — a mounted,
-  brass-framed, riveted cast-iron panel (procedurally textured) carrying a
+  screw-fixed, near-black scratched gunmetal panel (procedurally textured, the
+  same hard-worn housing as the side devices) carrying a
   CLEAN/HURT/CRITICAL condition tab, a green CRT message log, a mechanical HP
   odometer, **two separate ammo odometers — LOADED (in the gun) and RESERVE
   (carried)**, a damage alarm lamp and a MAP lamp, a centre **player portrait**

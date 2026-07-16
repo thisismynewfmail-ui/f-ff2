@@ -11,8 +11,9 @@ import { hudTextures } from './HudTextures.js';
  * (see _layoutDock). No readouts sit at the top of the screen.
  *
  * The centrepiece is the CONSOLE BAR, modelled on the reference Fallout-style
- * interface (see the provided images): a rusted, riveted cast-iron panel
- * carrying, left to right —
+ * interface (see the provided images) but housed like the side devices: a
+ * near-black scratched gunmetal panel with corner screws, dark bezels and
+ * stencil lettering, carrying, left to right —
  *
  *   - a "CLEAN / HURT" condition tab and a green CRT MESSAGE LOG (the flavour
  *     feed: pickups, sightings, secrets, orders)
@@ -366,6 +367,9 @@ export class HUD {
   _buildConsole(parent) {
     const bar = this._el('div', 'console-bar', parent);
     bar.style.backgroundImage = `url(${this._tex.bar})`;
+
+    // same corner fixing screws as the side-HUD field devices
+    for (const c of ['tl', 'tr', 'bl', 'br']) this._el('div', null, bar, 'screw ' + c);
 
     // condition tab (top-left corner of the bar)
     this.condTab = this._el('div', 'cons-cond', bar);

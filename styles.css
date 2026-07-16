@@ -213,35 +213,31 @@ html, body {
 }
 
 /* ===================================================================
-   CONSOLE BAR — full-width bottom Fallout-style instrument panel.
-   Rusted riveted iron ground, brass trim, green CRT insets.
+   CONSOLE BAR — full-width bottom Fallout-style instrument panel, housed
+   like the side-HUD field devices: near-black scratched gunmetal ground,
+   corner screws, dark bezels, green CRT insets.
    =================================================================== */
 #console-bar {
   position: relative; flex: 0 0 auto;
   width: 1180px; height: 132px;
   display: flex; align-items: stretch; justify-content: center; gap: 6px;
   padding: 8px 12px;
-  background-color: #34312f; background-size: cover; background-position: center;
-  border: 3px solid #6a5a38; border-radius: 8px;
+  background-color: #1d1e1c; background-size: cover; background-position: center;
+  border: 2px solid #0c0d0b; border-radius: 12px;
   box-shadow:
-    inset 0 3px 0 rgba(0,0,0,0.5), inset 0 -3px 12px rgba(0,0,0,0.6),
-    0 4px 14px rgba(0,0,0,0.6);
+    inset 0 1px 0 rgba(255,255,255,0.07), inset 0 0 26px rgba(0,0,0,0.55),
+    inset 0 -3px 8px rgba(0,0,0,0.5), 0 4px 14px rgba(0,0,0,0.6);
   image-rendering: pixelated;
 }
 #console-bar > div { image-rendering: auto; }
-/* brass rivets in the four corners of the mounted console */
-#console-bar::before, #console-bar::after {
-  content: ''; position: absolute; width: 7px; height: 7px; border-radius: 50%;
-  background: radial-gradient(circle at 35% 35%, #d8b552, #6a5324); bottom: 6px;
-}
-#console-bar::before { left: 8px; }
-#console-bar::after { right: 8px; }
+/* corner fixing screws reuse .screw from the side-hud devices */
 
-/* condition tab (top-left corner) */
+/* condition tab (top-left corner) — etched plate like .dev-plate */
 #cons-cond {
   position: absolute; top: -14px; left: 14px;
-  font-size: 10px; letter-spacing: 3px; color: #cfe0c0;
-  background: #1a1c16; border: 2px solid #6a5a38; border-bottom: none;
+  font-size: 10px; letter-spacing: 3px; color: #c9c1a0;
+  background: linear-gradient(#22231f, #191a17);
+  border: 2px solid #0c0d0b; border-bottom: none;
   border-radius: 4px 4px 0 0; padding: 2px 12px 3px;
 }
 #cons-cond.warn { color: #e6c24a; border-color: #7a6a2a; }
@@ -250,7 +246,7 @@ html, body {
 /* message log (green CRT) */
 #cons-log-wrap {
   width: 300px; flex: 0 0 300px; align-self: stretch;
-  border: 2px solid #24261e; border-radius: 2px;
+  border: 2px solid #131411; border-radius: 2px;
   background-color: #060c07; background-size: cover;
   box-shadow: inset 0 0 18px rgba(0,0,0,0.8); overflow: hidden;
   /* tight vertical padding so the feed fills the full CRT height (6 lines,
@@ -284,10 +280,11 @@ html, body {
 /* HP + AMMO odometer meters */
 #cons-meters { display: flex; flex-direction: column; justify-content: center; gap: 7px; padding: 0 4px; }
 .cons-meter { display: flex; flex-direction: column; align-items: center; gap: 3px; }
-.cons-meter-label { font-size: 10px; letter-spacing: 3px; color: #b6a068; }
+.cons-meter-label { font-size: 10px; letter-spacing: 3px; color: #b3ab89; }
 .odometer {
   display: flex; gap: 2px; padding: 3px; background-color: #0a0b08; background-size: cover;
-  border: 2px solid #55492c; border-radius: 2px; box-shadow: inset 0 0 8px rgba(0,0,0,0.9);
+  border: 2px solid #131411; border-radius: 2px;
+  box-shadow: inset 0 0 8px rgba(0,0,0,0.9), 0 1px 0 rgba(255,255,255,0.05);
 }
 .digit {
   width: 22px; height: 30px; line-height: 30px; text-align: center;
@@ -303,7 +300,7 @@ html, body {
 /* AMMO split into LOADED (in the gun) + RESERVE (carried) */
 .cons-ammo-row { display: flex; gap: 6px; align-items: flex-start; }
 .cons-ammo-col { display: flex; flex-direction: column; align-items: center; gap: 2px; }
-.cons-ammo-sub { font-size: 8px; letter-spacing: 1px; color: #8a9478; }
+.cons-ammo-sub { font-size: 8px; letter-spacing: 1px; color: #8f8a72; }
 .odometer.small { padding: 2px; gap: 1px; }
 .odometer.small .digit {
   width: 16px; height: 22px; line-height: 22px; font-size: 17px;
@@ -315,13 +312,20 @@ html, body {
 #cons-lamps { display: flex; flex-direction: column; justify-content: center; gap: 8px; padding: 0 2px; }
 .cons-lamp {
   width: 42px; height: 42px; border-radius: 50%;
-  border: 3px solid #55492c; box-shadow: inset 0 0 8px rgba(0,0,0,0.8);
+  border: 3px solid #131411;
+  box-shadow:
+    inset 0 0 8px rgba(0,0,0,0.8), inset 0 2px 2px rgba(255,255,255,0.18),
+    0 1px 1px rgba(0,0,0,0.6);
 }
 .cons-lamp.alarm {
   background: radial-gradient(circle at 40% 35%, #ff7a5a, #7a1c10 70%);
   opacity: 0.4; transition: opacity 0.1s;
 }
-.cons-lamp.alarm.lit { box-shadow: inset 0 0 8px rgba(0,0,0,0.5), 0 0 14px rgba(240,70,50,0.8); }
+.cons-lamp.alarm.lit {
+  box-shadow:
+    inset 0 0 8px rgba(0,0,0,0.5), inset 0 2px 2px rgba(255,255,255,0.18),
+    0 0 14px rgba(240,70,50,0.8);
+}
 .cons-lamp.map {
   border-radius: 4px; font-size: 11px; letter-spacing: 1px; color: #cfe0c0;
   display: flex; align-items: center; justify-content: center;
@@ -335,32 +339,35 @@ html, body {
 }
 .cons-mon-cable {
   width: 60%; height: 8px; margin-bottom: -2px;
-  background: repeating-linear-gradient(90deg, #2a2620 0 3px, #453c2c 3px 6px);
+  background: repeating-linear-gradient(90deg, #222320 0 3px, #3a3b36 3px 6px);
   border-radius: 4px 4px 0 0;
 }
 .cons-mon-screen {
-  padding: 5px; border: 3px solid #6a5a38; border-radius: 6px;
-  background: #05100a; box-shadow: inset 0 0 10px rgba(0,0,0,0.9), 0 0 0 2px #201c14;
+  padding: 5px; border: 3px solid #131411; border-radius: 6px;
+  background: #05100a;
+  box-shadow:
+    inset 0 0 10px rgba(0,0,0,0.9), inset 0 1px 0 rgba(255,255,255,0.08),
+    0 0 0 2px #000, 0 2px 4px rgba(0,0,0,0.6);
 }
 .cons-portrait { display: block; border-radius: 3px; image-rendering: auto; }
 
 /* AIM indicator */
 #cons-aim { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; padding: 0 4px; }
-.cons-aim-label { font-size: 10px; letter-spacing: 2px; color: #b6a068; }
+.cons-aim-label { font-size: 10px; letter-spacing: 2px; color: #b3ab89; }
 .cons-aim-lamp {
-  width: 20px; height: 20px; border-radius: 50%; border: 2px solid #55492c;
+  width: 20px; height: 20px; border-radius: 50%; border: 2px solid #131411;
   background: radial-gradient(circle at 40% 35%, #2a3a2a, #0c140c 75%);
 }
 .cons-aim-lamp.on { background: radial-gradient(circle at 40% 35%, #8affaa, #1c6a34 75%); box-shadow: 0 0 10px rgba(90,220,120,0.8); }
-.cons-aim-state { font-size: 12px; letter-spacing: 2px; color: #9fb890; }
+.cons-aim-state { font-size: 12px; letter-spacing: 2px; color: #9a937a; }
 
 /* WEAPON panel */
 #cons-weapon { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; padding: 0 4px; min-width: 150px; }
-.cons-panel-label { font-size: 11px; letter-spacing: 4px; color: #d8c078; }
+.cons-panel-label { font-size: 11px; letter-spacing: 4px; color: #b3ab89; }
 .cons-weapon-screen {
   width: 150px; height: 52px; display: flex; align-items: center; justify-content: center;
-  background-color: #0d0f0a; background-size: cover; border: 2px solid #55492c; border-radius: 3px;
-  box-shadow: inset 0 0 10px rgba(0,0,0,0.9);
+  background-color: #0d0f0a; background-size: cover; border: 2px solid #131411; border-radius: 3px;
+  box-shadow: inset 0 0 10px rgba(0,0,0,0.9), 0 1px 0 rgba(255,255,255,0.05);
 }
 .cons-weapon-icon { image-rendering: auto; }
 .cons-weapon-mode {
@@ -374,15 +381,15 @@ html, body {
 .cons-arms-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3px; }
 .arms-slot {
   position: relative; width: 58px; height: 32px;
-  border: 1px solid #4a4230; background: rgba(10,12,8,0.55); border-radius: 2px;
+  border: 1px solid #34352f; background: rgba(8,9,8,0.55); border-radius: 2px;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
 }
 .arms-slot.active { border-color: #e0b840; background: rgba(40,34,12,0.8); box-shadow: 0 0 6px rgba(224,184,64,0.4); }
 .arms-slot.empty { opacity: 0.4; }
-.arms-key { position: absolute; top: 1px; left: 3px; font-size: 9px; color: #8a9478; }
+.arms-key { position: absolute; top: 1px; left: 3px; font-size: 9px; color: #8f8a72; }
 .arms-slot.active .arms-key { color: #e0b840; }
 .arms-icon { image-rendering: auto; margin-top: 3px; }
-.arms-rsv { font-size: 9px; letter-spacing: 0.5px; color: #a8b098; }
+.arms-rsv { font-size: 9px; letter-spacing: 0.5px; color: #a8a390; }
 .arms-slot.active .arms-rsv { color: #e8e2c8; }
 .arms-slot.dry { border-color: #7a2a20; }
 .arms-slot.dry .arms-rsv { color: #e05a44; }
