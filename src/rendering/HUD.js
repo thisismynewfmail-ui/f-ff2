@@ -540,8 +540,8 @@ export class HUD {
     // and glow (see update for the drive logic). Its dome rides above the
     // panel edge the way the tab used to break the console silhouette. ---
     const rackL = this._el('div', 'cons-tubes-l', bar, 'cons-tubes');
-    this.tubeVitals = this._buildTube(rackL, { kind: 'st', w: 44, h: 116, label: 'VITALS', etch: 'V-300' });
-    this.tubeCharge = this._buildTube(rackL, { kind: 'gt', w: 34, h: 98, label: 'CHARGE', etch: 'C-807' });
+    this.tubeVitals = this._buildTube(rackL, { kind: 'st', w: 40, h: 98, label: 'VITALS', etch: 'V-300' });
+    this.tubeCharge = this._buildTube(rackL, { kind: 'gt', w: 32, h: 86, label: 'CHARGE', etch: 'C-807' });
 
     // --- message log (green CRT) ---
     const logWrap = this._el('div', 'cons-log-wrap', bar);
@@ -611,9 +611,9 @@ export class HUD {
 
     // --- right tube bank: XMIT (blips per shot) + WAVE (fight state) ---
     const rackR = this._el('div', 'cons-tubes-r', bar, 'cons-tubes');
-    this.tubeXmit = this._buildTube(rackR, { kind: 'mini', w: 27, h: 88, label: 'XMIT', etch: '6L6' });
+    this.tubeXmit = this._buildTube(rackR, { kind: 'mini', w: 25, h: 78, label: 'XMIT', etch: '6L6' });
     this.tubeWave = this._buildTube(rackR, {
-      kind: 'gt', w: 34, h: 98, label: 'WAVE', smoked: true, decal: 'trefoil', etch: 'R-42',
+      kind: 'gt', w: 32, h: 86, label: 'WAVE', smoked: true, decal: 'trefoil', etch: 'R-42',
     });
   }
 
