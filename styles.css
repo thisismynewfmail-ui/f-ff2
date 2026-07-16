@@ -213,44 +213,71 @@ html, body {
 }
 
 /* ===================================================================
-   CONSOLE BAR — full-width bottom Fallout-style instrument panel.
-   Rusted riveted iron ground, brass trim, green CRT insets.
+   CONSOLE BAR — full-width bottom Fallout-style instrument panel, housed
+   like the side-HUD field devices: near-black scratched gunmetal ground,
+   corner screws, dark bezels, green CRT insets.
    =================================================================== */
 #console-bar {
   position: relative; flex: 0 0 auto;
-  width: 1180px; height: 132px;
-  display: flex; align-items: stretch; justify-content: center; gap: 6px;
-  padding: 8px 12px;
-  background-color: #34312f; background-size: cover; background-position: center;
-  border: 3px solid #6a5a38; border-radius: 8px;
+  /* width hugs the instruments (max-content) so the chassis never carries
+     empty slack at its ends — the flanking tube banks always sit flush at
+     the panel edges instead of floating in dead space (justify-content is
+     moot once width == content, but kept for safety). */
+  width: max-content; height: 132px;
+  display: flex; align-items: stretch; justify-content: center; gap: 8px;
+  padding: 8px 20px;
+  background-color: #1d1e1c; background-size: cover; background-position: center;
+  border: 2px solid #0c0d0b; border-radius: 12px;
   box-shadow:
-    inset 0 3px 0 rgba(0,0,0,0.5), inset 0 -3px 12px rgba(0,0,0,0.6),
-    0 4px 14px rgba(0,0,0,0.6);
+    inset 0 1px 0 rgba(255,255,255,0.07), inset 0 0 26px rgba(0,0,0,0.55),
+    inset 0 -3px 8px rgba(0,0,0,0.5), 0 4px 14px rgba(0,0,0,0.6);
   image-rendering: pixelated;
 }
 #console-bar > div { image-rendering: auto; }
-/* brass rivets in the four corners of the mounted console */
-#console-bar::before, #console-bar::after {
-  content: ''; position: absolute; width: 7px; height: 7px; border-radius: 50%;
-  background: radial-gradient(circle at 35% 35%, #d8b552, #6a5324); bottom: 6px;
-}
-#console-bar::before { left: 8px; }
-#console-bar::after { right: 8px; }
+/* corner fixing screws reuse .screw from the side-hud devices */
 
-/* condition tab (top-left corner) */
-#cons-cond {
-  position: absolute; top: -14px; left: 14px;
-  font-size: 10px; letter-spacing: 3px; color: #cfe0c0;
-  background: #1a1c16; border: 2px solid #6a5a38; border-bottom: none;
-  border-radius: 4px 4px 0 0; padding: 2px 12px 3px;
+/* ---- CONSOLE VACUUM TUBE BANKS ----------------------------------------
+   The glowing analog heart of the mid console (replaces the old CLEAN text
+   tab): baked-canvas glass envelopes over three per-frame glow layers —
+   the heater HEAT core burning behind the anode plate, an outer HALO bleed
+   and a POOL of warm light cast down onto the panel, all opacity-driven
+   from HUD.update. .red retints a tube's fire for the critical state. */
+.cons-tubes { display: flex; align-items: flex-end; gap: 9px; padding: 0 5px; }
+.tube { display: flex; flex-direction: column; align-items: center; gap: 1px; }
+.tube-stack { position: relative; }
+.tube-art { position: absolute; inset: 0; width: 100%; height: 100%; }
+.tube-heat {
+  position: absolute; left: 12%; right: 12%; top: 22%; bottom: 12%;
+  border-radius: 45%;
+  background:
+    radial-gradient(46% 34% at 50% 52%, #ffe9c0 0%, #ffb45e 30%, rgba(255,102,26,0.6) 62%, transparent 78%),
+    radial-gradient(38% 20% at 50% 88%, rgba(255,170,90,0.9), transparent 72%);
+  mix-blend-mode: screen; opacity: 0;
 }
-#cons-cond.warn { color: #e6c24a; border-color: #7a6a2a; }
-#cons-cond.crit { color: #e05a44; border-color: #7a2a20; }
+.tube.red .tube-heat {
+  background:
+    radial-gradient(46% 34% at 50% 52%, #ffc9b0 0%, #ff7040 30%, rgba(224,40,16,0.65) 62%, transparent 78%),
+    radial-gradient(38% 20% at 50% 88%, rgba(255,110,70,0.9), transparent 72%);
+}
+.tube-halo {
+  position: absolute; inset: -18% -55%; pointer-events: none;
+  background: radial-gradient(50% 42% at 50% 55%, rgba(255,138,54,0.42), transparent 70%);
+  mix-blend-mode: screen; opacity: 0;
+}
+.tube.red .tube-halo {
+  background: radial-gradient(50% 42% at 50% 55%, rgba(255,70,40,0.5), transparent 70%);
+}
+.tube-pool {
+  position: absolute; left: -45%; right: -45%; bottom: -7px; height: 15px;
+  background: radial-gradient(50% 100% at 50% 100%, rgba(255,128,48,0.5), transparent 78%);
+  mix-blend-mode: screen; opacity: 0;
+}
+.tube-label { font-size: 7px; letter-spacing: 1.5px; color: #8f8a72; }
 
 /* message log (green CRT) */
 #cons-log-wrap {
-  width: 300px; flex: 0 0 300px; align-self: stretch;
-  border: 2px solid #24261e; border-radius: 2px;
+  width: 252px; flex: 0 0 252px; align-self: stretch;
+  border: 2px solid #131411; border-radius: 2px;
   background-color: #060c07; background-size: cover;
   box-shadow: inset 0 0 18px rgba(0,0,0,0.8); overflow: hidden;
   /* tight vertical padding so the feed fills the full CRT height (6 lines,
@@ -261,6 +288,12 @@ html, body {
   content: ''; position: absolute; inset: 0; pointer-events: none;
   background: repeating-linear-gradient(0deg, rgba(0,0,0,0.25) 0 1px, transparent 1px 3px);
 }
+#cons-log-wrap::before { /* slow phosphor refresh sweep down the CRT */
+  content: ''; position: absolute; left: 0; right: 0; height: 16px; top: -18%;
+  background: linear-gradient(180deg, transparent, rgba(120,255,140,0.09), transparent);
+  animation: crtsweep 5.5s linear infinite; pointer-events: none;
+}
+@keyframes crtsweep { 0% { top: -18%; } 100% { top: 112%; } }
 #cons-log {
   /* column-reverse keeps the newest line at the bottom (oldest clips off the
      top). Each line grows to share the CRT height, so the feed fills the box
@@ -284,10 +317,11 @@ html, body {
 /* HP + AMMO odometer meters */
 #cons-meters { display: flex; flex-direction: column; justify-content: center; gap: 7px; padding: 0 4px; }
 .cons-meter { display: flex; flex-direction: column; align-items: center; gap: 3px; }
-.cons-meter-label { font-size: 10px; letter-spacing: 3px; color: #b6a068; }
+.cons-meter-label { font-size: 10px; letter-spacing: 3px; color: #b3ab89; }
 .odometer {
   display: flex; gap: 2px; padding: 3px; background-color: #0a0b08; background-size: cover;
-  border: 2px solid #55492c; border-radius: 2px; box-shadow: inset 0 0 8px rgba(0,0,0,0.9);
+  border: 2px solid #131411; border-radius: 2px;
+  box-shadow: inset 0 0 8px rgba(0,0,0,0.9), 0 1px 0 rgba(255,255,255,0.05);
 }
 .digit {
   width: 22px; height: 30px; line-height: 30px; text-align: center;
@@ -299,11 +333,16 @@ html, body {
 .odometer.low .digit { color: #e6c24a; }
 .odometer.crit .digit, .odometer.empty .digit { color: #e05a44; }
 .digit.inf, .digit.melee { color: #9fb890; width: 46px; font-size: 22px; }
+.digit.tick { animation: odotick 0.24s ease-out; } /* wheel rolled: settle blip */
+@keyframes odotick {
+  0% { transform: translateY(-26%); filter: brightness(2); }
+  100% { transform: none; filter: none; }
+}
 
 /* AMMO split into LOADED (in the gun) + RESERVE (carried) */
 .cons-ammo-row { display: flex; gap: 6px; align-items: flex-start; }
 .cons-ammo-col { display: flex; flex-direction: column; align-items: center; gap: 2px; }
-.cons-ammo-sub { font-size: 8px; letter-spacing: 1px; color: #8a9478; }
+.cons-ammo-sub { font-size: 8px; letter-spacing: 1px; color: #8f8a72; }
 .odometer.small { padding: 2px; gap: 1px; }
 .odometer.small .digit {
   width: 16px; height: 22px; line-height: 22px; font-size: 17px;
@@ -315,13 +354,20 @@ html, body {
 #cons-lamps { display: flex; flex-direction: column; justify-content: center; gap: 8px; padding: 0 2px; }
 .cons-lamp {
   width: 42px; height: 42px; border-radius: 50%;
-  border: 3px solid #55492c; box-shadow: inset 0 0 8px rgba(0,0,0,0.8);
+  border: 3px solid #131411;
+  box-shadow:
+    inset 0 0 8px rgba(0,0,0,0.8), inset 0 2px 2px rgba(255,255,255,0.18),
+    0 1px 1px rgba(0,0,0,0.6);
 }
 .cons-lamp.alarm {
   background: radial-gradient(circle at 40% 35%, #ff7a5a, #7a1c10 70%);
   opacity: 0.4; transition: opacity 0.1s;
 }
-.cons-lamp.alarm.lit { box-shadow: inset 0 0 8px rgba(0,0,0,0.5), 0 0 14px rgba(240,70,50,0.8); }
+.cons-lamp.alarm.lit {
+  box-shadow:
+    inset 0 0 8px rgba(0,0,0,0.5), inset 0 2px 2px rgba(255,255,255,0.18),
+    0 0 14px rgba(240,70,50,0.8);
+}
 .cons-lamp.map {
   border-radius: 4px; font-size: 11px; letter-spacing: 1px; color: #cfe0c0;
   display: flex; align-items: center; justify-content: center;
@@ -335,38 +381,53 @@ html, body {
 }
 .cons-mon-cable {
   width: 60%; height: 8px; margin-bottom: -2px;
-  background: repeating-linear-gradient(90deg, #2a2620 0 3px, #453c2c 3px 6px);
+  background: repeating-linear-gradient(90deg, #222320 0 3px, #3a3b36 3px 6px);
   border-radius: 4px 4px 0 0;
 }
 .cons-mon-screen {
-  padding: 5px; border: 3px solid #6a5a38; border-radius: 6px;
-  background: #05100a; box-shadow: inset 0 0 10px rgba(0,0,0,0.9), 0 0 0 2px #201c14;
+  padding: 5px; border: 3px solid #131411; border-radius: 6px;
+  background: #05100a;
+  box-shadow:
+    inset 0 0 10px rgba(0,0,0,0.9), inset 0 1px 0 rgba(255,255,255,0.08),
+    0 0 0 2px #000, 0 2px 4px rgba(0,0,0,0.6);
 }
 .cons-portrait { display: block; border-radius: 3px; image-rendering: auto; }
 
 /* AIM indicator */
 #cons-aim { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; padding: 0 4px; }
-.cons-aim-label { font-size: 10px; letter-spacing: 2px; color: #b6a068; }
+.cons-aim-label { font-size: 10px; letter-spacing: 2px; color: #b3ab89; }
 .cons-aim-lamp {
-  width: 20px; height: 20px; border-radius: 50%; border: 2px solid #55492c;
+  width: 20px; height: 20px; border-radius: 50%; border: 2px solid #131411;
   background: radial-gradient(circle at 40% 35%, #2a3a2a, #0c140c 75%);
 }
 .cons-aim-lamp.on { background: radial-gradient(circle at 40% 35%, #8affaa, #1c6a34 75%); box-shadow: 0 0 10px rgba(90,220,120,0.8); }
-.cons-aim-state { font-size: 12px; letter-spacing: 2px; color: #9fb890; }
+.cons-aim-state { font-size: 12px; letter-spacing: 2px; color: #9a937a; }
 
 /* WEAPON panel */
 #cons-weapon { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; padding: 0 4px; min-width: 150px; }
-.cons-panel-label { font-size: 11px; letter-spacing: 4px; color: #d8c078; }
+.cons-panel-label { font-size: 11px; letter-spacing: 4px; color: #b3ab89; }
 .cons-weapon-screen {
   width: 150px; height: 52px; display: flex; align-items: center; justify-content: center;
-  background-color: #0d0f0a; background-size: cover; border: 2px solid #55492c; border-radius: 3px;
-  box-shadow: inset 0 0 10px rgba(0,0,0,0.9);
+  position: relative; overflow: hidden;
+  background-color: #0d0f0a; background-size: cover; border: 2px solid #131411; border-radius: 3px;
+  box-shadow: inset 0 0 10px rgba(0,0,0,0.9), 0 1px 0 rgba(255,255,255,0.05);
 }
-.cons-weapon-icon { image-rendering: auto; }
+.cons-weapon-screen::after { /* idle scanner sweep across the silhouette */
+  content: ''; position: absolute; top: 0; bottom: 0; width: 26px; left: -30%;
+  background: linear-gradient(90deg, transparent, rgba(226,194,106,0.10), transparent);
+  animation: wpnsweep 3.6s linear infinite; pointer-events: none;
+}
+@keyframes wpnsweep { 0% { left: -20%; } 100% { left: 110%; } }
+.cons-weapon-icon { image-rendering: auto; filter: drop-shadow(0 0 4px rgba(226,194,106,0.30)); }
+.cons-weapon-charge { /* reload progress line along the screen's foot */
+  position: absolute; left: 0; bottom: 0; height: 3px; width: 0;
+  background: #e0b840; box-shadow: 0 0 6px rgba(224,184,64,0.8);
+}
 .cons-weapon-mode {
   font-size: 15px; letter-spacing: 3px; color: #e8e2c8; font-weight: bold;
 }
-.cons-weapon-mode.warn { color: #e6c24a; }
+.cons-weapon-mode.warn { color: #e6c24a; animation: modeblink 0.55s steps(2, end) infinite; }
+@keyframes modeblink { 50% { opacity: 0.35; } }
 .cons-weapon-mode.empty { color: #e05a44; }
 
 /* ARMS panel (6-slot armoury grid) */
@@ -374,15 +435,20 @@ html, body {
 .cons-arms-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3px; }
 .arms-slot {
   position: relative; width: 58px; height: 32px;
-  border: 1px solid #4a4230; background: rgba(10,12,8,0.55); border-radius: 2px;
+  border: 1px solid #34352f; background: rgba(8,9,8,0.55); border-radius: 2px;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
 }
-.arms-slot.active { border-color: #e0b840; background: rgba(40,34,12,0.8); box-shadow: 0 0 6px rgba(224,184,64,0.4); }
+.arms-slot.active {
+  border-color: #e0b840; background: rgba(40,34,12,0.8);
+  box-shadow: 0 0 6px rgba(224,184,64,0.4);
+  animation: armsbreathe 1.6s ease-in-out infinite;
+}
+@keyframes armsbreathe { 50% { box-shadow: 0 0 11px rgba(224,184,64,0.7); } }
 .arms-slot.empty { opacity: 0.4; }
-.arms-key { position: absolute; top: 1px; left: 3px; font-size: 9px; color: #8a9478; }
+.arms-key { position: absolute; top: 1px; left: 3px; font-size: 9px; color: #8f8a72; }
 .arms-slot.active .arms-key { color: #e0b840; }
 .arms-icon { image-rendering: auto; margin-top: 3px; }
-.arms-rsv { font-size: 9px; letter-spacing: 0.5px; color: #a8b098; }
+.arms-rsv { font-size: 9px; letter-spacing: 0.5px; color: #a8a390; }
 .arms-slot.active .arms-rsv { color: #e8e2c8; }
 .arms-slot.dry { border-color: #7a2a20; }
 .arms-slot.dry .arms-rsv { color: #e05a44; }

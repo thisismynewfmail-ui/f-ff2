@@ -50,8 +50,13 @@ export class Vegetation {
     const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.16 * scale, 0.26 * scale, trunkH, 6), this.barkMat);
     trunk.position.y = trunkH / 2;
     g.add(trunk);
-    const canopy = this._cross(this.leavesMat, 3.4 * scale, 3.6 * scale);
-    canopy.position.y = trunkH * 0.82;
+    // The leaves texture is transparent across its lower ~17%, so the opaque
+    // canopy mass begins well above the quad's base. Seat the canopy low enough
+    // that that mass swallows the top of the trunk instead of floating above it
+    // with a see-through gap. (Quad grows up from its pivot; the leaf mass base
+    // sits at position.y + ~0.17 * canopyH.)
+    const canopy = this._cross(this.leavesMat, 3.6 * scale, 3.9 * scale);
+    canopy.position.y = trunkH * 0.60;
     g.add(canopy);
     parent.add(g);
     this.swayers.push({ node: canopy, phase: x * 0.7 + z * 1.3, amp: 0.035, speed: 0.9, axis: 'z' });

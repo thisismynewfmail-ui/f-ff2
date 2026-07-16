@@ -107,6 +107,33 @@ export const SHEET_LAYOUT = {
 };
 
 /**
+ * Layout of the Exploder sheet (npc_csgo_exploder_update_skin.png, 512x1024).
+ *
+ * It is a standard 3x4 walk-cycle sheet, BUT the hand-drawn figures overrun a
+ * naive 256px grid: the front/back rows are ~261px tall and every sprite's feet
+ * spill a dozen-odd pixels past their nominal cell boundary into the row below.
+ * Read on a uniform grid, that overspill surfaced as a slice of the previous
+ * row's boots at the TOP of the next cell — feet hovering above the head when
+ * the bomber turned. So each row is addressed by its own measured top/bottom
+ * band (`rowTop`/`rowBottom`, image-Y of the head line and the feet) instead of
+ * an even grid, cropping every facing to just its own figure — feet on the
+ * ground, no bleed. Columns stay an even 3-way split.
+ */
+export const EXPLODER_LAYOUT = {
+  cols: 3,
+  rows: 4,
+  imgW: 512,
+  imgH: 1024,
+  row: { front: 0, left: 1, right: 2, back: 3 },
+  walkFrames: [0, 1, 2, 1],
+  rowTop: [11, 283, 523, 764],       // head line (image-Y) per row
+  rowBottom: [272, 516, 755, 1023],  // feet baseline (image-Y) per row
+  // Cell aspect (column width / typical figure height) so the plane never
+  // distorts the sprite.
+  aspect: (512 / 3) / 256,
+};
+
+/**
  * Layout of the Spitter sheet (npc_csgo_midrange_double_pistol_gunholder.png,
  * 512x1500). It is a standard 3-column walk-cycle sheet with an EXTRA top row
  * of front-facing combat poses:

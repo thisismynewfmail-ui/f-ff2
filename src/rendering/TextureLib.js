@@ -173,10 +173,19 @@ function keyOutBackground(img, threshold = 232) {
 /**
  * Clear the bright, near-white fringe pixels left along a keyed silhouette.
  * A pixel is eroded only if it is (a) still opaque, (b) near-white/desaturated
- * (every channel high), and (c) touching a transparent pixel. Two passes peel
- * the 1–2px antialiased halo without eating the sprite body.
+ * — EVERY channel high, so the test keys on "blended toward the white
+ * backdrop" and leaves saturated colours (red robe, green vest, gold trim) and
+ * dark outlines untouched — and (c) touching a transparent pixel.
+ *
+ * `lightMin` is a min-channel floor: the antialiased halo ramps from the white
+ * backdrop down through desaturated greys (measured as low as ~150 on these
+ * sheets — the old 176 floor missed that band and left a grey rim), while true
+ * skin/coloured pixels keep at least one low channel and survive. Each pass
+ * peels one pixel; three passes clear the ~1–3px halo (95% of it) while the
+ * pass count caps erosion so large light areas (turbans, hair) only lose a
+ * hair's edge rather than dissolving.
  */
-function erodeWhiteFringe(d, w, h, passes = 2, lightMin = 176) {
+function erodeWhiteFringe(d, w, h, passes = 3, lightMin = 150) {
   const n = w * h;
   for (let pass = 0; pass < passes; pass++) {
     const alpha0 = new Uint8Array(n);

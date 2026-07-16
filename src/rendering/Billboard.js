@@ -32,14 +32,20 @@ export class SpriteBillboard {
 
   /**
    * UV rectangle for a sheet cell. Uniform grid by default; sheets that declare
-   * per-row feet baselines (`rowBottom`) are addressed by those anchors instead,
-   * so unevenly-pitched hand-drawn rows stay the same scale and feet-aligned.
+   * per-row anchors are addressed by those instead, so unevenly-pitched hand-
+   * drawn rows stay feet-aligned. Two anchor styles are supported: a shared
+   * `cellH` swung up from each row's feet baseline (`rowBottom`, the Spitter),
+   * or explicit per-row bands (`rowTop`+`rowBottom`, the Exploder) that crop
+   * each facing to exactly its own figure so no neighbouring row bleeds in.
    */
   _cellUV(col, row) {
     const L = this.layout;
     const u0 = col / L.cols, u1 = (col + 1) / L.cols;
     let v0, v1;
-    if (L.rowBottom) {
+    if (L.rowTop) {
+      v1 = 1 - L.rowTop[row] / L.imgH;    // cell top edge / head (higher v)
+      v0 = 1 - L.rowBottom[row] / L.imgH; // cell bottom edge / feet (lower v)
+    } else if (L.rowBottom) {
       const yBottom = L.rowBottom[row];
       const yTop = yBottom - L.cellH;
       v1 = 1 - yTop / L.imgH;    // cell top edge (higher v)

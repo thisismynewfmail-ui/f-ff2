@@ -54,7 +54,7 @@ export const WEAPON_CONFIGS = [
     damage: 10,
     pellets: 9,
     pierce: 1,
-    magSize: 2,        // a true break-action: two chambers, then the crane
+    magSize: 8,        // tube-fed: eight shells before it needs a reload
     reserveStart: 40,
     fireInterval: 0.42, // second trigger comes fast
     auto: false,
