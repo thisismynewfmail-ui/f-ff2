@@ -84,11 +84,12 @@ export const ZOMBIE_TYPES = {
     chaseSpeed: 5.4,     // only SLIGHTLY faster than the player's 5.0 walk
     sightRange: 60,
     // As tall as the other enemies: stands shoulder-to-shoulder with the
-    // eye-level Walker rather than as a runt. This sheet draws the character
-    // filling more of its cell than the Walker's (its head reaches higher in the
-    // frame), so a slightly SMALLER height than the Walker's 2.75 renders at the
-    // same on-screen stature — heads level with the horde, not towering over it.
-    height: 2.55,
+    // eye-level Walker rather than as a runt. The Exploder sheet is cropped to
+    // each figure's exact head-to-feet band (see EXPLODER_LAYOUT), so the head
+    // sits right at the top of the billboard and `height` IS the head altitude.
+    // The Walker's head lands at ~0.91 of its 2.75 m (headroom in its cell), so
+    // 2.5 here puts the bomber's head level with the horde, not towering.
+    height: 2.5,
     // Like the tall Walker, the visual sprite is over-tall, so navigate on a
     // normal humanoid capsule — otherwise the bomber snags its head on awnings
     // and door lintels and never reaches the player. (See Zombie.collisionHeight.)

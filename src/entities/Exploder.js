@@ -1,4 +1,6 @@
 import { Zombie } from './Zombie.js';
+import { SpriteBillboard } from '../rendering/Billboard.js';
+import { EXPLODER_LAYOUT } from '../rendering/TextureConfig.js';
 import { avoidObstacles, gaitWobble, norm } from '../ai/Steering.js';
 
 /**
@@ -48,6 +50,12 @@ export class Exploder extends Zombie {
     this._boomAt = 0;          // deathTimer at which the spent corpse is removed
     // Remember the resting sprite tint so the priming flash can be undone.
     this._baseColor = this.billboard.material.color.clone();
+  }
+
+  /** The Exploder's CS:GO sheet is addressed by per-row bands (see
+   *  EXPLODER_LAYOUT) so a turning bomber never shows the row above's boots. */
+  _makeBillboard(baseMaterial) {
+    return new SpriteBillboard(baseMaterial, this.height, EXPLODER_LAYOUT.aspect, EXPLODER_LAYOUT);
   }
 
   /** A primed fuse must never be knocked back into 'alerted' by a stray noise. */
