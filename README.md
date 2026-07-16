@@ -176,13 +176,20 @@ There is deliberately no command that touches the kill counter — the
   hands the mouse straight back to the game.
 - **HUD & stats:** a centred **Fallout-style console bar** — a mounted,
   screw-fixed, near-black scratched gunmetal panel (procedurally textured, the
-  same hard-worn housing as the side devices) carrying a
-  CLEAN/HURT/CRITICAL condition tab, a green CRT message log, a mechanical HP
-  odometer, **two separate ammo odometers — LOADED (in the gun) and RESERVE
-  (carried)**, a damage alarm lamp and a MAP lamp, a centre **player portrait**
-  on a green CRT monitor, an AIM ON/OFF indicator (lit while scoped), a WEAPON
-  panel (live silhouette + fire mode), and a six-slot ARMS armoury grid with
-  per-weapon reserves. The portrait is driven by health — a well-spaced
+  same hard-worn housing as the side devices) carrying two banks of glowing
+  **VACUUM TUBES** — on the left, VITALS (the condition readout as a heater
+  glow: steady when healthy, guttering when hurt, strobing red at critical,
+  surging on damage) and CHARGE (the loaded magazine as stored glow, visibly
+  re-charging across a reload); on the right, XMIT (blips hot on every shot)
+  and WAVE (a smoked trefoil-decal tube that rages during a wave and blinks
+  through a respite) — plus a green CRT message log with a phosphor refresh
+  sweep, a mechanical HP odometer, **two separate ammo odometers — LOADED (in
+  the gun) and RESERVE (carried)** whose wheels tick as they roll, a damage
+  alarm lamp and a MAP lamp, a centre **player portrait** on a green CRT
+  monitor, an AIM ON/OFF indicator (lit while scoped), a WEAPON panel (an
+  illustrated two-tone profile of the live weapon over a scanning screen with
+  a reload charge line), and a six-slot ARMS armoury grid with per-weapon
+  reserves. The portrait is driven by health — a well-spaced
   forward/left/right **look-around idle above 50% HP**, a stern face at ≤50%,
   a drained face at ≤25% (the CRT tints green → amber → red to match). Flanking
   it sit two **field-device side HUDs** — scratched near-black gunmetal

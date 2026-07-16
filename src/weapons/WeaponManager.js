@@ -262,6 +262,7 @@ export class WeaponManager {
       active: i === this.index,
       mag: w.mag,
       reserve: w.reserve,
+      magSize: w.config.magSize,
       reloading: w.reloading,
       reloadFrac: w.reloading ? 1 - w.reloadLeft / w.config.reloadTime : 0,
     }));
