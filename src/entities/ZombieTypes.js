@@ -23,6 +23,12 @@ export const ZOMBIE_TYPES = {
     // gazes to meet. (The width scales with height, so the sprite stays in
     // proportion.)
     height: 2.75,
+    // `height` above is the VISUAL/hittable size only. The navigation capsule
+    // uses this humanoid height instead, so the tall sprite doesn't snag its
+    // head on awnings, eaves and door lintels the old 1.75 m walker cleared —
+    // otherwise the horde gets stuck near buildings and never reaches the
+    // player. See Zombie.collisionHeight.
+    collisionHeight: 1.75,
     scale: 1.0,
     tint: null,          // uses the sheet as-is
     walkFps: 5,

@@ -51,6 +51,12 @@ export class Zombie extends Entity {
     // mould — a shade under to a shade over the type's base height.
     this.sizeScale = 0.9 + Math.random() * 0.2;
     this.height = config.height * config.scale * this.sizeScale;
+    // Navigation-capsule height. Defaults to the visual height, but a type may
+    // set `collisionHeight` to keep an over-tall sprite (e.g. the eye-level
+    // Walker) navigating like a normal humanoid so it doesn't snag its head on
+    // overhead geometry. Only the capsule uses this; the billboard and the
+    // weapon hit test still use the full visual `height`.
+    this.collisionHeight = (config.collisionHeight ?? config.height) * config.scale * this.sizeScale;
     this.radius = 0.42 * config.scale * this.sizeScale;
     // Per-zombie gait so movement weaves instead of tracking a straight line.
     this.gaitPhase = Math.random() * Math.PI * 2;
@@ -350,7 +356,7 @@ export class Zombie extends Entity {
       this.knockVX *= Math.pow(0.005, dt);
       this.knockVZ *= Math.pow(0.005, dt);
     }
-    this.world.collision.resolveCapsule(this.position, this.radius, this.height);
+    this.world.collision.resolveCapsule(this.position, this.radius, this.collisionHeight);
     this.position.y = this.world.groundHeightFor(this.position.x, this.position.z, this.position.y + 0.5);
 
     // --- present: melee attackers pounce on every strike (see JUMP_ARC above).

@@ -333,7 +333,7 @@ export class Exploder extends Zombie {
       this.knockVX *= Math.pow(0.005, dt);
       this.knockVZ *= Math.pow(0.005, dt);
     }
-    this.world.collision.resolveCapsule(this.position, this.radius, this.height);
+    this.world.collision.resolveCapsule(this.position, this.radius, this.collisionHeight);
     this.position.y = this.world.groundHeightFor(this.position.x, this.position.z, this.position.y + 0.5);
   }
 
