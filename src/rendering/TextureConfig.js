@@ -89,7 +89,10 @@ export const TEXTURES = {
 export const SPRITES = {
   npcPeaceful: 'npc_spritesheet_peacefull.png',
   zombieBasic: 'npc_zombie_basic_update.png',
-  npcExploder: 'npc_exploder.png',
+  // The Exploder's CS:GO retexture — a masked, turban'd bomber in a green vest
+  // strapped with red charges. Standard 3x4 walk-cycle sheet: the top (front)
+  // row carries the aim/fire frames the enemy shows the player while it primes.
+  npcExploder: 'npc_csgo_exploder_update_skin.png',
   spitter: 'npc_csgo_midrange_double_pistol_gunholder.png',
 };
 

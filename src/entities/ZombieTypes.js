@@ -83,9 +83,16 @@ export const ZOMBIE_TYPES = {
     wanderSpeed: 1.0,
     chaseSpeed: 5.4,     // only SLIGHTLY faster than the player's 5.0 walk
     sightRange: 60,
-    height: 1.7,
+    // As tall as the other enemies: matches the Walker's eye-level stature so
+    // the bomber stands shoulder-to-shoulder with the horde rather than as a
+    // runt. See the Walker's `height` note for the eye-to-eye derivation.
+    height: 2.75,
+    // Like the tall Walker, the visual sprite is over-tall, so navigate on a
+    // normal humanoid capsule — otherwise the bomber snags its head on awnings
+    // and door lintels and never reaches the player. (See Zombie.collisionHeight.)
+    collisionHeight: 1.75,
     scale: 1.0,
-    tint: null,          // the sheet is already coloured (green + red charge)
+    tint: null,          // the sheet is already coloured (green vest + red charges)
     walkFps: 7,
     attackWindup: 0.25,  // unused by the class; the real fuse is fuseTime
     attackCooldown: 1.0,
