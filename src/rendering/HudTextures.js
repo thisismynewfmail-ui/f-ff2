@@ -66,6 +66,41 @@ function brassStrip(w, h, seed = 7) {
   return c;
 }
 
+/** Near-black scratched gunmetal for the side-HUD field devices — the dark,
+ *  hard-worn detector housing of the reference unit: mottled charcoal steel,
+ *  lighter worn patches, glinting nicks and long thin scratches. */
+function gunmetalPanel(w, h, seed = 21) {
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  const ctx = c.getContext('2d');
+  const img = ctx.createImageData(w, h);
+  const d = img.data;
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const i = (y * w + x) * 4;
+    const grain = fbm(x * 0.5, y * 0.06, seed);          // fine horizontal brushing
+    const blotch = fbm(x * 0.025, y * 0.025, seed + 31); // large worn mottle
+    const pit = noise(x, y, seed + 77);
+    const sh = 0.75 + grain * 0.4 + (blotch - 0.5) * 0.3;
+    let r = 30 * sh, g = 31 * sh, b = 29 * sh;
+    const wear = Math.max(0, blotch - 0.62) * 2.2;       // paint rubbed to bare metal
+    r += 34 * wear; g += 33 * wear; b += 28 * wear;
+    if (pit > 0.992) { r += 52; g += 52; b += 46; }      // glinting nicks
+    else if (pit < 0.01) { r *= 0.4; g *= 0.4; b *= 0.4; } // dents
+    d[i] = Math.min(255, r); d[i + 1] = Math.min(255, g); d[i + 2] = Math.min(255, b); d[i + 3] = 255;
+  }
+  ctx.putImageData(img, 0, 0);
+  // long thin scratches over the top
+  for (let s = 0; s < 26; s++) {
+    const x0 = noise(s, 1, seed) * w, y0 = noise(s, 2, seed) * h;
+    const ang = noise(s, 3, seed) * Math.PI, len = 6 + noise(s, 4, seed) * 30;
+    ctx.strokeStyle = `rgba(150,152,142,${(0.05 + noise(s, 5, seed) * 0.1).toFixed(3)})`;
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(x0, y0);
+    ctx.lineTo(x0 + Math.cos(ang) * len, y0 + Math.sin(ang) * len);
+    ctx.stroke();
+  }
+  return c;
+}
+
 let _cache = null;
 export function hudTextures() {
   if (_cache) return _cache;
@@ -73,6 +108,7 @@ export function hudTextures() {
     bar: ironPanel(256, 160, { seed: 5, base: [52, 49, 50] }).toDataURL(),
     inset: ironPanel(128, 128, { seed: 11, base: [30, 30, 33], rust: [60, 40, 28] }).toDataURL(),
     brass: brassStrip(256, 24, 7).toDataURL(),
+    device: gunmetalPanel(256, 160, 21).toDataURL(),
   };
   return _cache;
 }
