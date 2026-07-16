@@ -27,7 +27,10 @@ export class AudioManager {
     on('weapon:empty', () => this.emptyClick());
     on('weapon:switch', ({ weapon }) => this.equipSound(weapon.config.id));
     on('footstep', ({ surface, sprinting }) => this.footstep(surface, sprinting));
-    on('pickup', ({ type }) => (type === 'health' ? this.healthChime() : type === 'key' ? this.keyChime() : this.ammoChime()));
+    on('pickup', ({ type }) => (type === 'health' ? this.healthChime()
+      : type === 'key' ? this.keyChime()
+      : type === 'companionCube' ? this.cubeChime()
+      : this.ammoChime()));
     on('player:damage', () => this.hurt());
     on('player:heal', () => {});
     on('player:died', () => this.deathSting());
@@ -40,6 +43,11 @@ export class AudioManager {
     on('secret:found', () => this.secretChime());
     on('secret:bell', () => this.bell());
     on('whisper', ({ intensity }) => this.whisper(intensity ?? 0.6));
+    on('anomaly:sound', ({ kind, pos }) => this.displaced(kind, pos));
+    on('phone:ring', ({ pos }) => this.phoneRing(pos));
+    on('phone:answer', () => this.phoneVoice());
+    on('car:alarm', ({ pos }) => this.carChirp(pos));
+    on('elevator:call', ({ pos }) => this.elevatorHum(pos));
     on('victory', () => this.fanfare());
   }
 
@@ -373,6 +381,97 @@ export class AudioManager {
       this._noise(0.12 + Math.random() * 0.12, 'bandpass', 1400 + Math.random() * 1600, 6,
         0.05 * intensity, i * 0.16 + Math.random() * 0.05, pan);
     }
+  }
+
+  /* ---------------- anomalies ---------------- */
+
+  /**
+   * Displaced ambience: real positions, wrong acoustics. Each sound is
+   * spatialised from its source and then panned to the OPPOSITE side, so the
+   * town's soundscape quietly disagrees with its geometry. Nothing here is
+   * loud; the wrongness is the point.
+   */
+  displaced(kind, pos) {
+    if (!this.ctx) return;
+    const s = this._spatial(pos, 95);
+    if (!s) return;
+    const pan = -s.pan;
+    const v = s.vol;
+    switch (kind) {
+      case 'drip': // water over the open pond, dripping from nothing
+        for (let i = 0; i < 3; i++) {
+          this._tone('sine', 2100 - i * 320, 0.05, 0.08 * v, i * 0.7 + Math.random() * 0.2, pan, 900);
+        }
+        break;
+      case 'train': // a long freight crossing; the town has no tracks
+        this._tone('sawtooth', 233, 1.9, 0.05 * v, 0, pan, 221);
+        this._tone('sawtooth', 311, 1.9, 0.05 * v, 0, pan, 296);
+        this._noise(2.0, 'lowpass', 480, 0.6, 0.045 * v, 0, pan);
+        break;
+      case 'toll': // the chapel bell, visibly motionless, tolls once
+        for (const [f, g, w] of [[392, 0.11, 0], [784, 0.035, 0], [388, 0.06, 1.1]]) {
+          this._tone('sine', f, 2.3, g * v, w, pan);
+        }
+        break;
+      case 'knock': // three knocks from inside the inner walls
+        for (let i = 0; i < 3; i++) {
+          this._noise(0.06, 'lowpass', 300, 1, 0.2 * v, i * 0.42, pan);
+          this._tone('sine', 82, 0.1, 0.16 * v, i * 0.42, pan, 55);
+        }
+        break;
+      case 'ding': // the elevator arrives. There is no elevator.
+        this._tone('sine', 1568, 0.5, 0.09 * v, 0, pan);
+        this._tone('sine', 1046, 0.7, 0.07 * v, 0.03, pan);
+        break;
+      case 'creak': // door hinges (honest direction, more or less)
+        this._noise(0.7, 'bandpass', 700, 8, 0.1, 0, pan, 300);
+        break;
+    }
+  }
+
+  /** The booth phone rings — panned to the wrong side of the street. */
+  phoneRing(pos) {
+    if (!this.ctx) return;
+    const s = this._spatial(pos, 70);
+    if (!s) return;
+    const pan = -s.pan;
+    for (const w of [0, 0.55]) {
+      for (let i = 0; i < 8; i++) {
+        this._tone('square', i % 2 ? 440 : 480, 0.05, 0.05 * s.vol, w + i * 0.05, pan);
+      }
+    }
+  }
+
+  /** What answers when you pick up: slow breathing under the static. */
+  phoneVoice() {
+    for (let i = 0; i < 3; i++) {
+      this._noise(0.55, 'bandpass', 380 + i * 60, 4, 0.1, i * 0.95, 0, 280);
+    }
+    this.whisper(0.9);
+  }
+
+  /** Car alarm chirp — honest stereo: this one is a tool, not a trick. */
+  carChirp(pos) {
+    const s = this._spatial(pos, 90);
+    if (!s) return;
+    this._tone('square', 880, 0.16, 0.11 * s.vol, 0, s.pan, 620);
+    this._tone('square', 1244, 0.16, 0.09 * s.vol, 0.18, s.pan, 900);
+  }
+
+  /** The call button clunks; far overhead, machinery shifts its weight. */
+  elevatorHum(pos) {
+    const s = this._spatial(pos, 40);
+    if (!s) return;
+    this.click(1400, 0.07);
+    this._tone('sine', 55, 2.6, 0.12 * s.vol, 0.1, s.pan, 46);
+    this._noise(2.2, 'bandpass', 180, 3, 0.05 * s.vol, 0.3, s.pan);
+  }
+
+  /** Taking the Companion Cube: a warm rising chord, almost grateful. */
+  cubeChime() {
+    const seq = [[392, 0], [494, 0.09], [587, 0.18], [784, 0.3]];
+    for (const [f, w] of seq) this._tone('triangle', f, 0.3, 0.12, w);
+    this._tone('sine', 1568, 0.8, 0.05, 0.42);
   }
 
   /* ---------------- world events ---------------- */

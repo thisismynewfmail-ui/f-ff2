@@ -54,6 +54,14 @@ export function housePartitions(w, d, door) {
   ]);
 }
 
+/** Maintenance room walled off across the back of a tower lobby. */
+export function lobbyPartitions(w, d, door) {
+  const { cw, cd } = canonXform(w, d, door);
+  return mapPartitions(w, d, door, [
+    { axis: 'x', at: -cd / 2 + 3.2, from: -cw / 2 + 0.3, to: cw / 2 - 0.3, gapAt: cw / 2 - 1.6, gapW: 1.2 },
+  ]);
+}
+
 /** Walled-off corner office in the far-right corner of a warehouse. */
 export function officePartitions(w, d, door) {
   const { cw, cd } = canonXform(w, d, door);
@@ -463,6 +471,33 @@ export class InteriorKit {
     return { group: g, collide: [0.32, 0.5, 0.32] };
   }
 
+  /** Potted lobby plant, long past watering but still green. */
+  plant() {
+    const g = new THREE.Group();
+    const pot = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.28, 0.4, 7), this.P.colorMat(0x6e4634));
+    pot.position.y = 0.2;
+    const leaf = this.w.veg._cross(this.w.veg.bushMat, 0.85, 0.95);
+    leaf.position.y = 0.34;
+    g.add(pot, leaf);
+    return { group: g, collide: [0.26, 0.4, 0.26] };
+  }
+
+  /** Sealed elevator: brushed doors, a call panel, a floor dial stuck between
+   *  floors. The doors never open — but the building remembers having floors. */
+  elevatorDoors() {
+    const g = new THREE.Group();
+    const frame = this.P.box(1.9, 2.5, 0.16, 'wallConcrete');
+    frame.position.y = 1.25;
+    const doors = this.P.box(1.5, 2.3, 0.1, 'doorMetal');
+    doors.position.set(0, 1.15, 0.06);
+    const seam = this.P.box(0.03, 2.3, 0.12, this.P.colorMat(0x14161a));
+    seam.position.set(0, 1.15, 0.06);
+    const dial = this.P.box(0.6, 0.18, 0.06, this.P.colorMat(0x2d2a24));
+    dial.position.set(0, 2.62, 0.06);
+    g.add(frame, doors, seam, dial);
+    return { group: g, collide: [0.95, 1.25, 0.12] };
+  }
+
   /* ---------------- building layouts (canonical: door at +Z) ---------- */
 
   _house(b) {
@@ -699,6 +734,70 @@ export class InteriorKit {
     this._put(b, this.shelf(1.8, false), -hw + 1.2, -hd + 0.55, { loot: [0, 0.9] });
     this._put(b, this.fridge(), -hw + 0.55, 0.8, { yaw: Math.PI / 2 });
     this._papers(b, 0.3, 0.6, 2);
+  }
+
+  /** Ground floor of the Meridian Tower: reception hall, dead elevators, and
+   *  the maintenance room behind the partition (where the cube waits). */
+  _towerLobby(b) {
+    const c = this._canon(b.spec);
+    const hw = c.cw / 2, hd = c.cd / 2;
+    // reception desk facing the entrance
+    this._put(b, this.counter(3.2), 0, hd - 3.4, { yaw: Math.PI, loot: [0, -0.9] });
+    this._put(b, this.chair(), 0.4, hd - 4.2, { yaw: Math.PI });
+    // waiting corner by the glass
+    this._put(b, this.sofa(), -hw + 1.4, hd - 1.3, { yaw: Math.PI });
+    this._put(b, this.plant(), -hw + 0.6, hd - 2.7);
+    this._put(b, this.plant(), hw - 0.6, hd - 0.8);
+    this._put(b, this.tippedChair(), -1.8, hd - 3.6);
+    // elevator bank on the west wall of the hall
+    for (const lz of [-0.6, 1.6]) {
+      this._put(b, this.elevatorDoors(), -hw + 0.55, lz, { yaw: -Math.PI / 2 });
+    }
+    // the call button still lights; the cars stopped answering years ago
+    const btn = this._pt(b, -hw + 1.1, 0.5);
+    this.w.addInteractable({
+      x: btn.x, z: btn.z, y: b.spec.y, radius: 2.0,
+      prompt: 'Call the elevator [E]',
+      onInteract: () => this.w.events.emit('elevator:call', { pos: { x: btn.x, y: b.spec.y + 1.5, z: btn.z } }),
+    });
+    // maintenance room behind the partition (north end)
+    this._put(b, this.locker(), hw - 2.6, -hd + 0.8, { yaw: Math.PI, loot: [0, 0.9] });
+    this._put(b, this.P.crateStack(2), 0.6, -hd + 1.2, { yaw: 0.4 });
+    this._stainOil(b, 1.8, -hd + 1.6, 1.3);
+    this._papers(b, -0.5, hd - 4.6, 5);
+    this._spawnAt(b, 2.4, 0.2);
+  }
+
+  /**
+   * The hollow cottage. From the street it is a normal house with curtained
+   * windows. Inside, a second set of walls stands less than a metre within the
+   * first — windowless, seamless — and the room they enclose is far too small
+   * for the roofline. A dark traffic light stands in the middle of it, and one
+   * chair faces the traffic light. Nothing else was ever moved in.
+   */
+  _hollow(b) {
+    const s = b.spec;
+    const c = this._canon(s);
+    const hw = c.cw / 2, hd = c.cd / 2;
+    const inset = 0.85, t = 0.18;
+    const H = s.h - 0.2;
+    const iw = hw - inset, id = hd - inset;
+    const wall = (cx, cz, lenX, lenZ) => {
+      const g = new THREE.Group();
+      const m = this.kit.box(lenX, H, lenZ, 'wallPlaster');
+      m.position.y = H / 2;
+      g.add(m);
+      this._put(b, { group: g }, cx, cz, { collide: [lenX / 2, H / 2, lenZ / 2] });
+    };
+    // front wall keeps a gap aligned with the real door; the threshold between
+    // the two walls reads almost a metre deep on the way in
+    wall((-iw - 0.65) / 2, id, iw - 0.65, t);
+    wall((iw + 0.65) / 2, id, iw - 0.65, t);
+    wall(0, -id, iw * 2, t);
+    wall(-iw, 0, t, id * 2);
+    wall(iw, 0, t, id * 2);
+    this._put(b, this.P.trafficLight(), 0.5, -0.7, { collide: [0.14, 1.7, 0.14] });
+    this._put(b, this.chair(), 0.5, 0.9, { yaw: Math.PI, loot: [0, 0.8] });
   }
 
   _boathouse(b) {
