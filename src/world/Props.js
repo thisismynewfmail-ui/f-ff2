@@ -722,23 +722,6 @@ export class PropKit {
     return { group: g, collide: [0.9, 3.8, 0.9], rotor };
   }
 
-  /** Scarecrow — it faces the road, not the field. */
-  scarecrow() {
-    const g = new THREE.Group();
-    const post = this.box(0.1, 2.2, 0.1, 'bark');
-    post.position.y = 1.1;
-    const arms = this.box(1.6, 0.09, 0.09, 'bark');
-    arms.position.y = 1.7;
-    const coat = this.box(0.7, 0.9, 0.3, this.colorMat(0x4a4f3a));
-    coat.position.y = 1.35;
-    const head = new THREE.Mesh(new THREE.SphereGeometry(0.2, 6, 5), this.colorMat(0xa08a44));
-    head.position.y = 2.05;
-    const hat = new THREE.Mesh(new THREE.ConeGeometry(0.28, 0.3, 6), this.colorMat(0x342c1e));
-    hat.position.y = 2.28;
-    g.add(post, arms, coat, head, hat);
-    return { group: g, collide: [0.2, 1.1, 0.2] };
-  }
-
   /** Rowboat pulled up on a shore. */
   rowboat() {
     const g = new THREE.Group();

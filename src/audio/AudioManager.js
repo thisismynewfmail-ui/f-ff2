@@ -48,6 +48,7 @@ export class AudioManager {
     on('phone:answer', () => this.phoneVoice());
     on('car:alarm', ({ pos }) => this.carChirp(pos));
     on('elevator:call', ({ pos }) => this.elevatorHum(pos));
+    on('crow:caw', ({ pos }) => this.crowCaw(pos));
     on('victory', () => this.fanfare());
   }
 
@@ -465,6 +466,17 @@ export class AudioManager {
     this.click(1400, 0.07);
     this._tone('sine', 55, 2.6, 0.12 * s.vol, 0.1, s.pan, 46);
     this._noise(2.2, 'bandpass', 180, 3, 0.05 * s.vol, 0.3, s.pan);
+  }
+
+  /** The scarecrow's crow bolting: two rasped caws, honestly panned — you can
+   *  see it go, so this one plays true, not mirrored. */
+  crowCaw(pos) {
+    const s = this._spatial(pos, 75);
+    if (!s) return;
+    for (const w of [0, 0.2]) {
+      this._noise(0.13, 'bandpass', 900, 6, 0.13 * s.vol, w, s.pan, 1350);
+      this._tone('sawtooth', 430, 0.13, 0.05 * s.vol, w, s.pan, 300);
+    }
   }
 
   /** Taking the Companion Cube: a warm rising chord, almost grateful. */

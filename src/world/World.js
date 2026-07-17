@@ -10,6 +10,7 @@ import { Zones, ZONES } from './Zones.js';
 import { Secrets } from './Secrets.js';
 import { Anomalies } from './Anomalies.js';
 import { CompanionCube } from './CompanionCube.js';
+import { Scarecrow } from './Scarecrow.js';
 
 /**
  * Assembles the whole town: terrain, six districts of buildings, streets,
@@ -81,6 +82,7 @@ export class World {
     this.secrets = new Secrets(this);
     this.anomalies = new Anomalies(this);
     this.companionCube = new CompanionCube(this);
+    this.scarecrow = new Scarecrow(this);
     return this;
   }
 
@@ -166,6 +168,7 @@ export class World {
     this.secrets.update(dt);
     this.anomalies.update(dt, time, cameraPos);
     this.companionCube.update(dt, time);
+    this.scarecrow.update(dt, time, cameraPos);
   }
 
   /* ---------------- construction ---------------- */
@@ -646,8 +649,8 @@ export class World {
       }
       this.veg.tuftField(this.group, rows);
     }
-    const scare = P.scarecrow();
-    this._prop(scare, 100, -193, { yaw: Math.PI }); // it faces the road, not the crops
+    // The scarecrow itself is a standalone aware entity (src/world/Scarecrow.js),
+    // built after nav.bake() at (100, -193) — it watches, sways and can be touched.
     for (const [x, z] of [[116, -186], [146, -143], [88, -178]]) this._prop(P.hayBale(), x, z, { yaw: (x * 3) % 1 });
     for (let i = 0; i < 3; i++) {
       for (let j = 0; j < 3; j++) this.veg.tree(this.group, 84 + i * 8, -136 + j * 7, 0.85);
