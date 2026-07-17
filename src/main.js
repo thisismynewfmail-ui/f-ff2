@@ -1,7 +1,12 @@
 import { Game } from './engine/Game.js';
+import { LoadingScreen } from './rendering/LoadingScreen.js';
+import { TEXTURES, SPRITES } from './rendering/TextureConfig.js';
 
 /**
- * Boot: load assets behind the loading bar, then hand over to the menu.
+ * Boot: load assets behind the animated loading screen (a Hilbert-curve
+ * "texture memory map" walked in step with real progress — see
+ * LoadingScreen.js), then hand over to the title menu, where the frame loop
+ * runs a cinematic camera orbit until the player enters the fog.
  *
  * `?test=1` enables the test harness: the game starts without pointer lock
  * and exposes window.__game so automated checks (see tests/) can drive the
@@ -14,20 +19,19 @@ const testMode = params.get('test') === '1';
 const canvas = document.getElementById('game-canvas');
 const hudRoot = document.getElementById('hud');
 const loadingEl = document.getElementById('loading');
-const loadingFill = document.getElementById('loading-fill');
-const loadingLabel = document.getElementById('loading-label');
+
+// The real asset manifest feeds the loading screen's ticker readout.
+const manifest = [...Object.values(TEXTURES), ...Object.values(SPRITES)];
+const loader = new LoadingScreen(loadingEl, manifest);
 
 const game = new Game(canvas, hudRoot, { testMode });
 
-game.load((frac) => {
-  loadingFill.style.width = (frac * 100).toFixed(0) + '%';
-  loadingLabel.textContent = 'LOADING TEXTURES… ' + Math.round(frac * 100) + '%';
-}).then(() => {
-  loadingEl.remove();
+game.load((frac) => loader.setProgress(frac)).then(async () => {
   game.start();
   if (testMode) window.__game = game;
+  await loader.finish(); // completion sweep + phyllotaxis burst, then fade
+  loader.destroy();
 }).catch((err) => {
-  loadingLabel.textContent = 'FAILED TO LOAD: ' + err.message;
-  loadingLabel.style.color = '#b03030';
+  loader.fail(err.message);
   console.error(err);
 });

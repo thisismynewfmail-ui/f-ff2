@@ -40,6 +40,9 @@ export class Player extends Entity {
     this.speedXZ = 0;
     this.zoomFactor = 1; // written by the weapon system (sniper scope)
     this.invulnTime = 0;
+    // settings (title menu): look-speed multiplier + inverted vertical look
+    this.sensitivity = 1;
+    this.invertY = false;
     // dev-console cheats
     this.noclip = false;
     this.godMode = false;
@@ -74,9 +77,9 @@ export class Player extends Entity {
     const input = this.input;
 
     // --- look
-    const sens = MOUSE_SENS / Math.sqrt(this.zoomFactor);
+    const sens = MOUSE_SENS * this.sensitivity / Math.sqrt(this.zoomFactor);
     this.yaw -= input.mouseDX * sens;
-    this.pitch -= input.mouseDY * sens;
+    this.pitch -= input.mouseDY * sens * (this.invertY ? -1 : 1);
     this.pitch = Math.max(-1.55, Math.min(1.55, this.pitch));
 
     if (this.noclip) {

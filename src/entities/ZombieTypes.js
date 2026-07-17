@@ -128,7 +128,13 @@ export const ZOMBIE_TYPES = {
     wanderSpeed: 1.0,
     chaseSpeed: 4.4,       // SLIGHTLY slower than the player's 5.0 walk
     sightRange: 60,
-    height: 1.72,
+    // A rangy silhouette: noticeably taller on average than the old 1.72 m
+    // (the per-zombie 0.9–1.1 size jitter still varies individuals around
+    // this new mean), so a planted Spitter reads over the horde.
+    height: 2.05,
+    // ...but navigate on the old humanoid capsule so the taller sprite never
+    // snags its head on awnings and door lintels (see Zombie.collisionHeight).
+    collisionHeight: 1.72,
     scale: 1.0,
     tint: null,            // the sheet is already coloured
     walkFps: 6,

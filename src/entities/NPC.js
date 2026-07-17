@@ -20,7 +20,7 @@ import { flee, avoidObstacles } from '../ai/Steering.js';
  */
 const LINES = [
   'They come out of the fog. They never stop coming.',
-  'The clock has said 3:33 since the night it started.',
+  'The clocktower keeps the sun\'s own hours now. Nobody winds it.',
   "Don't trust the shadows here. They point the wrong way.",
   'I counted the bells. There was one chime too many.',
   'If you reach the ridge... tell the chapel I kept my promise.',

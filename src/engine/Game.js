@@ -15,6 +15,7 @@ import { WaveSystem } from '../systems/WaveSystem.js';
 import { SpawnSystem } from '../systems/SpawnSystem.js';
 import { GameState } from '../systems/GameState.js';
 import { Inventory } from '../systems/Inventory.js';
+import { SaveSystem } from '../systems/SaveSystem.js';
 import { Effects } from '../rendering/Effects.js';
 import { WeaponView } from '../rendering/WeaponView.js';
 import { HUD } from '../rendering/HUD.js';
@@ -37,10 +38,18 @@ export class Game {
     this.time = 0;
     this._raf = 0;
     this._lastT = performance.now();
+    this.runStarted = false; // has THIS session's run been entered at least once
+    this._menuT = Math.random() * 400; // cinematic orbit clock (random start angle)
   }
 
   async load(onProgress) {
+    // Previous-session stats for the title screen (server API, then
+    // localStorage) — fetched alongside the textures.
+    this.saves = new SaveSystem();
+    const savesReady = this.saves.load();
+
     await this.texLib.loadAll(onProgress);
+    await savesReady;
 
     this.world = new World(this.events, this.texLib, this.renderer.scene).build();
     this.sky = new Sky(this.renderer, this.texLib);
@@ -73,9 +82,20 @@ export class Game {
     this.viewModel = new WeaponView(this.events, this.renderer, this.texLib);
     this.audio = new AudioManager(this.events);
     this.hud = new HUD(this.events, this.hudRoot, {
-      onStart: () => this.startPlaying(),
+      onStart: () => this.newGame(),
       onResume: () => this.startPlaying(),
       onRespawn: () => this.respawn(),
+      onReturnToRun: () => this.startPlaying(),
+      onResumeSave: () => this.resumeSession(),
+      onSave: () => this.saveSession(),
+      onQuitToTitle: () => this.quitToTitle(),
+      applySettings: (s) => this.applySettings(s),
+      // What the title menu needs to lay out its rail + last-session card.
+      menuState: () => ({
+        runStarted: this.runStarted,
+        save: this.saves.data,
+        saveWhere: this.saves.serverOk ? 'server' : 'local',
+      }),
     });
 
     this.devConsole = new DevConsole(this, this.hudRoot);
@@ -128,13 +148,90 @@ export class Game {
       this.input.releasePointerLock();
     });
     this.events.on('supplies:drop', () => this._dropSupplies());
+
+    // Clicking the Companion Cube in the satchel sets it back down on the
+    // ground just ahead of the player (see CompanionCube.dropAt).
+    this.events.on('inventory:drop', ({ type }) => {
+      if (type !== 'companionCube') return;
+      const p = this.player;
+      const fx = -Math.sin(p.yaw), fz = -Math.cos(p.yaw);
+      this.world.companionCube.dropAt(
+        p.position.x + fx * 1.5, p.position.z + fz * 1.5, p.position.y);
+      this.inventory.close();
+    });
   }
 
   startPlaying() {
     if (!this.state.to('playing')) return;
+    this.runStarted = true;
     this.hud.showScreen(null);
     this.audio.unlock();
     if (!this.testMode) this.input.requestPointerLock();
+  }
+
+  /** NEW GAME from the title. A live run parked behind the menu can only be
+   *  discarded by a full reboot — the world is built once per page load. */
+  newGame() {
+    if (this.runStarted) { location.reload(); return; }
+    this.startPlaying();
+  }
+
+  /** RESUME LAST SESSION: restore the saved run's counters, wave and gates,
+   *  then enter the fog. Only offered before this session's run begins. */
+  resumeSession() {
+    const s = this.saves.data;
+    if (s && !this.runStarted) {
+      this.score.restore({
+        kills: s.kills | 0,
+        points: s.points | 0,
+        byType: { ...(s.byType || {}) },
+        shotsFired: s.shotsFired | 0,
+        shotsHit: s.shotsHit | 0,
+      });
+      this.score.timePlayed = s.timePlayed || 0;
+      const wave = Math.max(1, s.wave | 0);
+      this.world.zones.syncTo(this.score.kills);
+      this.waves.restartAtWave(wave);
+      this.checkpoint = { wave, score: this.score.snapshot() };
+    }
+    this.startPlaying();
+  }
+
+  /** Snapshot the live run for persistence (see SaveSystem / scripts/serve.mjs). */
+  captureSession() {
+    const st = this.score.stats();
+    // Saving mid-wave resumes THAT wave; saving in a respite resumes the next.
+    const wave = Math.max(1, this.waves.state === 'respite' ? this.waves.wave + 1 : this.waves.wave);
+    return {
+      version: 1,
+      savedAt: new Date().toISOString(),
+      kills: st.kills, points: st.points, byType: st.byType,
+      shotsFired: st.shotsFired, shotsHit: st.shotsHit, accuracy: st.accuracy,
+      timePlayed: st.timePlayed,
+      wave,
+      secretsFound: this.world.secrets.found.size,
+      secretsTotal: this.world.secrets.total,
+      health: Math.round(this.player.health),
+    };
+  }
+
+  saveSession() { return this.saves.save(this.captureSession()); }
+
+  /** Back to the title screen; the run stays live behind it (RETURN TO RUN),
+   *  and is auto-saved so the LAST SESSION card is always current. */
+  quitToTitle() {
+    if (!this.state.to('menu')) return;
+    this.saveSession();
+    this.input.releasePointerLock();
+    this.hud.showScreen('menu');
+  }
+
+  /** Live settings from the title menu (persisted there in localStorage). */
+  applySettings(s) {
+    this.player.sensitivity = s.sensitivity;
+    this.player.invertY = !!s.invertY;
+    this.renderer.setBaseFov(s.fov);
+    this.audio.setVolume(s.volume);
   }
 
   pause() {
@@ -142,6 +239,14 @@ export class Game {
     this.hud.fillPauseStats(this.score.stats(), {
       found: this.world.secrets.found.size,
       total: this.world.secrets.total,
+      health: this.player.health,
+      maxHealth: this.player.maxHealth,
+      wave: {
+        n: this.waves.wave,
+        quota: this.waves.quota,
+        cleared: Math.min(this.waves.killsThisWave, this.waves.quota),
+        state: this.waves.state,
+      },
     });
     this.hud.showScreen('pause');
   }
@@ -188,12 +293,34 @@ export class Game {
 
   frame(dt) {
     // The satchel freezes the world while it's open (mouse is on the UI).
-    if (this.state.is('playing') && !this.inventory.open) {
+    if (this.state.is('menu')) {
+      this._menuCinematic(dt);
+    } else if (this.state.is('playing') && !this.inventory.open) {
       this.time += dt;
       this.update(dt);
     }
+    // No first-person weapon floating over the title cinematic.
+    this.renderer.overlayEnabled = !this.state.is('menu');
     this.renderer.render();
     this.input.endFrame();
+  }
+
+  /**
+   * The title-screen backdrop: a slow cinematic orbit of the plaza through
+   * the LIVE town — the same scene, sky and ambient systems the run uses
+   * (day cycle rolling, clouds drifting, the clocktower keeping time, the
+   * windmill turning), with the combat sim itself left untouched.
+   */
+  _menuCinematic(dt) {
+    this._menuT += dt;
+    const t = this._menuT;
+    const cam = this.renderer.camera;
+    const ang = t * 0.045;
+    const r = 38 + Math.sin(t * 0.021) * 6;
+    cam.position.set(Math.cos(ang) * r, 14.5 + Math.sin(t * 0.037) * 2.5, Math.sin(ang) * r);
+    cam.lookAt(0, 3.5, 0);
+    this.sky.update(dt, cam.position);
+    this.world.updateAmbient(dt, this.time + t, cam.position);
   }
 
   update(dt) {

@@ -20,12 +20,63 @@
  * then open http://localhost:8000/
  */
 import { createServer } from 'node:http';
-import { readFile, stat } from 'node:fs/promises';
+import { readFile, stat, writeFile, mkdir } from 'node:fs/promises';
 import { extname, join, normalize, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const PORT = Number(process.argv[2] || process.env.PORT || 8000);
+// Where the last-session save lives (see the /api/session endpoints below).
+const SAVE_DIR = join(ROOT, 'save');
+const SAVE_FILE = join(SAVE_DIR, 'last_session.json');
+
+/**
+ * Session-stats API — lets the game persist a run across browser sessions so
+ * the title screen can show the previous session's stats (and RESUME it):
+ *   GET  /api/session -> the saved session JSON, or {"exists":false}
+ *   POST /api/session -> body (JSON, <= 64 KB) written to save/last_session.json
+ * The client falls back to localStorage when these endpoints are absent
+ * (e.g. static hosting), so the API is an enhancement, not a requirement.
+ */
+async function handleSessionApi(req, res) {
+  res.setHeader('Cache-Control', 'no-store');
+  if (req.method === 'GET') {
+    try {
+      const buf = await readFile(SAVE_FILE);
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(buf);
+    } catch {
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end('{"exists":false}');
+    }
+    return;
+  }
+  if (req.method === 'POST') {
+    let size = 0;
+    const chunks = [];
+    req.on('data', (c) => {
+      size += c.length;
+      if (size > 65536) { req.destroy(); return; }
+      chunks.push(c);
+    });
+    req.on('end', async () => {
+      try {
+        const body = Buffer.concat(chunks).toString('utf8');
+        JSON.parse(body); // validate — never write junk to disk
+        await mkdir(SAVE_DIR, { recursive: true });
+        await writeFile(SAVE_FILE, body);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end('{"ok":true}');
+        console.log(`POST /api/session  ->  ${SAVE_FILE} (${size} bytes)`);
+      } catch {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end('{"ok":false,"error":"invalid JSON"}');
+      }
+    });
+    return;
+  }
+  res.writeHead(405); res.end('Method not allowed');
+}
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -48,6 +99,7 @@ const server = createServer(async (req, res) => {
   try {
     // Strip the query string (our cache-busting ?v=… and anything else).
     let path = decodeURIComponent(req.url.split('?')[0]);
+    if (path === '/api/session') { await handleSessionApi(req, res); return; }
     if (path === '/' || path === '') path = '/index.html';
     // Resolve within ROOT and refuse to escape it (no ../ traversal).
     const filePath = normalize(join(ROOT, path));

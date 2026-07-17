@@ -1,6 +1,7 @@
 import { WIN_KILLS } from '../systems/ScoreSystem.js';
 import { Portrait } from './Portrait.js';
 import { hudTextures } from './HudTextures.js';
+import { TitleMenu } from './TitleMenu.js';
 
 /**
  * Retro survival-horror HUD, rendered as a DOM overlay.
@@ -15,13 +16,10 @@ import { hudTextures } from './HudTextures.js';
  * near-black scratched gunmetal panel with corner screws, dark bezels and
  * stencil lettering, carrying, left to right —
  *
- *   - the left VACUUM TUBE bank (see _buildTube): VITALS — the old condition
- *     tab reborn as glass and glow; its heater burns steady when healthy,
- *     gutters when hurt, strobes red at critical and surges on damage — and
- *     CHARGE, the loaded magazine as stored glow that visibly re-charges
- *     across a reload and dies to a sputter when the gun runs dry
  *   - a green CRT MESSAGE LOG (the flavour feed: pickups, sightings,
- *     secrets, orders) with a slow phosphor refresh sweep
+ *     secrets, orders) with a slow phosphor refresh sweep, seated flush at
+ *     the panel's left edge (the old left vacuum-tube bank is gone; the
+ *     right bank carries the console's remaining glass)
  *   - mechanical HP and AMMO odometer counters whose wheels tick as they roll
  *   - a red alarm lamp (pulses on damage) and a MAP lamp
  *   - the centre PLAYER PORTRAIT in a green CRT monitor (see Portrait.js —
@@ -48,6 +46,12 @@ import { hudTextures } from './HudTextures.js';
  * floating over the scene: the fly-in ARMORY names, subtitles, damage
  * vignette, scope overlay and the menu/pause/death/victory screens. Run
  * stats stay on the pause screen as circular gauges (never on the HUD).
+ *
+ * The title menu itself lives in TitleMenu.js (the CS-style rail over the
+ * live 3D town); the pause screen carries the run's stat rings — health,
+ * wave clearance, accuracy, progress, secrets, score, time — plus RESUME,
+ * a working SAVE RUN button (persists through Game.saveSession to the dev
+ * server / localStorage) and QUIT TO TITLE.
  */
 export class HUD {
   constructor(events, root, actions) {
@@ -62,7 +66,6 @@ export class HUD {
     this._menuShown = false;
     this._scoped = false;
     this._xmitSurge = 0;    // XMIT tube kick, set on every weapon:fire
-    this._vitalsDrop = 0;   // VITALS tube gutter timer (dropouts while hurt)
     this._tex = hudTextures();
     this._build();
     this._wire();
@@ -535,13 +538,10 @@ export class HUD {
     // same corner fixing screws as the side-HUD field devices
     for (const c of ['tl', 'tr', 'bl', 'br']) this._el('div', null, bar, 'screw ' + c);
 
-    // --- left tube bank: VITALS + CHARGE. VITALS replaces the old CLEAN
-    // text tab — the same condition readout, now carried entirely by glass
-    // and glow (see update for the drive logic). Its dome rides above the
-    // panel edge the way the tab used to break the console silhouette. ---
-    const rackL = this._el('div', 'cons-tubes-l', bar, 'cons-tubes');
-    this.tubeVitals = this._buildTube(rackL, { kind: 'st', w: 40, h: 98, label: 'VITALS', etch: 'V-300' });
-    this.tubeCharge = this._buildTube(rackL, { kind: 'gt', w: 32, h: 86, label: 'CHARGE', etch: 'C-807' });
+    // (The old left vacuum-tube bank — VITALS + CHARGE — is gone: health
+    // lives in the HP odometer + portrait, the magazine in the AMMO meters
+    // and the reload charge line. The console starts at the CRT log; the
+    // dock's flex centring keeps the trimmed bar balanced in the window.)
 
     // --- message log (green CRT) ---
     const logWrap = this._el('div', 'cons-log-wrap', bar);
@@ -618,21 +618,20 @@ export class HUD {
   }
 
   _buildScreens() {
-    this.menuEl = this._screen('menu', `
-      <h1>F-FPS</h1>
-      <h2>THE FOG TOOK THE TOWN. TAKE IT BACK.</h2>
-      <p class="story">Kill <b>250,000</b> of them. That is the number. The survivor by the well
-      did the arithmetic, and the town opens itself, street by street, to those who keep count.</p>
-      <div class="controls">
-        <span>WASD — MOVE</span><span>MOUSE — LOOK / FIRE</span><span>SHIFT — SPRINT</span>
-        <span>CTRL — CROUCH</span><span>SPACE — JUMP</span><span>1-5 — WEAPONS</span>
-        <span>R — RELOAD</span><span>RMB — SCOPE (SNIPER)</span><span>E — INTERACT</span><span>TAB — SATCHEL</span><span>ESC — PAUSE</span>
-      </div>
-      <button id="btn-start">ENTER THE FOG</button>`);
+    // The title menu: its own module (CS-style rail + cards) over the live
+    // 3D town — the .menu-screen class swaps the opaque screen ground for a
+    // transparent vignette so the cinematic orbit shows through.
+    this.menuEl = this._el('div', 'screen-menu', null, 'screen menu-screen');
+    this.menuEl.style.display = 'none';
+    this.titleMenu = new TitleMenu(this.menuEl, this.actions);
     this.pauseEl = this._screen('pause', `
       <h1>PAUSED</h1>
       <div id="pause-stats" class="statrings"></div>
-      <button id="btn-resume">RESUME</button>`);
+      <div class="pause-actions">
+        <button id="btn-resume">RESUME</button>
+        <button id="btn-save" class="btn-secondary">SAVE RUN</button>
+        <button id="btn-quit" class="btn-secondary">QUIT TO TITLE</button>
+      </div>`);
     this.deadEl = this._screen('dead', `
       <h1 class="blood">YOU DIED</h1>
       <p class="story">The fog closes in over you. But the count survives. It always survives.</p>
@@ -642,7 +641,7 @@ export class HUD {
       <h1 class="gold">250,000</h1>
       <h2>THE TOWN IS SILENT. YOU COUNTED EVERY ONE.</h2>
       <div id="victory-stats" class="statgrid"></div>
-      <p class="story">The fog lifts. The clock on the tower finally moves.</p>`);
+      <p class="story">The fog lifts. The clock on the tower strikes a kinder hour.</p>`);
   }
 
   _screen(id, html) {
@@ -654,6 +653,10 @@ export class HUD {
 
   showScreen(which) {
     for (const s of [this.menuEl, this.pauseEl, this.deadEl, this.victoryEl]) s.style.display = 'none';
+    // While the title menu is up the combat chrome (dock, crosshair) hides so
+    // the cinematic reads clean; see the #hud.on-menu rules in styles.css.
+    this.root.classList.toggle('on-menu', which === 'menu');
+    if (which === 'menu') this.titleMenu.refresh();
     if (which) {
       const el = { menu: this.menuEl, pause: this.pauseEl, dead: this.deadEl, victory: this.victoryEl }[which];
       el.style.display = 'flex';
@@ -661,9 +664,21 @@ export class HUD {
   }
 
   _wire() {
-    document.getElementById('btn-start').addEventListener('click', () => this.actions.onStart());
     document.getElementById('btn-resume').addEventListener('click', () => this.actions.onResume());
     document.getElementById('btn-respawn').addEventListener('click', () => this.actions.onRespawn());
+    document.getElementById('btn-quit').addEventListener('click', () => this.actions.onQuitToTitle());
+    // SAVE RUN: persist the live run (server first, localStorage fallback)
+    // and report where it landed right on the button.
+    document.getElementById('btn-save').addEventListener('click', async (e) => {
+      const b = e.currentTarget;
+      if (b.disabled) return;
+      b.disabled = true;
+      b.textContent = 'SAVING…';
+      let where = null;
+      try { where = await this.actions.onSave(); } catch { /* fall through to FAILED */ }
+      b.textContent = where === 'server' ? 'SAVED ✓' : where === 'local' ? 'SAVED (LOCAL) ✓' : 'SAVE FAILED';
+      setTimeout(() => { b.textContent = 'SAVE RUN'; b.disabled = false; }, 1400);
+    });
 
     const on = this.events.on.bind(this.events);
     on('subtitle', ({ text }) => { this.subtitle(text); this.logMsg(text); });
@@ -920,16 +935,27 @@ export class HUD {
       </div><div class="ring-label">${label}</div></div>`;
   }
 
-  fillPauseStats(stats, secrets) {
+  /**
+   * The pause screen's stat meters. `extra` carries the live-run readouts the
+   * score stats don't know about: { found, total (secrets), health, maxHealth,
+   * wave: { n, quota, cleared, state } }.
+   */
+  fillPauseStats(stats, extra) {
     const el = document.getElementById('pause-stats');
     const t = stats.timePlayed;
     const hh = Math.floor(t / 3600), mm = Math.floor((t % 3600) / 60), ss = Math.floor(t % 60);
     const time = (hh ? hh + ':' : '') + String(mm).padStart(2, '0') + ':' + String(ss).padStart(2, '0');
-    const secRatio = secrets.total ? secrets.found / secrets.total : 0;
+    const secRatio = extra.total ? extra.found / extra.total : 0;
+    const hpRatio = extra.maxHealth ? extra.health / extra.maxHealth : 1;
+    const w = extra.wave || { n: 0, quota: 0, cleared: 0, state: 'respite' };
+    const waveRatio = w.state === 'active' && w.quota ? Math.min(1, w.cleared / w.quota) : w.n ? 1 : 0;
     el.innerHTML =
+      this._ring('HEALTH', hpRatio, `${Math.ceil(extra.health ?? 0)}`, `/ ${extra.maxHealth ?? 100}`, hpRatio < 0.3 ? 'red' : 'green') +
+      this._ring('WAVE', waveRatio, w.n ? String(w.n) : '—',
+        w.state === 'active' ? `${w.cleared}/${w.quota} CLEAR` : 'RESPITE', 'red') +
       this._ring('ACCURACY', stats.accuracy, `${(stats.accuracy * 100).toFixed(0)}%`, `${stats.shotsHit}/${stats.shotsFired}`, 'blue') +
       this._ring('PROGRESS', stats.kills / WIN_KILLS, stats.kills.toLocaleString('en-US'), `/ ${(WIN_KILLS / 1000) | 0}k`, 'green') +
-      this._ring('SECRETS', secRatio, `${secrets.found}/${secrets.total}`, 'FOUND') +
+      this._ring('SECRETS', secRatio, `${extra.found}/${extra.total}`, 'FOUND') +
       this._ring('SCORE', 1, stats.points.toLocaleString('en-US'), 'POINTS', 'green') +
       this._ring('SURVIVED', 1, time, 'TIME', 'blue');
   }
@@ -944,19 +970,7 @@ export class HUD {
     const hpFrac = d.health / d.maxHealth;
     const cur = d.weapons.find((w) => w.active);
 
-    // --- console: VITALS tube (the condition readout) + HP odometer ---
-    // Healthy: a steady heater with a slow breath. Hurt: the glow gutters —
-    // random brief dropouts, more frequent the worse it gets. Critical: a
-    // harsh red strobe. Fresh damage surges the heater white-hot (_alarm).
-    this.tubeVitals.el.classList.toggle('red', hpFrac <= 0.25);
-    let vit = 0.34 + hpFrac * 0.5;
-    vit *= 1 - 0.05 * (0.5 + 0.5 * Math.sin(now / 430));
-    if (hpFrac <= 0.5 && Math.random() < dt * (hpFrac <= 0.25 ? 9 : 3)) {
-      this._vitalsDrop = 0.05 + Math.random() * 0.12;
-    }
-    this._vitalsDrop = Math.max(0, this._vitalsDrop - dt);
-    if (this._vitalsDrop > 0) vit *= hpFrac <= 0.25 ? 0.2 : 0.45;
-    this.tubeVitals.set(Math.min(1, vit + this._alarm * 0.55));
+    // --- console: HP odometer + portrait (the condition readouts) ---
     this._odometer(this.hpOdo, Math.ceil(d.health));
     this.hpOdo.classList.toggle('low', hpFrac < 0.5);
     this.hpOdo.classList.toggle('crit', hpFrac < 0.25);
@@ -977,21 +991,6 @@ export class HUD {
       }
       this.resOdo.classList.toggle('empty', cur.reserve === 0 && cur.mag === 0);
     }
-
-    // --- console: CHARGE tube — the loaded magazine as stored glow. A
-    // reload visibly re-charges it (reloadFrac ramp + crackle); a gun run
-    // fully dry leaves it dark with the odd dying sputter. ---
-    let chg;
-    if (cur.mag === Infinity) {
-      chg = 0.3 + 0.05 * Math.sin(now / 520);                          // melee: idle warmth
-    } else if (cur.reloading) {
-      chg = 0.12 + 0.8 * cur.reloadFrac + 0.08 * Math.sin(now / 40);   // charging ramp
-    } else if (cur.mag === 0 && cur.reserve === 0) {
-      chg = Math.random() < 0.01 ? 0.3 : 0.05;                          // dead sputter
-    } else {
-      chg = 0.14 + 0.72 * (cur.mag / cur.magSize);
-    }
-    this.tubeCharge.set(chg);
 
     // --- console: XMIT tube — kicks to full on every weapon:fire, then
     // cools; automatic fire holds it glowing like a working transmitter. ---

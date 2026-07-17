@@ -5,7 +5,10 @@
  * releases pointer lock and freezes the sim through a callback); pressing Tab
  * again — or Escape — closes it and hands the mouse straight back to the game.
  * Quest items arrive through the same 'pickup' events the rest of the game
- * uses, so nothing here reaches into other systems.
+ * uses, so nothing here reaches into other systems. DROPPABLE items (the
+ * Companion Cube) can be clicked in their slot to set them back down: the
+ * item leaves the satchel and an 'inventory:drop' event tells the owning
+ * system to put it back into the world.
  *
  * The callbacks decouple it from the Game:
  *   canOpen() -> boolean   may the inventory open right now (i.e. in play)
@@ -14,6 +17,7 @@
  */
 const SLOTS = 20;
 const STORABLE = new Set(['key', 'companionCube']); // ammo/health are consumed, not stored
+const DROPPABLE = new Set(['companionCube']);       // click-to-drop back into the world
 
 export class Inventory {
   constructor(events, root, callbacks = {}) {
@@ -45,10 +49,22 @@ export class Inventory {
       <div class="inv-panel">
         <div class="inv-title">SATCHEL <span class="inv-hint">TAB / ESC TO CLOSE</span></div>
         <div class="inv-grid"></div>
-        <div class="inv-foot">Quest items you carry are kept here.</div>
+        <div class="inv-foot">Quest items you carry are kept here. Click the Companion Cube to set it down.</div>
       </div>`;
     root.appendChild(this.el);
     this.gridEl = this.el.querySelector('.inv-grid');
+
+    // Click a droppable item to set it down (delegated — slots re-render).
+    this.gridEl.addEventListener('click', (e) => {
+      const slot = e.target.closest('.inv-slot.droppable');
+      if (!slot) return;
+      const it = this.items.get(slot.dataset.label);
+      if (!it) return;
+      it.count--;
+      if (it.count <= 0) this.items.delete(it.label);
+      this._render();
+      this.events.emit('inventory:drop', { type: it.type, label: it.label });
+    });
   }
 
   _wire() {
@@ -100,9 +116,12 @@ export class Inventory {
     for (let i = 0; i < SLOTS; i++) {
       const it = list[i];
       if (it) {
-        html += `<div class="inv-slot filled" title="${it.label}">`
+        const droppable = DROPPABLE.has(it.type);
+        html += `<div class="inv-slot filled${droppable ? ' droppable' : ''}" data-label="${it.label}"`
+          + ` title="${droppable ? 'Click to set it down' : it.label}">`
           + `<canvas class="inv-icon" width="40" height="40"></canvas>`
           + (it.count > 1 ? `<span class="inv-count">${it.count}</span>` : '')
+          + (droppable ? '<span class="inv-drop">DROP</span>' : '')
           + `<span class="inv-name">${it.label}</span></div>`;
       } else {
         html += '<div class="inv-slot"></div>';

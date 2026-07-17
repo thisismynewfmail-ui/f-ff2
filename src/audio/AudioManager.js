@@ -13,6 +13,7 @@ export class AudioManager {
     this.events = events;
     this.ctx = null;
     this.master = null;
+    this.volume = 0.5; // master gain; settable before/after unlock (settings)
     this._noiseBuf = null;
     this.moanIntensity = 0;
     this._moanTimer = 1;
@@ -59,7 +60,7 @@ export class AudioManager {
     if (!AC) return;
     this.ctx = new AC();
     this.master = this.ctx.createGain();
-    this.master.gain.value = 0.5;
+    this.master.gain.value = this.volume;
     // A bus compressor gives every gunshot its punch and keeps the loudest
     // weapon from swamping the mix — the shots are level-matched into it.
     const comp = this.ctx.createDynamicsCompressor();
@@ -74,6 +75,12 @@ export class AudioManager {
     this._noiseBuf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
     const d = this._noiseBuf.getChannelData(0);
     for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+  }
+
+  /** Settings hook: master volume 0..1, applied live once unlocked. */
+  setVolume(v) {
+    this.volume = Math.max(0, Math.min(1, Number.isFinite(+v) ? +v : 0.5));
+    if (this.master) this.master.gain.value = this.volume;
   }
 
   get t() { return this.ctx.currentTime; }
