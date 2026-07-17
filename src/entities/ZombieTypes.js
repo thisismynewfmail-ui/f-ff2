@@ -106,7 +106,11 @@ export const ZOMBIE_TYPES = {
     fuseTime: 0.25,        // quarter-second wind-up before an attack detonation
     deathExplodeDelay: 0.5,// half-second into the death anim it blows up too
     retryCooldown: 1.0,    // lockout after a fuse the target escaped
-    explodeRadius: 4.0,    // blast reach (metres)
+    explodeRadius: 4.0,    // self-detonate (attack) blast reach (metres)
+    // A killed Exploder's corpse detonates over TWICE the AREA of its attack
+    // blast: area = πr², so doubling it means radius × √2 (π(r√2)² = 2πr²).
+    // The self-detonate blast above is unchanged; only the killed one grows.
+    deathExplodeRadius: 4.0 * Math.SQRT2, // ≈ 5.657 m — 2× the area of explodeRadius
     explodeDamage: 80,     // damage at the centre, linear falloff to the edge
     explodeKnockback: 6,   // shove imparted to caught zombies
   },

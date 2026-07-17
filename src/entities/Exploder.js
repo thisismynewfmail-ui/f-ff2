@@ -114,7 +114,7 @@ export class Exploder extends Zombie {
       if (!this._exploded) {
         this.billboard.deathPose(Math.min(1, this.deathTimer / this.config.deathExplodeDelay));
         if (this.deathTimer >= this.config.deathExplodeDelay) {
-          this._explode(ctx);
+          this._explode(ctx, true);   // killed-corpse blast: the larger radius
           this._boomAt = this.deathTimer + BOOM_LINGER;
         }
       } else if (this.deathTimer >= this._boomAt) {
@@ -286,7 +286,7 @@ export class Exploder extends Zombie {
     }
     this._fuse -= dt;
     if (this._fuse <= 0) {
-      this._explode(ctx);            // immediate attack blast
+      this._explode(ctx, false);     // immediate attack blast (unchanged radius)
       this._enterDeath(false);       // scores + death sound; no ammo (its own doing)
       this._boomAt = this.deathTimer + BOOM_LINGER;
       return 'boom';
@@ -298,27 +298,33 @@ export class Exploder extends Zombie {
    * Detonate: swap the sprite for the blast, announce it (FX + sound) and push
    * radial damage through the ordinary takeDamage pipeline so it hurts the
    * player, chain-triggers other exploders and can gib nearby zombies.
+   *
+   * `isDeath` selects the blast size: a killed corpse detonates over the larger
+   * `deathExplodeRadius` (twice the area), a self-detonation/attack uses the
+   * unchanged `explodeRadius`. The damage-at-centre is the same either way; the
+   * bigger radius just extends the falloff so the killed blast reaches farther.
    */
-  _explode(ctx) {
+  _explode(ctx, isDeath = false) {
     if (this._exploded) return;
     this._exploded = true;
     this._resetPrimeLook();
     this.billboard.mesh.visible = false;   // the sprite is replaced by the explosion
-    this.events.emit('exploder:explode', { pos: this.position.clone(), radius: this.config.explodeRadius });
+    const radius = isDeath ? this.config.deathExplodeRadius : this.config.explodeRadius;
+    this.events.emit('exploder:explode', { pos: this.position.clone(), radius });
 
-    this._blast(ctx.player, false);
-    for (const z of ctx.zombies || EMPTY) if (z !== this) this._blast(z, true);
-    for (const f of ctx.friendlies || EMPTY) this._blast(f, false);
+    this._blast(ctx.player, false, radius);
+    for (const z of ctx.zombies || EMPTY) if (z !== this) this._blast(z, true, radius);
+    for (const f of ctx.friendlies || EMPTY) this._blast(f, false, radius);
   }
 
-  _blast(target, isZombie) {
+  _blast(target, isZombie, radius) {
     if (!target || target.alive === false || target.state === 'dead') return;
     const cfg = this.config;
     const dx = target.position.x - this.position.x;
     const dz = target.position.z - this.position.z;
     const d = Math.hypot(dx, dz);
-    if (d >= cfg.explodeRadius) return;
-    const dmg = cfg.explodeDamage * (1 - d / cfg.explodeRadius); // linear falloff
+    if (d >= radius) return;
+    const dmg = cfg.explodeDamage * (1 - d / radius); // linear falloff
     if (dmg <= 0) return;
     if (isZombie) {
       target.takeDamage(dmg, norm(dx, dz), cfg.explodeKnockback, false); // false: not a player kill
