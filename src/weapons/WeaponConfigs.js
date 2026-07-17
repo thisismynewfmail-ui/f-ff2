@@ -82,7 +82,7 @@ export const WEAPON_CONFIGS = [
     damage: 10,
     pellets: 1,
     pierce: 1,
-    magSize: 30,
+    magSize: 60,        // doubled from the standard 30-round box
     reserveStart: 120,
     fireInterval: 0.095,
     auto: true,
@@ -106,7 +106,7 @@ export const WEAPON_CONFIGS = [
     fireMode: 'BOLT',
     slot: 4,
     melee: false,
-    damage: 90,
+    damage: 5000, // one-shots every enemy (the toughest, the Tank, has 220 HP)
     pellets: 1,
     pierce: 3, // punches through a line of them
     magSize: 5,
