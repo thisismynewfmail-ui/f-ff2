@@ -9,21 +9,40 @@ import { canonXform } from './Interiors.js';
  * Built to the classic reference: pale chamfered corner blocks over a grey
  * recessed core, magenta seam lines in the edge grooves, and a circular plate
  * on every face carrying a pink heart. Interact to take it; it stows in the
- * satchel and stays with you for the rest of the run.
+ * satchel — and clicking it there sets it back down on the ground just ahead
+ * of you (see dropAt, wired through the 'inventory:drop' event), where it can
+ * be picked up again.
+ *
+ * Seating: the assembled mesh's lowest geometry (the 45°-rotated chamfer caps
+ * on the bottom corners) reaches BELOW the group origin, so placing the
+ * origin at floor height used to sink those corners into the floor. The
+ * measured rest offset (bounding-box min) now lifts the cube so its lowest
+ * point touches the surface exactly — indoors on the floor plate, outdoors on
+ * the terrain.
  */
+const CUBE_SIZE = 0.68;
+const FLOOR_PLATE_TOP = 0.11; // interior floor: 0.1 slab centred at y 0.06
+const DROP_GRAVITY = 16;
+
 export class CompanionCube {
   constructor(world) {
     this.world = world;
     this.taken = false;
+    this._fallVy = 0;
+    this._falling = false;
     const b = world.built.get('meridianTower');
     if (!b) return;
     const s = b.spec;
     const c = canonXform(s.w, s.d, s.door || 'S');
     const [mx, mz] = c.m(-c.cw / 2 + 1.7, -c.cd / 2 + 1.4); // maintenance-room corner
     const p = local2world(s, s.rot || 0, mx, mz);
-    this.pos = { x: p.x, y: s.y + 0.13, z: p.z };
 
     this.mesh = buildCubeMesh();
+    // How far the lowest geometry hangs below the group origin — the lift
+    // needed for the cube to rest ON a surface instead of sinking into it.
+    this.restOffset = -new THREE.Box3().setFromObject(this.mesh).min.y;
+    this.baseY = s.y + FLOOR_PLATE_TOP; // the surface it stands on
+    this.pos = { x: p.x, y: this.baseY + this.restOffset, z: p.z };
     this.mesh.position.set(this.pos.x, this.pos.y, this.pos.z);
     this.mesh.rotation.y = 0.5;
     world.group.add(this.mesh);
@@ -34,10 +53,10 @@ export class CompanionCube {
     world.group.add(this.light);
 
     this._colliderId = world.collision.addBoxCentered(
-      this.pos.x, this.pos.y + 0.34, this.pos.z, 0.34, 0.34, 0.34, 'prop');
+      this.pos.x, this.baseY + CUBE_SIZE / 2, this.pos.z, 0.34, 0.34, 0.34, 'prop');
 
-    world.addInteractable({
-      x: this.pos.x, z: this.pos.z, y: this.pos.y, radius: 2.0,
+    this._interactable = world.addInteractable({
+      x: this.pos.x, z: this.pos.z, y: this.baseY, radius: 2.0,
       prompt: 'Take the Companion Cube [E]',
       enabled: () => !this.taken,
       onInteract: () => this._take(),
@@ -55,8 +74,41 @@ export class CompanionCube {
     this.world.events.emit('whisper', { intensity: 0.4 });
   }
 
+  /**
+   * Set the cube back down from the satchel: it reappears at (x, z), falls a
+   * short arc, and settles resting on the ground there. `refY` anchors the
+   * ground query to the dropper's elevation so an upstairs drop lands on that
+   * floor, not the roof or the street below.
+   */
+  dropAt(x, z, refY = 1e9) {
+    if (!this.taken || !this.mesh) return false;
+    this.taken = false;
+    this.baseY = this.world.groundHeightFor(x, z, refY + 0.5);
+    this.pos = { x, y: this.baseY + this.restOffset + 0.9, z }; // a hand-height drop
+    this._falling = true;
+    this._fallVy = 0;
+    this.mesh.position.set(x, this.pos.y, z);
+    this.mesh.rotation.y = Math.random() * Math.PI * 2;
+    this.world.group.add(this.mesh);
+    this.light.position.set(x, this.pos.y + 1.1, z);
+    this.world.group.add(this.light);
+    this._colliderId = this.world.collision.addBoxCentered(
+      x, this.baseY + CUBE_SIZE / 2, z, 0.34, 0.34, 0.34, 'prop');
+    Object.assign(this._interactable, { x, y: this.baseY, z });
+    this.world.events.emit('subtitle', { text: 'The cube settles by your feet. It will wait.' });
+    return true;
+  }
+
   update(dt, time) {
     if (this.taken || !this.light) return;
+    if (this._falling) { // the short drop out of the satchel
+      this._fallVy += DROP_GRAVITY * dt;
+      this.pos.y -= this._fallVy * dt;
+      const restY = this.baseY + this.restOffset;
+      if (this.pos.y <= restY) { this.pos.y = restY; this._falling = false; }
+      this.mesh.position.y = this.pos.y;
+      this.light.position.y = this.pos.y + 1.1;
+    }
     // a slow, heart-like double pulse
     this.light.intensity = 3.2 + Math.sin(time * 2.4) * 0.4 + Math.sin(time * 4.8) * 0.25;
   }

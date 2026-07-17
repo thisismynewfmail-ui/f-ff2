@@ -30,6 +30,14 @@ const SCREEN_DIR = process.env.SCREEN_DIR || '.';
 const server = createServer(async (req, res) => {
   try {
     const path = req.url.split('?')[0];
+    // Mirror the dev server's session API (scripts/serve.mjs) so the game's
+    // save/load calls never 404 into the console-error count. No disk here:
+    // GET reports "no previous session", POST pretends to accept the save.
+    if (path === '/api/session') {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(req.method === 'POST' ? '{"ok":true}' : '{"exists":false}');
+      return;
+    }
     const file = join(ROOT, path === '/' ? 'index.html' : path);
     const data = await readFile(file);
     res.writeHead(200, { 'Content-Type': MIME[extname(file)] || 'application/octet-stream' });

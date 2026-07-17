@@ -129,7 +129,12 @@ export class World {
   }
 
   addInteractable(it) {
-    this.interactables.push({ radius: 2.2, enabled: () => true, ...it });
+    // Store and return the SAME object (defaults filled in), so a caller can
+    // keep the handle and move its interactable later (the Companion Cube
+    // re-seats its prompt wherever it gets dropped).
+    if (it.radius === undefined) it.radius = 2.2;
+    if (it.enabled === undefined) it.enabled = () => true;
+    this.interactables.push(it);
     return it;
   }
 
@@ -163,12 +168,28 @@ export class World {
   }
 
   update(dt, time, cameraPos) {
+    this.updateAmbient(dt, time, cameraPos);
+    this.secrets.update(dt);
+  }
+
+  /** The visual/ambient systems only — no secret triggers — so the title
+   *  menu's cinematic orbit can run the living town without touching a run. */
+  updateAmbient(dt, time, cameraPos) {
     this.zones.update(dt);
     this.veg.update(time, cameraPos);
-    this.secrets.update(dt);
     this.anomalies.update(dt, time, cameraPos);
     this.companionCube.update(dt, time);
     this.scarecrow.update(dt, time, cameraPos);
+    this._updateClock();
+  }
+
+  /** Drive the tower clock from the sky: phase 0 = sunrise = 06:00. */
+  _updateClock() {
+    const sky = this.game?.sky;
+    if (!sky || !this.clockHands) return;
+    const hours = (sky.phase * 24 + 6) % 24;
+    this.clockHands.hour.rotation.z = -((hours % 12) / 12) * Math.PI * 2;
+    this.clockHands.minute.rotation.z = -(hours % 1) * Math.PI * 2;
   }
 
   /* ---------------- construction ---------------- */
@@ -487,18 +508,43 @@ export class World {
     this._prop(P.wreckedCar(0x4a4238), -10, 26, { yaw: 0.4 });
     this._prop(P.crateStack(3), -24, -20);
     this._prop(P.mailbox(), -12, 10);
-    // clock stuck at 3:33 on the tower
-    const clock = new THREE.Mesh(new THREE.CircleGeometry(1.4, 16), new THREE.MeshBasicMaterial({ color: 0xd8d2c0 }));
+    // The tower clock — LIVE: its hands track the sky's day cycle (phase 0 =
+    // sunrise = 06:00, 0.25 = noon; see _updateClock). Each hand is a plane
+    // inside a spinner group pivoted at the face centre; the outer group's
+    // rotation.y = π faces the dial south, and because that flip mirrors the
+    // local X axis, a spinner rotation of −θ reads as θ CLOCKWISE from 12 to
+    // the viewer in the plaza below.
     const t = this.built.get('clocktower');
-    clock.position.set(t.spec.x, t.spec.y + 11.5, t.spec.z - 2.55);
+    const cx = t.spec.x, cy = t.spec.y + 11.5, cz = t.spec.z;
+    const clock = new THREE.Mesh(new THREE.CircleGeometry(1.4, 24), new THREE.MeshBasicMaterial({ color: 0xd8d2c0 }));
+    clock.position.set(cx, cy, cz - 2.55);
     clock.rotation.y = Math.PI;
     this.group.add(clock);
-    for (const [len, ang] of [[0.9, Math.PI * 0.85], [0.6, -Math.PI * 0.4]]) {
-      const hand = new THREE.Mesh(new THREE.PlaneGeometry(0.12, len), new THREE.MeshBasicMaterial({ color: 0x1c1c22 }));
-      hand.position.set(t.spec.x + Math.sin(ang) * len * 0.4, t.spec.y + 11.5 + Math.cos(ang) * len * 0.4, t.spec.z - 2.57);
-      hand.rotation.set(0, Math.PI, ang);
-      this.group.add(hand);
+    const darkMat = new THREE.MeshBasicMaterial({ color: 0x1c1c22 });
+    for (let k = 0; k < 12; k++) { // hour ticks, quarters heavier
+      const a = k * Math.PI / 6;
+      const tick = new THREE.Mesh(new THREE.PlaneGeometry(k % 3 === 0 ? 0.1 : 0.06, k % 3 === 0 ? 0.24 : 0.14), darkMat);
+      tick.position.set(cx + Math.sin(a) * 1.2, cy + Math.cos(a) * 1.2, cz - 2.56);
+      tick.rotation.set(0, Math.PI, a);
+      this.group.add(tick);
     }
+    const mkHand = (len, width, zOff) => {
+      const pivot = new THREE.Group();
+      pivot.position.set(cx, cy, cz - zOff);
+      pivot.rotation.y = Math.PI;
+      const spinner = new THREE.Group();
+      const blade = new THREE.Mesh(new THREE.PlaneGeometry(width, len + 0.14), darkMat);
+      blade.position.y = len / 2 - 0.14; // short counterweight tail past the pivot
+      spinner.add(blade);
+      pivot.add(spinner);
+      this.group.add(pivot);
+      return spinner;
+    };
+    this.clockHands = { hour: mkHand(0.62, 0.13, 2.57), minute: mkHand(0.98, 0.09, 2.58) };
+    const hub = new THREE.Mesh(new THREE.CircleGeometry(0.09, 12), darkMat);
+    hub.position.set(cx, cy, cz - 2.59);
+    hub.rotation.y = Math.PI;
+    this.group.add(hub);
     // street furniture serving the new plaza-facing buildings
     for (const [x, z] of [[-28, 18], [32, 18]]) this._prop(P.lamppost(), x, z);
     this._prop(P.bench(), -26, 30, { yaw: 1.2 });

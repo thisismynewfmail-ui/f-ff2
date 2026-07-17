@@ -29,12 +29,15 @@ export class Renderer {
 
     this.camera = new THREE.PerspectiveCamera(70, 1, 0.1, 210);
     this.baseZoom = 1;
+    this.hFov = HORIZONTAL_FOV; // adjustable via settings (setBaseFov)
 
     // Optional first-person weapon overlay: its own scene + camera, drawn on
     // top of the world with the depth buffer cleared so the viewmodel never
     // clips through geometry and is untouched by the world's distance fog.
+    // overlayEnabled lets the game hide it (e.g. behind the title cinematic).
     this.overlayScene = null;
     this.overlayCamera = null;
+    this.overlayEnabled = true;
 
     // Lighting: a hemisphere fill, a directional "sun/moon", and ambient.
     // Exposed so the Sky system can animate colour and intensity through the
@@ -61,13 +64,19 @@ export class Renderer {
     this.applyFov();
   }
 
-  /** Keep horizontal FOV fixed at 90° regardless of aspect; zoom scales it. */
+  /** Keep the horizontal FOV fixed regardless of aspect; zoom scales it. */
   applyFov(zoomFactor = this.baseZoom) {
     this.baseZoom = zoomFactor;
-    const hRad = (HORIZONTAL_FOV * Math.PI / 180) / zoomFactor;
+    const hRad = (this.hFov * Math.PI / 180) / zoomFactor;
     const vRad = 2 * Math.atan(Math.tan(hRad / 2) / this.camera.aspect);
     this.camera.fov = vRad * 180 / Math.PI;
     this.camera.updateProjectionMatrix();
+  }
+
+  /** Settings hook: change the base horizontal FOV (default 90°). */
+  setBaseFov(deg) {
+    this.hFov = Math.max(60, Math.min(120, Number(deg) || HORIZONTAL_FOV));
+    this.applyFov();
   }
 
   /** Register the weapon overlay (WeaponView provides scene + camera). */
@@ -79,7 +88,7 @@ export class Renderer {
   render() {
     this.renderer.autoClear = true;
     this.renderer.render(this.scene, this.camera);
-    if (this.overlayScene && this.overlayCamera) {
+    if (this.overlayScene && this.overlayCamera && this.overlayEnabled) {
       this.renderer.autoClear = false;
       this.renderer.clearDepth(); // keep color, draw the weapon on top of everything
       this.renderer.render(this.overlayScene, this.overlayCamera);

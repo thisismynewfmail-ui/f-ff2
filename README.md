@@ -1,8 +1,14 @@
-# F-FPS — 250,000
+# Go Back To The Sandbox — 250,000
 
 A complete first-person zombie survival game in the browser, inspired by
 Left 4 Dead's invasion mode with a 2003 Half-Life / early-PS1 retro
 aesthetic. There is exactly one way to win: **kill 250,000 zombies.**
+
+Boot runs through an animated loading screen (a Hilbert-curve "texture
+memory map" walked in step with real asset progress) into a CS-1.6-style
+title menu rendered over a live cinematic orbit of the town, with NEW GAME /
+RESUME LAST SESSION / SETTINGS and a LAST SESSION stats card. The pause menu
+carries the run's stat rings plus a working SAVE RUN button.
 
 Built on a vendored Three.js (no build step, no network dependencies): all
 surface textures are generated pixel art, all audio is synthesized with
@@ -20,6 +26,11 @@ node scripts/serve.mjs        # http://localhost:8000/  (or: node scripts/serve.
 It serves the repo with `Cache-Control: no-store`, so **every reload re-fetches
 from disk** — edit a texture in `assets/`, reload, and the change shows up
 immediately.
+
+The dev server also persists sessions: `GET/POST /api/session` stores the
+last saved run in `save/last_session.json` (gitignored), which feeds the
+title screen's LAST SESSION card and its RESUME LAST SESSION entry. On a
+plain static host the game falls back to localStorage for the same feature.
 
 Any static file server also works (`python3 -m http.server 8000`), but note the
 catch: those servers let the browser cache images and JS modules

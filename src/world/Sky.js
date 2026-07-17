@@ -19,7 +19,7 @@ import * as THREE from '../../lib/three.module.js';
  * Exposes `isDay` and `dayFactor` (0 night … 1 full day) for gameplay — the
  * cockroach uses them to decide whether to hide indoors or roam outside.
  */
-const CYCLE = 300;         // seconds for a full day+night
+const CYCLE = 600;         // seconds for a full day+night: ~5 min of day, ~5 of night
 const START_PHASE = 0.22;  // begin mid-morning: sun + clouds visible at once
 const SKY_DIST = 150;      // how far sun/moon sit from the camera (< camera far)
 const CLOUD_ALT = 86;      // cloud altitude

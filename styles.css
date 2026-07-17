@@ -631,9 +631,197 @@ html, body {
   color: #e8e8d0; font-family: inherit; font-size: 13px;
 }
 
+/* ===================================================================
+   LOADING SCREEN — the Hilbert-walk texture-memory map (LoadingScreen.js)
+   =================================================================== */
 #loading {
-  position: absolute; inset: 0; z-index: 60; background: #0a0c10;
+  position: absolute; inset: 0; z-index: 60;
+  background:
+    radial-gradient(ellipse at 50% 42%, #101610 0%, #07090c 62%, #040507 100%);
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px;
+  transition: opacity 0.45s ease-out;
 }
-#loading .bar { width: 300px; height: 14px; border: 2px solid #4a5240; padding: 2px; }
-#loading .bar div { height: 100%; width: 0; background: #6a9a4a; }
+#loading.boot-out { opacity: 0; pointer-events: none; }
+#loading::after { /* the global scanline pass also covers the boot screen */
+  content: ''; position: absolute; inset: 0; pointer-events: none;
+  background: repeating-linear-gradient(0deg, rgba(0,0,0,0.16) 0 1px, transparent 1px 3px);
+}
+.boot-frame { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+.boot-kicker {
+  font-size: 10px; letter-spacing: 4px; color: #6a7462;
+  animation: bootflicker 3.4s steps(24) infinite;
+}
+.boot-kicker span { color: #e0b840; }
+.boot-title { font-size: 26px; letter-spacing: 6px; color: #c8d0b8; font-weight: bold; }
+.boot-title em { font-style: normal; color: #e0b840; text-shadow: 0 0 12px rgba(224,184,64,0.45); }
+.boot-canvas-wrap { position: relative; padding: 8px; }
+.boot-canvas {
+  display: block; width: 288px; height: 288px;
+  background: rgba(6, 9, 6, 0.72); border: 1px solid #2c3328;
+  box-shadow: inset 0 0 30px rgba(0,0,0,0.7), 0 0 24px rgba(90,140,70,0.08);
+}
+.boot-corner { position: absolute; width: 12px; height: 12px; border: 2px solid #6a9a4a; opacity: 0.7; }
+.boot-corner.tl { top: 0; left: 0; border-right: none; border-bottom: none; }
+.boot-corner.tr { top: 0; right: 0; border-left: none; border-bottom: none; }
+.boot-corner.bl { bottom: 0; left: 0; border-right: none; border-top: none; }
+.boot-corner.br { bottom: 0; right: 0; border-left: none; border-top: none; }
+.boot-readout { display: flex; align-items: baseline; gap: 14px; }
+.boot-pct { font-size: 30px; font-weight: bold; color: #e0b840; min-width: 84px; text-align: right; }
+.boot-stage { font-size: 12px; letter-spacing: 3px; color: #8a9478; }
+.boot-stage.boot-fail { color: #b03030; }
+.boot-caption { font-size: 9px; letter-spacing: 1.5px; color: #55604e; max-width: 460px; text-align: center; }
+.boot-ticker {
+  height: 58px; width: 340px; overflow: hidden;
+  font-size: 10px; line-height: 14px; color: #5f8f56; text-align: left;
+}
+.boot-ticker b { color: #8a9478; font-weight: normal; }
+.boot-ticker i { font-style: normal; color: #7be07b; }
+@keyframes bootflicker { 0%, 92% { opacity: 1; } 94% { opacity: 0.4; } 96% { opacity: 1; } 98% { opacity: 0.55; } 100% { opacity: 1; } }
+
+/* ===================================================================
+   TITLE SCREEN — "GO BACK TO THE SANDBOX" (TitleMenu.js), a CS-1.6-style
+   menu rail over the live 3D town. The screen ground is a transparent
+   vignette so the cinematic camera orbit shows through behind it.
+   =================================================================== */
+.screen.menu-screen {
+  background:
+    linear-gradient(90deg, rgba(5, 7, 6, 0.92) 0%, rgba(5, 7, 6, 0.55) 34%, rgba(5, 7, 6, 0.08) 55%,
+      rgba(5, 7, 6, 0.5) 82%, rgba(5, 7, 6, 0.85) 100%),
+    radial-gradient(ellipse at center, transparent 40%, rgba(4, 6, 5, 0.75) 100%);
+  justify-content: stretch; align-items: stretch; text-align: left; gap: 0;
+}
+.title-haze { /* slow fog drift across the whole screen */
+  position: absolute; inset: -20%; pointer-events: none; opacity: 0.5;
+  background:
+    radial-gradient(38% 30% at 24% 66%, rgba(120, 140, 116, 0.10), transparent 70%),
+    radial-gradient(30% 26% at 78% 30%, rgba(110, 130, 120, 0.08), transparent 70%);
+  animation: hazedrift 26s ease-in-out infinite alternate;
+}
+@keyframes hazedrift {
+  0% { transform: translate3d(-2%, 1%, 0) scale(1); }
+  100% { transform: translate3d(3%, -2%, 0) scale(1.08); }
+}
+.title-wrap {
+  position: relative; flex: 1; display: flex; align-items: center;
+  justify-content: space-between; padding: 6vh 6vw; gap: 40px;
+}
+.title-left { display: flex; flex-direction: column; gap: 18px; max-width: 520px; }
+.title-kicker { font-size: 10px; letter-spacing: 5px; color: #6a7462; }
+.title-logo {
+  font-size: 54px; line-height: 0.98; letter-spacing: 6px; color: #c8d0b8;
+  text-shadow: 0 2px 0 rgba(0,0,0,0.7), 0 0 26px rgba(90, 120, 80, 0.25);
+  animation: logoflicker 7s steps(50) infinite;
+}
+.title-logo em {
+  font-style: normal; color: #e0b840; letter-spacing: 10px;
+  text-shadow: 0 2px 0 rgba(0,0,0,0.7), 0 0 30px rgba(224, 184, 64, 0.4);
+}
+@keyframes logoflicker {
+  0%, 86% { opacity: 1; } 87% { opacity: 0.72; } 88% { opacity: 1; }
+  93% { opacity: 1; } 94% { opacity: 0.85; } 95% { opacity: 1; }
+}
+.title-tag { font-size: 11px; letter-spacing: 2px; color: #8a9478; }
+.title-tag b { color: #e0b840; }
+
+.title-nav { display: flex; flex-direction: column; gap: 2px; margin-top: 8px; }
+/* the rail entries must out-rank the generic `.screen button` box styling */
+.screen .title-nav .tm-item {
+  font-family: inherit; font-size: 20px; letter-spacing: 4px; text-align: left;
+  color: #b8c0a8; background: transparent; border: none; border-left: 3px solid transparent;
+  padding: 9px 14px; cursor: pointer; position: relative;
+  transition: color 0.12s, border-color 0.12s, background 0.12s, padding-left 0.12s;
+}
+.tm-item i {
+  font-style: normal; font-size: 10px; color: #55604e; margin-right: 14px;
+  letter-spacing: 2px; vertical-align: 3px; transition: color 0.12s;
+}
+.screen .title-nav .tm-item:hover, .screen .title-nav .tm-item:focus-visible {
+  color: #e0b840; border-left-color: #e0b840; background: rgba(224, 184, 64, 0.07);
+  padding-left: 22px; outline: none;
+}
+.tm-item:hover i, .tm-item:focus-visible i { color: #e0b840; }
+.tm-item:hover::after {
+  content: '◂'; position: absolute; right: 10px; color: #e0b840;
+  animation: navpulse 0.8s ease-in-out infinite alternate;
+}
+@keyframes navpulse { 0% { opacity: 0.35; } 100% { opacity: 1; } }
+.title-foot { font-size: 9px; letter-spacing: 2px; color: #55604e; margin-top: 14px; }
+.tm-caret { color: #7be07b; margin-left: 6px; animation: caretblink 1.1s steps(2) infinite; }
+@keyframes caretblink { 50% { opacity: 0; } }
+
+/* right column: field-report cards */
+.title-right { display: flex; flex-direction: column; gap: 16px; width: 300px; flex: 0 0 auto; }
+.tm-card {
+  position: relative; overflow: hidden;
+  background: rgba(8, 10, 8, 0.82); border: 2px solid #3a4232; padding: 12px 14px 10px;
+}
+.tm-card::before { /* slow CRT sweep down the card */
+  content: ''; position: absolute; left: 0; right: 0; height: 14px; top: -12%;
+  background: linear-gradient(180deg, transparent, rgba(120, 255, 140, 0.05), transparent);
+  animation: crtsweep 7s linear infinite; pointer-events: none;
+}
+.tm-card-head {
+  font-size: 11px; letter-spacing: 3px; color: #e0b840;
+  border-bottom: 1px solid #3a4232; padding-bottom: 7px; margin-bottom: 9px;
+  display: flex; justify-content: space-between; align-items: baseline;
+}
+.tm-card-head span { font-size: 8px; letter-spacing: 2px; color: #6a7462; }
+.tm-card-foot { margin-top: 9px; font-size: 8px; letter-spacing: 1px; color: #55604e; }
+.ls-row { display: flex; justify-content: space-between; align-items: baseline; padding: 2px 0; }
+.ls-row span { font-size: 10px; letter-spacing: 1px; color: #8a9478; }
+.ls-row b { font-size: 13px; color: #d8e0c8; }
+.ls-row.big b { font-size: 22px; color: #e0b840; text-shadow: 0 0 8px rgba(224,184,64,0.35); }
+.ls-empty { font-size: 10px; line-height: 1.7; letter-spacing: 1px; color: #6a7462; padding: 6px 0; }
+.tm-keys { display: grid; grid-template-columns: 46px 1fr 46px 1fr; gap: 3px 8px; }
+.tm-keys span { font-size: 9px; color: #e0b840; letter-spacing: 1px; }
+.tm-keys b { font-size: 9px; color: #8a9478; font-weight: normal; letter-spacing: 1px; }
+
+/* settings overlay (inside the menu screen) */
+.tm-settings {
+  position: absolute; inset: 0; z-index: 5; display: flex;
+  align-items: center; justify-content: center; background: rgba(4, 6, 5, 0.72);
+}
+.tm-settings[hidden] { display: none; }
+.tm-settings-panel {
+  display: flex; flex-direction: column; gap: 14px; width: 430px;
+  background: rgba(8, 10, 8, 0.96); border: 2px solid #4a5240; padding: 18px 20px;
+}
+.tm-set-row { display: grid; grid-template-columns: 150px 1fr 52px; align-items: center; gap: 10px; }
+.tm-set-row span { font-size: 10px; letter-spacing: 2px; color: #8a9478; }
+.tm-set-row b { font-size: 11px; color: #e0b840; text-align: right; }
+.tm-set-row input[type='range'] {
+  -webkit-appearance: none; appearance: none; height: 4px;
+  background: #2a3226; outline: none; cursor: pointer;
+}
+.tm-set-row input[type='range']::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none; width: 12px; height: 18px;
+  background: #e0b840; border: 1px solid #10120c; cursor: pointer;
+}
+.tm-set-row input[type='range']::-moz-range-thumb {
+  width: 12px; height: 18px; border-radius: 0;
+  background: #e0b840; border: 1px solid #10120c; cursor: pointer;
+}
+.tm-set-check input { justify-self: start; width: 16px; height: 16px; accent-color: #e0b840; cursor: pointer; }
+#btn-settings-back { align-self: center; margin-top: 4px; }
+
+/* hide the combat chrome while the title menu is up (see HUD.showScreen) */
+#hud.on-menu #hud-dock, #hud.on-menu #crosshair, #hud.on-menu #weapon-menu,
+#hud.on-menu #subtitle, #hud.on-menu #prompt, #hud.on-menu #banner { display: none; }
+
+/* pause screen: action row under the stat rings */
+.pause-actions { display: flex; gap: 14px; flex-wrap: wrap; justify-content: center; }
+.screen button.btn-secondary {
+  color: #a8b098; border-color: #4a5240; font-size: 15px; padding: 12px 22px;
+}
+.screen button.btn-secondary:hover { background: #4a5240; color: #10120c; }
+.ring .arc.red { stroke: #c23b2e; }
+
+/* satchel: click-to-drop affordance on droppable items */
+.inv-slot.droppable { cursor: pointer; }
+.inv-slot.droppable:hover { border-color: #e0b840; background: rgba(44, 38, 14, 0.75); }
+.inv-drop {
+  position: absolute; left: 0; right: 0; top: 4px; text-align: center;
+  font-size: 8px; letter-spacing: 2px; color: #e0b840; opacity: 0;
+  transition: opacity 0.12s;
+}
+.inv-slot.droppable:hover .inv-drop { opacity: 1; }
