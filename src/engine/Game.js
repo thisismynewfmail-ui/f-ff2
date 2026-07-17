@@ -45,7 +45,7 @@ export class Game {
     this.world = new World(this.events, this.texLib, this.renderer.scene).build();
     this.sky = new Sky(this.renderer, this.texLib);
     this.player = new Player(this.events, this.world, this.input);
-    this.world.secrets.attach(this);
+    this.world.attach(this);
     this.score = new ScoreSystem(this.events);
     this.waves = new WaveSystem(this.events, this.score);
     // Checkpoint: the run-state to roll back to on death. Refreshed every tenth

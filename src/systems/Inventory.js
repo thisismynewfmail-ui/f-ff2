@@ -13,7 +13,7 @@
  *   onClose()              recapture the mouse / resume
  */
 const SLOTS = 20;
-const STORABLE = new Set(['key']); // ammo/health are consumed, not stored
+const STORABLE = new Set(['key', 'companionCube']); // ammo/health are consumed, not stored
 
 export class Inventory {
   constructor(events, root, callbacks = {}) {
@@ -128,6 +128,19 @@ export class Inventory {
       ctx.fillRect(17, 12.5, 18, 3);   // shaft
       ctx.fillRect(31, 15, 3, 6);      // teeth
       ctx.fillRect(27, 15, 3, 4);
+    } else if (type === 'companionCube') {
+      ctx.fillStyle = '#b9bdb7';
+      ctx.fillRect(7, 7, 26, 26);      // pale shell
+      ctx.fillStyle = '#7d8286';
+      ctx.fillRect(12, 12, 16, 16);    // recessed face
+      ctx.fillStyle = '#efa3c0';       // the heart
+      ctx.beginPath();
+      ctx.moveTo(20, 26);
+      ctx.bezierCurveTo(13, 21, 12, 16, 16, 14);
+      ctx.bezierCurveTo(18.5, 13, 20, 15.5, 20, 17);
+      ctx.bezierCurveTo(20, 15.5, 21.5, 13, 24, 14);
+      ctx.bezierCurveTo(28, 16, 27, 21, 20, 26);
+      ctx.fill();
     } else {
       ctx.strokeRect(9, 9, 22, 22);
     }

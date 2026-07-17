@@ -3,11 +3,14 @@ import { Terrain, EDGE_LIMIT } from './Terrain.js';
 import { CollisionWorld } from './Collision.js';
 import { NavGrid } from './NavGrid.js';
 import { BuildingKit, mergeStatic, mulberry32 } from './Buildings.js';
-import { InteriorKit, housePartitions, officePartitions } from './Interiors.js';
+import { InteriorKit, housePartitions, officePartitions, lobbyPartitions } from './Interiors.js';
 import { PropKit } from './Props.js';
 import { Vegetation } from './Vegetation.js';
 import { Zones, ZONES } from './Zones.js';
 import { Secrets } from './Secrets.js';
+import { Anomalies } from './Anomalies.js';
+import { CompanionCube } from './CompanionCube.js';
+import { Scarecrow } from './Scarecrow.js';
 
 /**
  * Assembles the whole town: terrain, six districts of buildings, streets,
@@ -46,6 +49,19 @@ export class World {
     this.buildingSpecs = [];
     this.npcSpawn = { x: 3, z: 8 };
     this.playerSpawn = { x: 0, z: 20 };
+    this.game = null;            // set by attach()
+    // dynamic-prop registries, animated by Anomalies each frame
+    this.beacons = [];           // {mesh, phase} — tower aviation lights
+    this.windmillRotors = [];
+    this.playgroundSwings = [];
+    this.alarmCars = [];         // {x, y, z, lights[]} — shootable car alarms
+    this.phoneBoothPos = null;
+  }
+
+  /** Give the world (and its secrets/anomalies) access to the live game. */
+  attach(game) {
+    this.game = game;
+    this.secrets.attach(game);
   }
 
   build() {
@@ -60,9 +76,13 @@ export class World {
     this._park();
     this._industrial();
     this._ridge();
+    this._highrise();
     this.nav.bake();
     this._spawnGrid();
     this.secrets = new Secrets(this);
+    this.anomalies = new Anomalies(this);
+    this.companionCube = new CompanionCube(this);
+    this.scarecrow = new Scarecrow(this);
     return this;
   }
 
@@ -146,6 +166,9 @@ export class World {
     this.zones.update(dt);
     this.veg.update(time, cameraPos);
     this.secrets.update(dt);
+    this.anomalies.update(dt, time, cameraPos);
+    this.companionCube.update(dt, time);
+    this.scarecrow.update(dt, time, cameraPos);
   }
 
   /* ---------------- construction ---------------- */
@@ -201,6 +224,10 @@ export class World {
       [110, -32, 'W', 4], [134, -44, 'N', 5], [152, -30, 'E', 6],
       [98, 52, 'W', 7], [126, 90, 'N', 4], [170, 92, 'N', 6],
       [206, 60, 'W', 5], [208, -44, 'W', 7],
+      // third wave: the west lanes near Foundry Rd, the far-east outskirts and
+      // the back row above the south loop — the neighbourhood finally reads full
+      [60, 44, 'E', 3], [60, 78, 'E', 6], [100, 72, 'S', 1], [160, 96, 'N', 5],
+      [196, 82, 'N', 2], [216, 20, 'W', 0], [228, -18, 'W', 4], [186, -58, 'S', 7],
     ];
     let hi = 0;
     for (const [hx, hz, door, style, solid] of houses) {
@@ -213,6 +240,9 @@ export class World {
     S({ x: 150, z: -70, w: 10, d: 16, h: 6, wall: 'wallStone', roof: 'gable', roofTex: 'roofSlate', door: 'S', name: 'church', use: 'church', zone: 1 });
     S({ x: 105, z: 30, w: 9, d: 7, h: 4, wall: 'brickRed', roof: 'flat', door: 'N', doorTex: 'doorShop', shopfront: true, awning: true, name: 'cornerShop', use: 'store', zone: 1 });
     S({ x: 70, z: 13, w: 7, d: 6, h: 3.6, wall: 'wallConcrete', roof: 'shed', roofTex: 'roofMetal', floor: 'floorTile', door: 'W', doorTex: 'doorShop', name: 'gasEast', use: 'gasShop', zone: 1 });
+    // The hollow cottage: an ordinary house from the street. Its interior
+    // (see Interiors._hollow) is walled almost a metre inside its exterior.
+    S({ x: 82, z: 96, w: 8, d: 7, h: 3.9, wall: 'wallPlaster', roof: 'gable', roofTex: 'roofSlate', door: 'S', chimney: true, name: 'hollowCottage', use: 'hollow', zone: 1 });
 
     // --- Downtown (zone 2): blocks between streets x=-100,-50,0 / z=-70,-120,-170,-220
     const blocks = [
@@ -249,7 +279,7 @@ export class World {
     // Varied heights + materials so no adjacent pair matches.
     const infill = [
       [-88, -108, 9, 8, 8, 'brickTan'], [-12, -108, 8, 8, 7, 'wallPlaster'],
-      [-60, -158, 8, 8, 9, 'wallConcrete'], [-38, -130, 8, 8, 8, 'brickGray'],
+      [-60, -158, 8, 8, 9, 'wallConcrete'],
       [-134, -110, 8, 8, 12, 'stuccoTan'], [34, -128, 8, 8, 9, 'brickGray'],
       [-132, -160, 8, 8, 8, 'brickRed'], [-10, -180, 8, 8, 10, 'wallConcrete'],
     ];
@@ -259,6 +289,30 @@ export class World {
     }
     // Tower block on the south rim — the tall landmark that orients the grid.
     S({ x: -134, z: -234, w: 10, d: 10, h: 14, wall: 'brickGray', roof: 'flat', solid: true, name: 'towerBlock', zone: 2 });
+    // The skyline: a corporate row along the south rim plus scattered
+    // high-rises inside the blocks. All solid shafts — their windows stack
+    // rows every storey so they read multi-floor — capped by _highrise()
+    // with water tanks, masts and aviation beacons.
+    const towers = [
+      [-108, -236, 12, 12, 26, 'wallConcrete', 'tank'],
+      [-76, -237, 13, 13, 34, 'brickTan', 'mast'],
+      [-44, -236, 12, 12, 22, 'brickGray', 'tank'],
+      [-12, -237, 12, 12, 30, 'stuccoTan', 'mast'],
+      [-112, -80, 9, 9, 16, 'brickRed', 'tank'],
+      [-88, -130, 9, 9, 18, 'stuccoTan', 'tank'],
+      [34, -186, 10, 10, 20, 'brickTan', 'mast'],
+    ];
+    let ti = 0;
+    for (const [bx, bz, w, d, h, wall] of towers) {
+      S({ x: bx, z: bz, w, d, h, wall, roof: 'flat', solid: true, name: 'tower' + ti++, zone: 2 });
+    }
+    this._towerCrowns = towers.map((t, i) => ['tower' + i, t[6]]);
+    this._towerCrowns.push(['towerBlock', 'tank']);
+    // The Meridian Tower: the one high-rise you can enter. A furnished lobby
+    // with a dead elevator bank and a maintenance room; the glass shaft above
+    // is raised by _highrise(). The interior stops at the first ceiling — the
+    // other twenty-six floors are somebody else's problem now.
+    S({ x: -30, z: -131, w: 12, d: 11, h: 5.4, wall: 'wallConcrete', roof: 'flat', floor: 'floorTile', door: 'S', doorTex: 'doorShop', partitions: lobbyPartitions(12, 11, 'S'), name: 'meridianTower', use: 'towerLobby', zone: 2 });
 
     // Northern outskirt farms (east of downtown grid)
     S({ x: 120, z: -160, w: 11, d: 8, h: 4, wall: 'wallWood', roof: 'gable', door: 'S', chimney: true, partitions: housePartitions(11, 8, 'S'), name: 'farmhouseA', use: 'house', zone: 2 });
@@ -361,6 +415,12 @@ export class World {
     this._patch(-42, -108, 7, 5.5, 'road', 'road', 6);         // midtown parking lot
     this._patch(-75, -212, 8, 5, 'road', 'road', 6);           // department-store lot
     this._patch(58, -90, 8, 6, 'gravel', 'dirt', 6);           // school yard
+    this._patch(-62, -228, 58, 3.5, 'sidewalk', 'concrete', 30); // corporate-row forecourt
+    this._patch(-30, -124.5, 7, 1.2, 'sidewalk', 'concrete', 6); // Meridian Tower step
+    this._patch(134, 33, 8, 6, 'gravel', 'dirt', 6);           // Eastgate playground
+    this._patch(100, -190, 14, 9, 'dirt', 'dirt', 10);         // east farm field
+    this._patch(150, -150, 12, 7, 'dirt', 'dirt', 9);          // north farm field
+    this._patch(200, -150, 3, 3, 'dirt', 'dirt', 3);           // windmill pad
   }
 
   _decal(tex, x, z, size, yaw = 0, tint = null) {
@@ -446,6 +506,11 @@ export class World {
     this._prop(P.hydrant(), -9, 11);
     this._prop(P.signPost(0x39586b), 5, 5);
     this._prop(P.mailbox(), 24, 22);
+    // market morning that never ended: stalls still stocked around the plaza
+    this._prop(P.marketStall(0x7a3b30), -11, -11, { yaw: 0.2 });
+    this._prop(P.marketStall(0x39586b), 11, -11, { yaw: -0.15 });
+    this._prop(P.marketStall(0x4a5a38), -11, 13.5, { yaw: 2.95 });
+    this._prop(P.crateStack(2), -14.5, -8.5, { yaw: 0.5 });
     for (const [x, z] of [[-38, 34], [24, -38], [-34, -30], [38, 32], [26, 18], [-28, 4]]) this.veg.tree(this.group, x, z, 0.9);
     for (const [x, z] of [[-22, 24], [18, 28], [-26, -6]]) this.veg.bush(this.group, x, z);
     this._sprinkleTufts(0, 0, 40, 26, 42);
@@ -474,6 +539,16 @@ export class World {
       this._prop(P.signPost(c), x, z);
     }
     for (const [x, z] of [[72, -5], [118, -4], [152, 10]]) this._prop(P.hydrant(), x, z);
+    // Playground on the gravel lot between the loop roads. One of the swings
+    // keeps moving. There is no wind today.
+    const swings = P.swingSet();
+    this._prop(swings, 132, 31, { yaw: 0.12 });
+    this.playgroundSwings = swings.swings;
+    this._prop(P.slide(), 138, 35, { yaw: -0.4 });
+    this._prop(P.bench(), 127, 36, { yaw: 0.9 });
+    this._prop(P.bench(), 139, 29, { yaw: -2.1 });
+    // mailboxes for the new back rows
+    for (const [x, z] of [[212, 24], [192, 86], [66, 46]]) this._prop(P.mailbox(), x, z);
     // Church graveyard
     for (let i = 0; i < 8; i++) {
       const gx = 138 + (i % 4) * 3.2, gz = -84 - Math.floor(i / 4) * 3;
@@ -489,7 +564,7 @@ export class World {
       else this.veg.bush(this.group, x, z, 0.8 + rng() * 0.5);
     }
     this._sprinkleTufts(140, 0, 95, 100, 70);
-    this._zoneSpawns(1, 16, 60, 190, 0, 0);
+    this._zoneSpawns(1, 20, 60, 190, 0, 0);
   }
 
   _downtown() {
@@ -564,6 +639,25 @@ export class World {
     // Farms NE
     this._prop(P.wreckedCar(0x694f28), 130, -168, { yaw: 0.2 });
     for (const [x1, z1, x2, z2] of [[105, -150, 105, -175], [105, -175, 140, -178]]) this.props.fenceRun(x1, z1, x2, z2, this.group);
+    // Working farmland fills the east flats: two fields still holding their
+    // crop rows, an orchard planted in ranks, and the windmill idling at the
+    // corner of the far field — it turns whether or not there is wind.
+    for (const [fx, fz, hx, hz] of [[100, -190, 13, 8], [150, -150, 11, 6]]) {
+      const rows = [];
+      for (let rz = -hz; rz <= hz; rz += 2.4) {
+        for (let rx = -hx; rx <= hx; rx += 1.5) rows.push([fx + rx, fz + rz]);
+      }
+      this.veg.tuftField(this.group, rows);
+    }
+    // The scarecrow itself is a standalone aware entity (src/world/Scarecrow.js),
+    // built after nav.bake() at (100, -193) — it watches, sways and can be touched.
+    for (const [x, z] of [[116, -186], [146, -143], [88, -178]]) this._prop(P.hayBale(), x, z, { yaw: (x * 3) % 1 });
+    for (let i = 0; i < 3; i++) {
+      for (let j = 0; j < 3; j++) this.veg.tree(this.group, 84 + i * 8, -136 + j * 7, 0.85);
+    }
+    const wm = P.windmill();
+    this._prop(wm, 200, -150);
+    this.windmillRotors.push(wm.rotor);
     const rng2 = mulberry32(33);
     for (let i = 0; i < 26; i++) {
       const x = 60 + rng2() * 170, z = -235 + rng2() * 100;
@@ -572,7 +666,7 @@ export class World {
     }
     this._sprinkleTufts(-60, -145, 80, 90, 60);
     this._sprinkleTufts(140, -180, 90, 60, 40);
-    this._zoneSpawns(2, 20, -60, -140, 0, 0);
+    this._zoneSpawns(2, 26, -60, -140, 0, 0);
   }
 
   _park() {
@@ -614,11 +708,14 @@ export class World {
       const g = new THREE.Group(); g.add(rock); rock.position.y = s * 0.5;
       this._prop({ group: g, collide: [s * 0.8, s * 0.7, s * 0.8] }, x, z, { yaw: rng() * 3 });
     }
+    // A rowboat hauled up on the pond's north shore, oars long gone.
+    this._prop(P.rowboat(), -136, 66, { yaw: 0.7 });
     // Dense woods — including the ring that hides the campsite (secret #8)
     for (let i = 0; i < 60; i++) {
       const x = -240 + rng() * 190, z = -130 + rng() * 230;
       if (this._nearBuilding(x, z, 6) || this.surfaceAt(x, z) !== 'grass') continue;
       if (Math.hypot(x + 200, z + 40) < 9) continue; // campsite clearing
+      if (Math.hypot(x + 172, z - 55) < 5) continue; // the door's clearing (Anomalies)
       this.veg.tree(this.group, x, z, 0.9 + rng() * 0.7);
       if (rng() < 0.4) this.veg.bush(this.group, x + 2, z + 1, 0.7 + rng() * 0.5);
     }
@@ -741,6 +838,97 @@ export class World {
     }
     this._sprinkleTufts(-195, -195, 45, 45, 30);
     this._zoneSpawns(5, 10, -195, -195, 0, 0);
+  }
+
+  /**
+   * The vertical pass over Downtown: the Meridian Tower's glass shaft, rooftop
+   * crowns with blinking aviation beacons on every high-rise, the abandoned
+   * checkpoint on North Ave, alarmed parked cars and the library phone booth.
+   */
+  _highrise() {
+    const P = this.props;
+
+    // Meridian shaft: alternating spandrel and glass ribbon bands above the
+    // lobby, corner piers, and a parapet crown. Solid to bullets and sight
+    // lines, but it starts above head height so the lobby stays walkable.
+    const m = this.built.get('meridianTower').spec;
+    const sw = m.w - 1.6, sd = m.d - 1.6;
+    const shaft = new THREE.Group();
+    const floors = 9;
+    let y = m.h + 0.35;
+    for (let f = 0; f < floors; f++) {
+      const band = this.kit.box(sw, 1.1, sd, 'wallConcrete');
+      band.position.y = y + 0.55;
+      const glass = this.kit.box(sw - 0.4, 1.5, sd - 0.4, 'window');
+      glass.position.y = y + 1.85;
+      shaft.add(band, glass);
+      y += 2.6;
+    }
+    for (const [px, pz] of [[-sw / 2, -sd / 2], [sw / 2, -sd / 2], [-sw / 2, sd / 2], [sw / 2, sd / 2]]) {
+      const pier = this.kit.box(0.7, y - m.h, 0.7, 'wallConcrete');
+      pier.position.set(px, m.h + (y - m.h) / 2, pz);
+      shaft.add(pier);
+    }
+    const cap = this.kit.box(sw + 0.6, 0.5, sd + 0.6, 'wallConcrete');
+    cap.position.y = y + 0.25;
+    shaft.add(cap);
+    mergeStatic(shaft);
+    shaft.position.set(m.x, m.y, m.z);
+    this.group.add(shaft);
+    this.collision.addBox(m.x - sw / 2, m.y + m.h, m.z - sd / 2, m.x + sw / 2, m.y + y + 0.5, m.z + sd / 2, 'wall');
+    const crown = P.roofCrown(sw, sd, 'mast');
+    crown.group.position.set(m.x, m.y + y + 0.5, m.z);
+    this.group.add(crown.group);
+    this.beacons.push({ mesh: crown.beacon, phase: 0.5 });
+
+    // rooftop crowns + beacons for the solid towers
+    let bi = 0;
+    for (const [name, kind] of this._towerCrowns) {
+      const t = this.built.get(name);
+      if (!t) continue;
+      const s = t.spec;
+      const c = P.roofCrown(s.w - 0.6, s.d - 0.6, kind);
+      c.group.position.set(s.x, s.y + s.h + 0.26, s.z);
+      this.group.add(c.group);
+      this.beacons.push({ mesh: c.beacon, phase: (bi++ * 0.37) % 1 });
+    }
+
+    // The North Ave checkpoint: barriers dragged across the lane, a cruiser
+    // with its doors long closed. Nobody manned it for long.
+    this._prop(P.jerseyBarrier(), -2.2, -78, { yaw: 0.12 });
+    this._prop(P.jerseyBarrier(), 0.6, -77.2, { yaw: -0.1 });
+    this._prop(P.jerseyBarrier(), 3.2, -78.4, { yaw: 0.2 });
+    this._prop(P.crateStack(2), -5.5, -80);
+    this._decal('oilStain', 1.5, -82, 2.0);
+    const cruiser = P.parkedCar(0x22304a);
+    this._prop(cruiser, 4.6, -84, { yaw: 0.5 });
+    this._registerAlarmCar(cruiser, 4.6, -84);
+
+    // alarmed civilian cars: shoot one and the horde goes to it, not you
+    const lotCar = P.parkedCar(0x555c46);
+    this._prop(lotCar, -37, -104, { yaw: 1.55 });
+    this._registerAlarmCar(lotCar, -37, -104);
+    const plazaCar = P.parkedCar(0x6b3a32);
+    this._prop(plazaCar, 20, 6.5, { yaw: 0.05 });
+    this._registerAlarmCar(plazaCar, 20, 6.5);
+    const stationCar = P.parkedCar(0x39465e);
+    this._prop(stationCar, 53, 17, { yaw: 0.2 });
+    this._registerAlarmCar(stationCar, 53, 17);
+
+    // the phone booth outside the library (Anomalies gives it its voice)
+    const booth = P.phoneBooth();
+    this._prop(booth, -86, -76, { yaw: Math.PI });
+    this.phoneBoothPos = { x: -86, y: this.terrain.heightAt(-86, -76), z: -76 };
+
+    // forecourt furniture along the corporate row
+    for (const [x, z] of [[-96, -228], [-58, -228], [-24, -228]]) this._prop(P.lamppost(), x, z);
+    this._prop(P.bench(), -88, -229, { yaw: 0.1 });
+    this._prop(P.bench(), -32, -229, { yaw: -0.15 });
+    this._prop(P.hydrant(), -50, -227);
+  }
+
+  _registerAlarmCar(car, x, z) {
+    this.alarmCars.push({ x, y: this.terrain.heightAt(x, z), z, lights: car.lights });
   }
 
   _nearBuilding(x, z, margin) {

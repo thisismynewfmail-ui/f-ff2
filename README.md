@@ -231,6 +231,44 @@ There is deliberately no command that touches the kill counter — the
   you, not a popup.
 - **Terrain:** a real heightfield — the chapel hill climbs 16 m, the park
   drops into a ravine with a pond, steep slopes slow you down.
+- **The city:** every district is filled with purpose. Downtown carries a
+  real skyline — seven solid high-rises (up to 34 m) with rooftop water
+  tanks, masts and blinking aviation beacons, plus the **Meridian Tower**,
+  the one skyscraper you can enter: a furnished lobby with a reception
+  desk, a dead elevator bank (the call button works; listen), and a
+  maintenance room in the back. Eastgate gained a third wave of housing, a
+  playground and mailbox rows; the east flats hold working farmland —
+  crop-row fields, an orchard planted in ranks, and a windmill that turns
+  without wind. Old Town keeps a market morning that never ended, and North
+  Ave holds an abandoned checkpoint.
+  Intact **parked cars are functional props**: shoot one and its alarm
+  blinks and chirps — and every zombie in earshot converges on it instead
+  of you.
+- **Wrongness (cosmic-horror layer, `src/world/Anomalies.js`):** the town
+  whispers rather than screams. Shadows with no owners cast against the
+  sun. A cottage whose interior is walled almost a metre inside its
+  exterior. A freestanding door in the park grass that opens onto the same
+  field. A phone booth that rings — always panned to the wrong side of the
+  street — and lets you answer. Displaced ambience: drips over the open
+  pond, a train the town has no tracks for, a toll from the visibly
+  motionless chapel bell, knocking from inside the inner walls. One
+  playground swing keeps moving; its twin hangs dead. Smoke stands over
+  the cold factory stack. An opened grave on Chapel Ridge. None of it
+  breaks gameplay flow; all of it is slightly off.
+- **The scarecrow (`src/world/Scarecrow.js`):** an aware, animated set piece
+  on the east farm. Textured from canvas sources — woven burlap sacking, a
+  stitched cross-eyed face, tattered flannel plaid, straw wisps — it sways in
+  a wind that isn't there. Its head slowly turns to keep you in view, but
+  **only while you are not looking at it**: meet its stitched eyes and it goes
+  dead still, facing the field; look away and back and it has found you. Get
+  close and you can **set its head straight** (it resists, and creaks) or, if
+  it faces the field, **touch its shoulder** and watch it turn, slowly, to
+  you. A **crow** perches on one arm and scatters with a caw when you
+  approach, drifting back once you have gone.
+- **Companion Cube:** a findable Easter egg, built to the classic
+  reference — pale chamfered corners, magenta seams, a pink heart plate on
+  every face — waiting under a faint pulse of light somewhere high-rise
+  adjacent. Take it; it stows in the satchel and stays with you.
 - **Secrets:** ten of them, found by shooting, interacting, standing,
   looking, or killing exactly the right number. The mannequin is watching.
 
@@ -249,7 +287,9 @@ src/rendering/      renderer, texture pipeline, billboards, HUD (console bar +
                     Portrait CRT + HudTextures), 3D weapon view + PBR weapon
                     materials, effects
 src/audio/          WebAudio synthesis (all sounds)
-src/world/          terrain, buildings, props, vegetation, zones, nav, secrets, sky
+src/world/          terrain, buildings, props, vegetation, zones, nav, secrets,
+                    anomalies (cosmic-horror layer + dynamic props), companion
+                    cube, scarecrow (aware animated set piece), sky
 src/systems/        score/win condition, waves, spawning, game state, inventory
 tests/              Playwright smoke test (boot, combat, exact win condition)
 ```
