@@ -814,6 +814,10 @@ html, body {
   color: #a8b098; border-color: #4a5240; font-size: 15px; padding: 12px 22px;
 }
 .screen button.btn-secondary:hover { background: #4a5240; color: #10120c; }
+/* EXIT GAME (desktop shell only): a restrained danger accent so it reads as
+   the process-closing action, distinct from QUIT TO TITLE. */
+.screen button.btn-exit { color: #d98a7e; border-color: #7a3a30; }
+.screen button.btn-exit:hover { background: #7a3a30; color: #fbeae6; }
 .ring .arc.red { stroke: #c23b2e; }
 
 /* satchel: click-to-drop affordance on droppable items */

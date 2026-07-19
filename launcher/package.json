@@ -1,0 +1,79 @@
+{
+  "name": "gbts-launcher",
+  "productName": "Go Back To The Sandbox",
+  "version": "2.5.0",
+  "description": "Desktop launcher for Go Back To The Sandbox — a zombie wave survival FPS.",
+  "author": "Sandbox Defense Network",
+  "license": "MIT",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "game": "electron . --game",
+    "icon": "node build/make-icon.mjs",
+    "postinstall": "node build/make-icon.mjs",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder",
+    "dist:win": "electron-builder --win nsis portable"
+  },
+  "devDependencies": {
+    "electron": "^32.2.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "net.sandboxdefense.gbts",
+    "productName": "Go Back To The Sandbox",
+    "copyright": "Copyright © Sandbox Defense Network",
+    "asar": true,
+    "files": [
+      "main.js",
+      "preload-launcher.js",
+      "preload-game.js",
+      "gameServer.js",
+      "ui/**/*",
+      "build/icon.*"
+    ],
+    "extraResources": [
+      {
+        "from": "..",
+        "to": "game",
+        "filter": [
+          "**/*",
+          "!launcher/**",
+          "!node_modules/**",
+          "!.git/**",
+          "!.github/**",
+          "!save/**",
+          "!tests/**",
+          "!scripts/**",
+          "!dist/**",
+          "!**/*.md",
+          "!instructions.txt",
+          "!texcheck.html"
+        ]
+      }
+    ],
+    "win": {
+      "target": [
+        { "target": "nsis", "arch": ["x64"] },
+        { "target": "portable", "arch": ["x64"] }
+      ],
+      "icon": "build/icon.png",
+      "artifactName": "${productName} ${version} ${target}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Go Back To The Sandbox"
+    },
+    "portable": {
+      "artifactName": "${productName} ${version} portable.${ext}"
+    },
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    }
+  }
+}

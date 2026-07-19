@@ -20,6 +20,7 @@ import { Effects } from '../rendering/Effects.js';
 import { WeaponView } from '../rendering/WeaponView.js';
 import { HUD } from '../rendering/HUD.js';
 import { AudioManager } from '../audio/AudioManager.js';
+import { Shell } from './Shell.js';
 
 /**
  * Wires every system together and runs the frame loop. Owns nothing
@@ -89,7 +90,9 @@ export class Game {
       onResumeSave: () => this.resumeSession(),
       onSave: () => this.saveSession(),
       onQuitToTitle: () => this.quitToTitle(),
+      onExitGame: () => this.exitGame(),
       applySettings: (s) => this.applySettings(s),
+      isDesktop: Shell.isDesktop,
       // What the title menu needs to lay out its rail + last-session card.
       menuState: () => ({
         runStarted: this.runStarted,
@@ -224,6 +227,13 @@ export class Game {
     this.saveSession();
     this.input.releasePointerLock();
     this.hud.showScreen('menu');
+  }
+
+  /** Desktop shell EXIT GAME: persist the live run, then close the process
+   *  (game window + internal server + launcher). No-op fallback in a browser. */
+  async exitGame() {
+    try { await this.saveSession(); } catch { /* best-effort save */ }
+    Shell.quit();
   }
 
   /** Live settings from the title menu (persisted there in localStorage). */

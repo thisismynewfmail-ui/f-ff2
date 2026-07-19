@@ -1,2 +1,5 @@
 node_modules/
 save/
+
+# Desktop launcher build output (the packaged installers/exe)
+launcher/dist/

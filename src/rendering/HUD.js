@@ -2,6 +2,7 @@ import { WIN_KILLS } from '../systems/ScoreSystem.js';
 import { Portrait } from './Portrait.js';
 import { hudTextures } from './HudTextures.js';
 import { TitleMenu } from './TitleMenu.js';
+import { Shell } from '../engine/Shell.js';
 
 /**
  * Retro survival-horror HUD, rendered as a DOM overlay.
@@ -631,6 +632,7 @@ export class HUD {
         <button id="btn-resume">RESUME</button>
         <button id="btn-save" class="btn-secondary">SAVE RUN</button>
         <button id="btn-quit" class="btn-secondary">QUIT TO TITLE</button>
+        ${Shell.isDesktop ? '<button id="btn-exit" class="btn-secondary btn-exit">EXIT GAME</button>' : ''}
       </div>`);
     this.deadEl = this._screen('dead', `
       <h1 class="blood">YOU DIED</h1>
@@ -667,6 +669,18 @@ export class HUD {
     document.getElementById('btn-resume').addEventListener('click', () => this.actions.onResume());
     document.getElementById('btn-respawn').addEventListener('click', () => this.actions.onRespawn());
     document.getElementById('btn-quit').addEventListener('click', () => this.actions.onQuitToTitle());
+    // Desktop only: EXIT GAME saves the live run, then closes the whole process
+    // (window + internal server + launcher) through the shell bridge.
+    const exitBtn = document.getElementById('btn-exit');
+    if (exitBtn) {
+      exitBtn.addEventListener('click', async (e) => {
+        const b = e.currentTarget;
+        if (b.disabled) return;
+        b.disabled = true;
+        b.textContent = 'SAVING…';
+        try { await this.actions.onExitGame(); } catch { Shell.quit(); }
+      });
+    }
     // SAVE RUN: persist the live run (server first, localStorage fallback)
     // and report where it landed right on the button.
     document.getElementById('btn-save').addEventListener('click', async (e) => {
