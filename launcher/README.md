@@ -49,12 +49,14 @@ On Windows (or any machine with the toolchain), from `launcher/`:
 
 ```bash
 npm install
-npm run dist:win   # -> dist/ : NSIS installer + portable .exe (x64)
+npm run dist:win        # NSIS installer + portable .exe (x64)
+# or, wine-free (works on Linux too — see below):
+npm run dist:portable   # just the single-file portable .exe
 ```
 
 This produces, in `launcher/dist/`:
 
-- **`Go Back To The Sandbox <version> nsis.exe`** — a per-user installer (no
+- **`Go Back To The Sandbox <version> Setup.exe`** — a per-user installer (no
   admin rights required) that adds Start-menu and desktop shortcuts.
 - **`Go Back To The Sandbox <version> portable.exe`** — a single self-contained
   executable that runs with no installation.
@@ -62,10 +64,28 @@ This produces, in `launcher/dist/`:
 Both bundle the game files, Chromium, and Node — nothing else is needed on the
 target machine.
 
-> CI: `.github/workflows/build-windows.yml` builds both on a `windows-latest`
-> runner on every push and attaches them to a GitHub Release on `v*` tags.
-> Building the `.exe` on non-Windows hosts is possible via electron-builder +
-> Wine but the Windows runner is the supported path.
+### Wine-free packaging
+
+electron-builder normally shells out to `wine rcedit.exe` to embed the app
+icon + version info into the Windows executable. To keep the build fast,
+reproducible, and buildable on Linux/CI without a working Wine runtime, this
+project instead:
+
+- sets `win.signAndEditExecutable: false` (skip electron-builder's Wine step),
+  and
+- stamps the icon + version into the app exe from `build/afterPack.js` using
+  [`resedit`](https://github.com/jet2jet/resedit-js) — a pure-JavaScript PE
+  resource editor (see `build/make-icon.mjs`, which emits both `icon.png` and a
+  multi-resolution `icon.ico`).
+
+As a result, **`npm run dist:portable` builds the complete portable `.exe` on
+Linux with no Wine at all**. The **NSIS installer** additionally runs its stub
+under Wine to generate the uninstaller, so `dist:win` (which includes NSIS) is
+built on Windows — locally or via CI.
+
+> CI: `.github/workflows/build-windows.yml` builds both the installer and the
+> portable exe on a `windows-latest` runner on every push, and attaches them to
+> a GitHub Release on `v*` tags.
 
 ## Launch via Steam
 

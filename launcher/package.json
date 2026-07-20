@@ -13,17 +13,20 @@
     "postinstall": "node build/make-icon.mjs",
     "pack": "electron-builder --dir",
     "dist": "electron-builder",
-    "dist:win": "electron-builder --win nsis portable"
+    "dist:win": "electron-builder --win nsis portable",
+    "dist:portable": "electron-builder --win portable"
   },
   "devDependencies": {
     "electron": "^32.2.0",
-    "electron-builder": "^25.1.8"
+    "electron-builder": "^25.1.8",
+    "resedit": "^2.0.3"
   },
   "build": {
     "appId": "net.sandboxdefense.gbts",
     "productName": "Go Back To The Sandbox",
     "copyright": "Copyright © Sandbox Defense Network",
     "asar": true,
+    "afterPack": "build/afterPack.js",
     "files": [
       "main.js",
       "preload-launcher.js",
@@ -54,11 +57,21 @@
     ],
     "win": {
       "target": [
-        { "target": "nsis", "arch": ["x64"] },
-        { "target": "portable", "arch": ["x64"] }
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
       ],
       "icon": "build/icon.png",
-      "artifactName": "${productName} ${version} ${target}.${ext}"
+      "signAndEditExecutable": false
     },
     "nsis": {
       "oneClick": false,
@@ -66,7 +79,8 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "Go Back To The Sandbox"
+      "shortcutName": "Go Back To The Sandbox",
+      "artifactName": "${productName} ${version} Setup.${ext}"
     },
     "portable": {
       "artifactName": "${productName} ${version} portable.${ext}"
