@@ -56,6 +56,7 @@ export class TitleMenu {
             <button id="btn-start" class="tm-item"><i>02</i>NEW GAME</button>
             <button id="btn-continue" class="tm-item" hidden><i>03</i>RESUME LAST SESSION</button>
             <button id="btn-settings" class="tm-item"><i>04</i>SETTINGS</button>
+            <button id="btn-exit" class="tm-item" hidden><i>05</i>EXIT GAME</button>
           </nav>
           <div class="title-foot">BUILD 2.5 &middot; THE FOG HOLDS &middot; DO NOT STOP COUNTING<span class="tm-caret">▮</span></div>
         </div>
@@ -114,6 +115,9 @@ export class TitleMenu {
     $('btn-continue').addEventListener('click', () => this.actions.onResumeSave());
     $('btn-settings').addEventListener('click', () => this._openSettings());
     $('btn-settings-back').addEventListener('click', () => { this.settingsEl.hidden = true; });
+    // Desktop shell only: a real EXIT GAME on the title screen. In a browser
+    // this entry stays hidden (see refresh()), so the web build is unchanged.
+    $('btn-exit').addEventListener('click', () => this.actions.onExitGame?.());
 
     const bind = (id, key, fmt, parse = parseFloat) => {
       const input = $(id), val = $(id + '-val');
@@ -148,6 +152,7 @@ export class TitleMenu {
     const $ = (id) => this.el.querySelector('#' + id);
     $('btn-return').hidden = !st.runStarted;
     $('btn-continue').hidden = !(st.save && !st.runStarted);
+    $('btn-exit').hidden = !this.actions.isDesktop;
     $('btn-start').querySelector('i').nextSibling.textContent =
       st.runStarted ? 'NEW GAME (RESTART)' : 'NEW GAME';
     // renumber the visible entries so the rail always reads 01, 02, ...

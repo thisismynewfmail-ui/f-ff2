@@ -42,6 +42,29 @@ or just use `scripts/serve.mjs`, which sidesteps caching entirely.
 
 (ES modules require http://, so opening index.html from disk won't work.)
 
+### Windows desktop app (launcher)
+
+For a native, no-browser experience there is a **Windows launcher** in
+[`launcher/`](launcher/) — a Minecraft/Unity-style startup window with a PLAY
+button that boots the game into its own **isolated, fullscreen** window. It
+wraps the game in Electron, so it bundles its own Chromium and Node and runs on
+a **fresh Windows install with no prerequisites**; it never touches the user's
+browser. Loading is covered by an in-theme **harmonograph** animation (coupled
+damped oscillators), saves land in the per-user data folder, and the in-game
+**EXIT GAME** button closes every process cleanly. It can be launched directly
+or added to Steam as a non-Steam game (`--game` boots straight into play).
+
+```
+cd launcher
+npm install && npm start     # run from source
+npm run dist:win             # build the Windows installer + portable .exe
+```
+
+See [`launcher/README.md`](launcher/README.md) for the full build and Steam
+setup. The browser build above is unaffected — the only game-side additions
+(`src/engine/Shell.js` and the desktop-only EXIT GAME entries) are inert without
+the desktop shell.
+
 ## Controls
 
 | Input | Action |
@@ -302,6 +325,9 @@ src/world/          terrain, buildings, props, vegetation, zones, nav, secrets,
                     anomalies (cosmic-horror layer + dynamic props), companion
                     cube, scarecrow (aware animated set piece), sky
 src/systems/        score/win condition, waves, spawning, game state, inventory
+src/engine/Shell.js desktop-shell bridge (detects the Electron launcher)
+launcher/           Windows desktop launcher (Electron): startup window,
+                    harmonograph boot animation, isolated fullscreen game window
 tests/              Playwright smoke test (boot, combat, exact win condition)
 ```
 

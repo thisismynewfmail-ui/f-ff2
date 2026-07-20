@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self';">
+  <title>Go Back To The Sandbox — Launcher</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="launcher.css">
+</head>
+<body>
+  <!-- Custom title bar (frameless window drag region + window controls) -->
+  <div class="titlebar">
+    <div class="tb-brand">SANDBOX DEFENSE NETWORK</div>
+    <div class="tb-controls">
+      <button id="tb-min" class="tb-btn" title="Minimize" aria-label="Minimize">–</button>
+      <button id="tb-close" class="tb-btn tb-close" title="Quit" aria-label="Quit">✕</button>
+    </div>
+  </div>
+
+  <main class="shell">
+    <!-- Left: identity + play -->
+    <section class="left">
+      <div class="kicker">SANDBOX DEFENSE NETWORK <span>//</span> FIELD CLIENT</div>
+      <h1 class="logo">GO BACK<br>TO THE<br><em>SANDBOX</em></h1>
+      <p class="tag">ZOMBIE WAVE SURVIVAL · <b>250,000</b> CONFIRMED KILLS TO TAKE THE TOWN BACK</p>
+
+      <div class="play-row">
+        <button id="play" class="play-btn">
+          <span class="play-glyph">▶</span>
+          <span class="play-label">PLAY</span>
+        </button>
+        <div class="play-meta">
+          <div id="build" class="build">BUILD —</div>
+          <div id="status" class="status">READY</div>
+        </div>
+      </div>
+
+      <div class="foot">THE FOG HOLDS · DO NOT STOP COUNTING<span class="caret">▮</span></div>
+    </section>
+
+    <!-- Right: field bulletin -->
+    <aside class="right">
+      <div class="card">
+        <div class="card-head">FIELD BULLETIN</div>
+        <div class="card-body">
+          <div class="note"><b>▸ ISOLATED CLIENT.</b> The game runs in its own
+            fullscreen window — never your browser.</div>
+          <div class="note"><b>▸ RUNS SAVE.</b> Every session is filed locally;
+            resume the last run from the title screen.</div>
+          <div class="note"><b>▸ ESC</b> pauses. In the pause menu, <b>EXIT GAME</b>
+            closes everything cleanly.</div>
+        </div>
+        <div class="card-foot" id="firstrun-note"></div>
+      </div>
+    </aside>
+  </main>
+
+  <!-- Progress overlay: the harmonograph boot animation -->
+  <div id="boot" class="boot" hidden>
+    <div class="boot-frame">
+      <div class="boot-kicker">SANDBOX DEFENSE NETWORK <span>//</span> <em id="boot-mode">STARTING</em></div>
+      <div class="boot-canvas-wrap">
+        <canvas id="boot-canvas" width="520" height="520"></canvas>
+        <div class="boot-corner tl"></div><div class="boot-corner tr"></div>
+        <div class="boot-corner bl"></div><div class="boot-corner br"></div>
+      </div>
+      <div class="boot-readout">
+        <span id="boot-pct" class="boot-pct">0%</span>
+        <span id="boot-stage" class="boot-stage">SPOOLING UP</span>
+      </div>
+      <div class="boot-caption" id="boot-caption">HARMONOGRAPH · COUPLED DAMPED OSCILLATORS — x(t)=Σ Aₖ·sin(fₖt+φₖ)·e^(−dₖt)</div>
+      <div class="boot-bar"><div id="boot-bar-fill" class="boot-bar-fill"></div></div>
+    </div>
+  </div>
+
+  <script src="launcher.js"></script>
+</body>
+</html>

@@ -1,0 +1,72 @@
+name: Build Windows Launcher
+
+# Builds the desktop launcher into a Windows installer (NSIS) and a single
+# portable .exe. Runs on a real Windows runner so electron-builder produces
+# native, self-contained binaries that work on a fresh Windows install with no
+# prerequisites (Chromium + Node are bundled inside).
+#
+# Triggers: pushes that touch the launcher or game files, manual dispatch, and
+# tags like v2.5.0. Artifacts are uploaded from every run; tagged runs also
+# attach the binaries to a GitHub Release.
+
+on:
+  push:
+    branches: ['**']
+    paths:
+      - 'launcher/**'
+      - 'src/**'
+      - 'assets/**'
+      - 'lib/**'
+      - 'index.html'
+      - 'styles.css'
+      - '.github/workflows/build-windows.yml'
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: launcher
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: launcher/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci || npm install
+
+      - name: Regenerate icon
+        run: npm run icon
+
+      - name: Build installer + portable
+        run: npm run dist:win
+        env:
+          # No code signing in CI; ship unsigned binaries (users get the
+          # standard SmartScreen prompt until the project has a certificate).
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: gbts-windows
+          path: |
+            launcher/dist/*.exe
+          if-no-files-found: error
+
+      - name: Attach to release (tags only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: launcher/dist/*.exe
