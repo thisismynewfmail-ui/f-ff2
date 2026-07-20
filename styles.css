@@ -804,6 +804,26 @@ html, body {
 .tm-set-check input { justify-self: start; width: 16px; height: 16px; accent-color: #e0b840; cursor: pointer; }
 #btn-settings-back { align-self: center; margin-top: 4px; }
 
+/* NEW GAME confirmation dialog */
+.tm-confirm {
+  position: absolute; inset: 0; z-index: 6; display: flex;
+  align-items: center; justify-content: center; background: rgba(4, 6, 5, 0.8);
+}
+.tm-confirm[hidden] { display: none; }
+.tm-confirm-panel {
+  display: flex; flex-direction: column; gap: 14px; width: 420px; max-width: 90vw;
+  background: rgba(8, 10, 8, 0.97); border: 2px solid #7a3a30; padding: 20px 22px;
+}
+.tm-confirm-msg { font-size: 13px; line-height: 1.6; color: #cdd6c2; letter-spacing: 0.5px; }
+.tm-confirm-actions { display: flex; gap: 12px; justify-content: flex-end; margin-top: 4px; }
+.tm-confirm-actions button {
+  font-size: 13px; letter-spacing: 2px; padding: 11px 20px; cursor: pointer;
+  border: 1px solid #4a5240; background: transparent; color: #a8b098;
+}
+.tm-confirm-yes { color: #f4fff4 !important; border-color: #46c06b !important; background: #1c5a2c !important; }
+.tm-confirm-yes:hover { background: #2b7a3f !important; }
+.tm-confirm-no:hover { background: #4a5240; color: #10120c; }
+
 /* hide the combat chrome while the title menu is up (see HUD.showScreen) */
 #hud.on-menu #hud-dock, #hud.on-menu #crosshair, #hud.on-menu #weapon-menu,
 #hud.on-menu #subtitle, #hud.on-menu #prompt, #hud.on-menu #banner { display: none; }

@@ -118,6 +118,7 @@ export class Game {
     });
 
     this._wire();
+    this._startAutosave();
     this.state.to('menu');
     this.hud.showScreen('menu');
     return this;
@@ -172,10 +173,30 @@ export class Game {
     if (!this.testMode) this.input.requestPointerLock();
   }
 
-  /** NEW GAME from the title. A live run parked behind the menu can only be
-   *  discarded by a full reboot — the world is built once per page load. */
+  /** NEW GAME from the title. On a fresh boot this simply enters the fog; once a
+   *  run has begun it resets the run in place (see restartRun) — either way the
+   *  player is dropped straight into the game. */
   newGame() {
-    if (this.runStarted) { location.reload(); return; }
+    if (this.runStarted) { this.restartRun(); return; }
+    this.startPlaying();
+  }
+
+  /** Reset the live run to a pristine wave-1 state IN PLACE and enter the fog.
+   *  This mirrors respawn()'s reset (clear the map, restore counters, re-seal
+   *  the districts, restart the waves, respawn the player) but rolls all the
+   *  way back to zero. Doing it in place — instead of reloading the page —
+   *  keeps the click that chose NEW GAME as a live user gesture, so pointer
+   *  lock engages and the player starts playing immediately (a page reload
+   *  would drop the gesture and strand them on the title screen). */
+  restartRun() {
+    for (const z of this.spawner.zombies) z.toRemove = true;
+    this.score.restore({ kills: 0, points: 0, byType: { Walker: 0, Sprinter: 0, Tank: 0 }, shotsFired: 0, shotsHit: 0 });
+    this.score.timePlayed = 0;
+    this.score.victory = false;
+    this.world.zones.syncTo(0);
+    this.waves.restartAtWave(1);
+    this.checkpoint = { wave: 0, score: this.score.snapshot() };
+    this.player.respawn();
     this.startPlaying();
   }
 
@@ -220,8 +241,23 @@ export class Game {
 
   saveSession() { return this.saves.save(this.captureSession()); }
 
-  /** Back to the title screen; the run stays live behind it (RETURN TO RUN),
-   *  and is auto-saved so the LAST SESSION card is always current. */
+  /** Persist the live run every few minutes, so progress survives a crash or a
+   *  forgotten quit. Only fires while a run is actually in progress; disabled
+   *  under the test harness. */
+  _startAutosave(intervalMs = 4 * 60 * 1000) {
+    if (this.testMode) return;
+    if (this._autosaveTimer) clearInterval(this._autosaveTimer);
+    this._autosaveTimer = setInterval(() => {
+      if (this.runStarted && (this.state.is('playing') || this.state.is('paused'))) {
+        this.saveSession();
+        this.events.emit('subtitle', { text: 'Run auto-saved.' });
+      }
+    }, intervalMs);
+  }
+
+  /** Back to the title screen; the run stays live behind it (RETURN TO RUN).
+   *  The run is saved on the way out so the LAST SESSION card — and any later
+   *  RESUME — always reflect where the player left off. */
   quitToTitle() {
     if (!this.state.to('menu')) return;
     this.saveSession();

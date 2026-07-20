@@ -104,13 +104,29 @@ export class TitleMenu {
           </label>
           <button id="btn-settings-back">BACK</button>
         </div>
+      </div>
+      <div class="tm-confirm" hidden>
+        <div class="tm-confirm-panel">
+          <div class="tm-card-head">START A NEW GAME?</div>
+          <p id="tm-confirm-msg" class="tm-confirm-msg"></p>
+          <div class="tm-confirm-actions">
+            <button id="btn-confirm-new" class="tm-confirm-yes">NEW GAME</button>
+            <button id="btn-confirm-cancel" class="tm-confirm-no">CANCEL</button>
+          </div>
+        </div>
       </div>`;
     this.settingsEl = this.el.querySelector('.tm-settings');
+    this.confirmEl = this.el.querySelector('.tm-confirm');
   }
 
   _wire() {
     const $ = (id) => this.el.querySelector('#' + id);
-    $('btn-start').addEventListener('click', () => this.actions.onStart());
+    $('btn-start').addEventListener('click', () => this._onNewGame());
+    $('btn-confirm-new').addEventListener('click', () => {
+      this.confirmEl.hidden = true;
+      this.actions.onStart();
+    });
+    $('btn-confirm-cancel').addEventListener('click', () => { this.confirmEl.hidden = true; });
     $('btn-return').addEventListener('click', () => this.actions.onReturnToRun());
     $('btn-continue').addEventListener('click', () => this.actions.onResumeSave());
     $('btn-settings').addEventListener('click', () => this._openSettings());
@@ -146,6 +162,18 @@ export class TitleMenu {
     this.settingsEl.hidden = false;
   }
 
+  /** NEW GAME: confirm first when there is something to lose — a run already in
+   *  progress (which a new game abandons) or a saved session on record (which a
+   *  new game will overwrite). A clean first boot starts immediately. */
+  _onNewGame() {
+    const st = this.actions.menuState?.() ?? {};
+    if (!st.runStarted && !st.save) { this.actions.onStart(); return; }
+    this.el.querySelector('#tm-confirm-msg').textContent = st.runStarted
+      ? 'This abandons your current run and starts over from wave 1. This cannot be undone.'
+      : 'This starts a new run. Your last saved session will be overwritten as you play.';
+    this.confirmEl.hidden = false;
+  }
+
   /** Re-render the state-dependent parts; called whenever the menu is shown. */
   refresh() {
     const st = this.actions.menuState?.() ?? {};
@@ -161,6 +189,7 @@ export class TitleMenu {
       if (!item.hidden) item.querySelector('i').textContent = String(++n).padStart(2, '0');
     }
     this.settingsEl.hidden = true;
+    this.confirmEl.hidden = true;
     this._fillLastSession(st.save, st.saveWhere);
   }
 
