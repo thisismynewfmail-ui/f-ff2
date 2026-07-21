@@ -17,6 +17,11 @@ const JUMP_VELOCITY = 6.8;
 const GRAVITY = 20;
 const EYE_STAND = 1.62;
 const EYE_CROUCH = 0.95;
+// Sprint stamina: a full meter is worth SPRINT_MAX seconds of sprinting, and an
+// empty meter takes SPRINT_REFILL seconds to fill back up. Sprint may be
+// re-engaged the instant there is any charge — there is no depletion lockout.
+const SPRINT_MAX = 5;
+const SPRINT_REFILL = 7;
 
 export class Player extends Entity {
   constructor(events, world, input) {
@@ -33,6 +38,10 @@ export class Player extends Entity {
     this.grounded = true;
     this.crouching = false;
     this.sprinting = false;
+    // Sprint meter (seconds of charge left). Drains while sprinting, refills
+    // otherwise; the HUD reads staminaFrac.
+    this.stamina = SPRINT_MAX;
+    this.staminaMax = SPRINT_MAX;
     this.eyeHeight = EYE_STAND;
     this.bobPhase = 0;
     this.bobAmp = 0;
@@ -73,6 +82,9 @@ export class Player extends Entity {
     return new THREE.Vector3(this.position.x, this.position.y + this.eyeHeight, this.position.z);
   }
 
+  /** Sprint meter fill, 0..1, for the HUD. */
+  get staminaFrac() { return this.stamina / this.staminaMax; }
+
   update(dt) {
     const input = this.input;
 
@@ -87,20 +99,27 @@ export class Player extends Entity {
       return;
     }
 
-    // --- gait
-    this.crouching = input.isDown('ControlLeft') || input.isDown('KeyC');
-    const wantSprint = input.isDown('ShiftLeft') && !this.crouching;
+    // --- gait (all rebindable; KeyC is kept as a fixed crouch alternate)
+    this.crouching = input.isActionDown('crouch') || input.isDown('KeyC');
+    const wantSprint = input.isActionDown('sprint') && !this.crouching;
     const targetEye = this.crouching ? EYE_CROUCH : EYE_STAND;
     this.eyeHeight += (targetEye - this.eyeHeight) * Math.min(1, dt * 10);
 
     // --- move intent (camera-relative)
     let mx = 0, mz = 0;
-    if (input.isDown('KeyW')) mz += 1;
-    if (input.isDown('KeyS')) mz -= 1;
-    if (input.isDown('KeyA')) mx += 1;
-    if (input.isDown('KeyD')) mx -= 1;
+    if (input.isActionDown('forward')) mz += 1;
+    if (input.isActionDown('back')) mz -= 1;
+    if (input.isActionDown('left')) mx += 1;
+    if (input.isActionDown('right')) mx -= 1;
     const moving = mx !== 0 || mz !== 0;
-    this.sprinting = wantSprint && mz > 0;
+    // Sprint engages only running forward and only while there is charge left.
+    this.sprinting = wantSprint && mz > 0 && this.stamina > 0;
+    // Drain while sprinting (5 s to empty), otherwise refill (7 s to full).
+    if (this.sprinting) {
+      this.stamina = Math.max(0, this.stamina - dt);
+    } else {
+      this.stamina = Math.min(this.staminaMax, this.stamina + dt * (this.staminaMax / SPRINT_REFILL));
+    }
 
     let speed = (this.crouching ? CROUCH_SPEED : this.sprinting ? SPRINT_SPEED : WALK_SPEED) * this.speedMult;
     const fwdX = -Math.sin(this.yaw), fwdZ = -Math.cos(this.yaw);
@@ -122,7 +141,7 @@ export class Player extends Entity {
 
     // --- vertical
     const groundY = this.world.groundHeightFor(this.position.x, this.position.z, this.position.y);
-    if (this.grounded && input.wasPressed('Space')) {
+    if (this.grounded && input.wasActionPressed('jump')) {
       this.vy = JUMP_VELOCITY * (this.crouching ? 0.6 : 1);
       this.grounded = false;
     }
@@ -223,6 +242,7 @@ export class Player extends Entity {
   respawn() {
     const s = this.world.playerSpawn;
     this.health = this.maxHealth;
+    this.stamina = this.staminaMax; // crawl back out with a full wind
     this.alive = true;
     this.teleport(s.x, this.world.groundHeightFor(s.x, s.z, 1e9), s.z);
   }

@@ -33,6 +33,11 @@ export const EXPLODER_KILL_GATE = 120;
 // ...and past this kill count the Exploder's spawn share steps up, so blast
 // pressure ramps alongside the Spitter's.
 export const EXPLODER_RAMP_GATE = 150;
+// Past this many kills the STANDARD horde (the plain walkers) thickens: bigger
+// spawn pulses and a higher concurrent cap, so the ordinary NPC pressure ramps
+// up well before the later heat/surge gates ever engage.
+export const HORDE_PUSH_GATE = 100;
+const HORDE_PUSH_SPAN = 1200;   // kills over which the push climbs 0 → 1 past the gate
 // The Spitter (ranged dual-pistol enemy) only starts spawning once the player
 // has made this many kills, then joins the table with a small, growing share.
 export const SPITTER_KILL_GATE = 100;
@@ -75,6 +80,14 @@ export class WaveSystem {
    */
   get surge() { return Math.min(1, Math.max(0, (this.score.kills - SURGE_GATE) / SURGE_SPAN)); }
 
+  /**
+   * Standard-horde push: 0 below HORDE_PUSH_GATE (~100 kills), ramping to 1 over
+   * HORDE_PUSH_SPAN kills past it. It fattens each spawn pulse and lifts the
+   * concurrent cap so noticeably more ordinary walkers press the player once
+   * they are established — well ahead of the later heat/surge gates.
+   */
+  get hordePush() { return Math.min(1, Math.max(0, (this.score.kills - HORDE_PUSH_GATE) / HORDE_PUSH_SPAN)); }
+
   /** Kills needed to clear wave n — grows with the wave, steepened by heat. */
   waveQuota(n) {
     const base = 8 + n * 3;
@@ -88,16 +101,19 @@ export class WaveSystem {
     return Math.max(0.3, 2.1 - this.wave * perWave - this.progress * 0.8 - this.heat * 0.7 - this.surge * 0.6);
   }
 
-  /** Zombies per spawn pulse — a bigger trickle once the horde heats up, bigger
+  /** Zombies per spawn pulse — a bigger trickle once the standard horde push
+   *  engages past ~100 kills, bigger again as the horde heats up, and bigger
    *  still once the surge kicks in past ~400 kills. */
   batchSize() {
-    return 2 + Math.round(this.heat * 3) + Math.round(this.surge * 3) + ((Math.random() * 4) | 0);
+    return 2 + Math.round(this.hordePush * 3) + Math.round(this.heat * 3)
+      + Math.round(this.surge * 3) + ((Math.random() * 4) | 0);
   }
 
-  /** Concurrent-zombie cap — lifts with heat and again with the post-400-kill
-   *  surge, so the thicker spawn stream has room to stay on the field. */
+  /** Concurrent-zombie cap — lifts with the post-100-kill horde push, again with
+   *  heat, and again with the post-400-kill surge, so the thicker spawn stream
+   *  always has room to stay on the field. */
   activeCap() {
-    return Math.round(55 + this.heat * 22 + this.surge * 22);
+    return Math.round(55 + this.hordePush * 15 + this.heat * 22 + this.surge * 22);
   }
 
   typeWeights() {

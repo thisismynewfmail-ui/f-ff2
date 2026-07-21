@@ -16,6 +16,7 @@ import { SpawnSystem } from '../systems/SpawnSystem.js';
 import { GameState } from '../systems/GameState.js';
 import { Inventory } from '../systems/Inventory.js';
 import { SaveSystem } from '../systems/SaveSystem.js';
+import { SettingsStore } from '../systems/SettingsStore.js';
 import { Effects } from '../rendering/Effects.js';
 import { WeaponView } from '../rendering/WeaponView.js';
 import { HUD } from '../rendering/HUD.js';
@@ -68,6 +69,11 @@ export class Game {
     this.spawner.setCull(30);
     this.weapons = new WeaponManager(this.events, this.world, this.player, this.renderer);
     this.weapons.zombies = this.spawner.zombies;
+    // The pristine checkpoint now also carries the starting ammo loadout, so the
+    // first death restores full magazines rather than an empty gun. The same
+    // pristine snapshot is reused to refill the guns on a NEW GAME restart.
+    this._pristineAmmo = this.weapons.snapshotAmmo();
+    this.checkpoint.weapons = this._pristineAmmo;
     this.pickups = new PickupManager(this.events, this.world, this.texLib, this.renderer.scene);
     this.pickups.seedInitial();
     this.npc = new NPC(this.events, this.world, this.texLib.get('npcPeaceful'));
@@ -82,7 +88,11 @@ export class Game {
     this.effects = new Effects(this.events, this.renderer.scene, this.texLib, this.player);
     this.viewModel = new WeaponView(this.events, this.renderer, this.texLib);
     this.audio = new AudioManager(this.events);
+    // Shared settings (sliders + key bindings), persisted and applied live to
+    // the camera, audio and input. Backs BOTH the title and pause Settings.
+    this.settings = new SettingsStore((s) => this.applySettings(s));
     this.hud = new HUD(this.events, this.hudRoot, {
+      settingsStore: this.settings,
       onStart: () => this.newGame(),
       onResume: () => this.startPlaying(),
       onRespawn: () => this.respawn(),
@@ -119,6 +129,9 @@ export class Game {
 
     this._wire();
     this._startAutosave();
+    // Push the loaded settings (sliders + key bindings) live now that every
+    // consumer (player, renderer, audio, input) exists.
+    this.settings.apply();
     this.state.to('menu');
     this.hud.showScreen('menu');
     return this;
@@ -137,8 +150,12 @@ export class Game {
     });
 
     // Checkpoint every tenth wave: snapshot the run so a death rolls back to it.
+    // The snapshot captures the AMMO loadout too, so a respawn hands the player
+    // back the magazines/reserves they held at the checkpoint (not a dry gun).
     this.events.on('wave:start', ({ wave }) => {
-      if (wave % 10 === 0) this.checkpoint = { wave, score: this.score.snapshot() };
+      if (wave % 10 === 0) {
+        this.checkpoint = { wave, score: this.score.snapshot(), weapons: this.weapons.snapshotAmmo() };
+      }
     });
 
     this.events.on('player:died', () => {
@@ -195,7 +212,9 @@ export class Game {
     this.score.victory = false;
     this.world.zones.syncTo(0);
     this.waves.restartAtWave(1);
-    this.checkpoint = { wave: 0, score: this.score.snapshot() };
+    // Refill the guns to the starting loadout and bank it as the new checkpoint.
+    this.weapons.restoreAmmo(this._pristineAmmo);
+    this.checkpoint = { wave: 0, score: this.score.snapshot(), weapons: this.weapons.snapshotAmmo() };
     this.player.respawn();
     this.startPlaying();
   }
@@ -216,7 +235,7 @@ export class Game {
       const wave = Math.max(1, s.wave | 0);
       this.world.zones.syncTo(this.score.kills);
       this.waves.restartAtWave(wave);
-      this.checkpoint = { wave, score: this.score.snapshot() };
+      this.checkpoint = { wave, score: this.score.snapshot(), weapons: this.weapons.snapshotAmmo() };
     }
     this.startPlaying();
   }
@@ -272,12 +291,14 @@ export class Game {
     Shell.quit();
   }
 
-  /** Live settings from the title menu (persisted there in localStorage). */
+  /** Apply a settings snapshot live (from the SettingsStore) — camera feel,
+   *  audio level and the re-bindable key/mouse map. */
   applySettings(s) {
     this.player.sensitivity = s.sensitivity;
     this.player.invertY = !!s.invertY;
     this.renderer.setBaseFov(s.fov);
     this.audio.setVolume(s.volume);
+    this.input.setBindings(s.bindings);
   }
 
   pause() {
@@ -305,6 +326,9 @@ export class Game {
     const cp = this.checkpoint;
     for (const z of this.spawner.zombies) z.toRemove = true;
     this.score.restore(cp.score);
+    // Reapply the ammo the player held at the checkpoint — dying no longer means
+    // crawling back out with the empty magazines you died on.
+    this.weapons.restoreAmmo(cp.weapons);
     // Re-seal the districts that the rolled-back kill count no longer clears, so
     // the section walls stand again (and reopen as the player re-earns them).
     this.world.zones.syncTo(cp.score.kills);
@@ -381,7 +405,7 @@ export class Game {
     // interaction
     const it = this.world.nearestInteractable(this.player.position.x, this.player.position.y, this.player.position.z);
     this._prompt = it ? it.prompt : null;
-    if (it && this.input.wasPressed('KeyE')) it.onInteract();
+    if (it && this.input.wasActionPressed('interact')) it.onInteract();
 
     // AI + simulation. One shared sensory context: the player, the zombie
     // horde and the friendly roster, so every agent perceives the same world.
@@ -415,6 +439,8 @@ export class Game {
     this.hud.update(dt, {
       health: this.player.health,
       maxHealth: this.player.maxHealth,
+      stamina: this.player.staminaFrac,
+      sprinting: this.player.sprinting,
       weapons: this.weapons.hudState(),
       kills: this.score.kills,
       points: this.score.points,

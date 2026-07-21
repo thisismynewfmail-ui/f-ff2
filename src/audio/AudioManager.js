@@ -37,6 +37,7 @@ export class AudioManager {
     on('player:died', () => this.deathSting());
     on('zombie:death', ({ pos }) => this.zombieDeath(pos));
     on('exploder:explode', ({ pos }) => this.explosion(pos));
+    on('barrier:explode', (b) => this.barrierBlast(b));
     on('spitter:fire', ({ pos }) => this.spitterShot(pos));
     on('zombie:aggro', ({ pos }) => this.growl(pos));
     on('wave:start', () => this.horn());
@@ -358,6 +359,32 @@ export class AudioManager {
     this._noise(0.12, 'lowpass', 2200, 0.8, 0.5 * v, 0, pan, 300); // crack
     this._noise(0.6, 'lowpass', 700, 0.6, 0.3 * v, 0.05, pan, 120); // rumble tail
     this._noise(0.35, 'highpass', 3000, 1, 0.16 * v, 0.02, pan);    // debris crackle
+  }
+
+  /**
+   * A border wall blown down: much bigger and longer than a single exploder —
+   * a stack of deep detonation booms marched a beat apart (the charges going up
+   * along the wall's length), a hard initial crack, a long crumbling-masonry
+   * rubble tail and a heavy sub-bass drop as tonnes of stone hit the ground.
+   * Spatialised but carried very far (120 m) and mixed hot so it dominates.
+   */
+  barrierBlast(b) {
+    if (!this.ctx) return;
+    const s = this._spatial({ x: b.x, z: b.z }, 120);
+    if (!s) { this._detonation(0.9, 0); return; } // out of range: still felt, centred
+    this._detonation(s.vol, s.pan);
+  }
+
+  _detonation(v, pan) {
+    // three booms a beat apart — the charges walking down the wall
+    for (const [w, g] of [[0, 0.7], [0.09, 0.55], [0.19, 0.4]]) {
+      this._tone('sine', 150, 0.55, g * v, w, pan, 34);   // body boom
+      this._tone('sine', 66, 0.85, g * 0.8 * v, w, pan, 20); // sub layer
+    }
+    this._noise(0.14, 'lowpass', 2600, 0.8, 0.62 * v, 0, pan, 320);  // hard crack
+    this._noise(1.3, 'lowpass', 620, 0.6, 0.4 * v, 0.06, pan, 90);   // long rubble tail
+    this._noise(0.7, 'highpass', 3200, 1, 0.22 * v, 0.05, pan);      // masonry debris crackle
+    this._tone('sine', 44, 1.1, 0.5 * v, 0.22, pan, 18);             // tonnes of stone hit the ground
   }
 
   /**

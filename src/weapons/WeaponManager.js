@@ -74,7 +74,7 @@ export class WeaponManager {
     }
 
     // reload (full, or the faster quick-tap variant when the mag isn't dry)
-    if (input.wasPressed('KeyR') && this.current.startReload()) {
+    if (input.wasActionPressed('reload') && this.current.startReload()) {
       const w = this.current;
       this.events.emit('weapon:reload:start', { weapon: w, tactical: w.tactical, duration: w.reloadDuration });
     }
@@ -248,6 +248,30 @@ export class WeaponManager {
       hitAny = true;
     }
     this.events.emit('melee:swing', { hit: hitAny });
+  }
+
+  /**
+   * Freeze every weapon's ammo (magazine + reserve) so the checkpoint system can
+   * roll it back on death — the player respawns with exactly the ammo they had
+   * when the checkpoint was taken, not with whatever they had burned through.
+   */
+  snapshotAmmo() {
+    return this.weapons.map((w) => ({ mag: w.mag, reserve: w.reserve }));
+  }
+
+  /** Reapply an ammo snapshot captured by snapshotAmmo() (used on respawn). Any
+   *  in-flight reload/scope is cancelled so the restored state is clean. */
+  restoreAmmo(snap) {
+    if (!snap) return;
+    this.setScope(false);
+    snap.forEach((s, i) => {
+      const w = this.weapons[i];
+      if (!w || w.isMelee) return;
+      w.cancelReload();
+      w.mag = s.mag;
+      w.reserve = s.reserve;
+    });
+    this.events.emit('ammo:changed', this.current);
   }
 
   /** HUD snapshot for the ammo counter + weapon menu. */

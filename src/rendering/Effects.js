@@ -167,6 +167,29 @@ export class Effects {
       const d = Math.hypot(pos.x - this.player.position.x, pos.z - this.player.position.z);
       this.addShake(Math.max(0, 0.14 * (1 - d / 16)));
     });
+    events.on('barrier:explode', (b) => {
+      // The border wall is blown down: a CHAIN of blasts marched along its
+      // length — each a lofting fireball, a billowing dust/rubble plume and an
+      // expanding flash core — plus a big warm light pop and heavy screen shake
+      // that scales with how close the player is standing. Reads as the whole
+      // barrier detonating and collapsing, not merely sinking.
+      const len = b.length || 12;
+      const n = Math.max(3, Math.min(9, Math.round(len / 6)));
+      for (let i = 0; i < n; i++) {
+        const t = n > 1 ? i / (n - 1) : 0.5;
+        const x = b.minX + (b.maxX - b.minX) * t;
+        const z = b.minZ + (b.maxZ - b.minZ) * t;
+        const y = b.y + 1.2 + Math.random() * 2.4;
+        this.flash.spawn({ x, y, z }, 3.4 + Math.random() * 1.4, 0.5);
+        this.fire.spawn({ x, y, z }, 34, 9.5, 1.6, 0.7);
+        this.dust.spawn({ x, y: b.y + 0.6, z }, 26, 5.5, 1.4, 1.5);   // rubble/dust plume
+        this.dust.spawn({ x, y: b.y + 2.4, z }, 14, 3.0, 0.7, 2.0);   // lingering smoke
+      }
+      this.explosionLight.position.set(b.x, b.y + 2.4, b.z);
+      this.explosionLight.intensity = 40;
+      const d = Math.hypot(b.x - this.player.position.x, b.z - this.player.position.z);
+      this.addShake(Math.max(0.05, 0.14 * (1 - d / 90)));
+    });
     events.on('spitter:fire', ({ pos }) => {
       // A quick additive muzzle pop + a brief glow at the Spitter's guns.
       this.flash.spawn({ x: pos.x, y: pos.y, z: pos.z }, 0.85, 0.12);
