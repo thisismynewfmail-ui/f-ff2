@@ -9,6 +9,7 @@ import { Player } from '../entities/Player.js';
 import { NPC } from '../entities/NPC.js';
 import { Cockroach } from '../entities/Cockroach.js';
 import { PickupManager } from '../entities/Pickups.js';
+import { CitizenSystem } from '../systems/CitizenSystem.js';
 import { WeaponManager } from '../weapons/WeaponManager.js';
 import { ScoreSystem } from '../systems/ScoreSystem.js';
 import { WaveSystem } from '../systems/WaveSystem.js';
@@ -85,6 +86,9 @@ export class Game {
     // night, and skitters away from the player.
     this.cockroach = new Cockroach(this.events, this.world);
     this.renderer.scene.add(this.cockroach.mesh);
+    // The savable citizen: a chance, every wave, to appear captured inside a
+    // random unlocked building — free her with [E] for a health-kit drop.
+    this.citizens = new CitizenSystem(this.events, this.world, this.texLib, this.renderer.scene);
     this.effects = new Effects(this.events, this.renderer.scene, this.texLib, this.player);
     this.viewModel = new WeaponView(this.events, this.renderer, this.texLib);
     this.audio = new AudioManager(this.events);
@@ -207,6 +211,7 @@ export class Game {
    *  would drop the gesture and strand them on the title screen). */
   restartRun() {
     for (const z of this.spawner.zombies) z.toRemove = true;
+    this.citizens.reset();
     this.score.restore({ kills: 0, points: 0, byType: { Walker: 0, Sprinter: 0, Tank: 0 }, shotsFired: 0, shotsHit: 0 });
     this.score.timePlayed = 0;
     this.score.victory = false;
@@ -325,6 +330,7 @@ export class Game {
     // wave respawns from scratch — e.g. dying at wave 45 drops you back to 40.
     const cp = this.checkpoint;
     for (const z of this.spawner.zombies) z.toRemove = true;
+    this.citizens.reset();
     this.score.restore(cp.score);
     // Reapply the ammo the player held at the checkpoint — dying no longer means
     // crawling back out with the empty magazines you died on.
@@ -425,6 +431,7 @@ export class Game {
     this.waves.update(dt, this.player.alive);
     this.npc.update(dt, ctx);
     this.cockroach.update(dt, ctx);
+    this.citizens.update(dt, ctx);
     this.pickups.update(dt, this.time, this.player, cam.position);
     this.world.update(dt, this.time, cam.position);
     this.sky.update(dt, cam.position);

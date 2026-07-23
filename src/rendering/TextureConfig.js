@@ -94,6 +94,11 @@ export const SPRITES = {
   // row carries the aim/fire frames the enemy shows the player while it primes.
   npcExploder: 'npc_csgo_exploder_update_skin.png',
   spitter: 'npc_csgo_midrange_double_pistol_gunholder.png',
+  // The savable citizen: bound and hooded while captured, swapped to the
+  // second sheet the instant she's freed (see entities/Citizen.js). Both are
+  // standard 3x4 walk-cycle sheets, same layout as npcPeaceful.
+  citizenCaptured: 'npc_save_captured.png',
+  citizenReleased: 'npc_save_release.png',
 };
 
 /** Layout of the 3x4 walk-cycle sheets (RPG-Maker style). */
