@@ -38,6 +38,23 @@ export function avoidObstacles(dx, dz, senses, weight = 1.7) {
 }
 
 /**
+ * Turn a heading toward a target angle at a capped rate (rad/s), taking the
+ * short way around. Most agents in this game snap their facing straight to
+ * their movement vector every frame; this is for the rarer case of an agent
+ * that should behave like it has real inertia in a turn — heading and desired
+ * direction fall out of sync while cornering, so pair this with speed scaled
+ * down by how far off-heading the agent still is (see Citizen's flee step),
+ * otherwise a sharp turn reads as sliding sideways instead of turning.
+ */
+export function turnToward(current, target, dt, ratePerSec) {
+  let diff = target - current;
+  diff = Math.atan2(Math.sin(diff), Math.cos(diff));
+  const maxStep = ratePerSec * dt;
+  if (Math.abs(diff) <= maxStep) return target;
+  return current + Math.sign(diff) * maxStep;
+}
+
+/**
  * Rotate a heading by a small, time-varying angle so a moving agent weaves
  * naturally instead of tracking a dead-straight line — and, across a crowd of
  * different phases/frequencies, so they don't all march in lockstep columns.
