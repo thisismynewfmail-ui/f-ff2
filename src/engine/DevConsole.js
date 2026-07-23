@@ -106,6 +106,7 @@ const COMMANDS = {
   help(con) {
     con.print('noclip          fly + pass through everything (WASD, Space up, Ctrl down, Shift fast)');
     con.print('god             toggle invulnerability');
+    con.print('xray            toggle seeing NPC sprites through walls');
     con.print('heal [n]        restore n health (default: full)');
     con.print('give            fill every weapon\'s magazine and reserve');
     con.print('tp <x> <z>      teleport to map coordinates (spawn is 0 20)');
@@ -128,6 +129,12 @@ const COMMANDS = {
   god(con, game) {
     game.player.godMode = !game.player.godMode;
     con.print('god mode ' + (game.player.godMode ? 'ON' : 'OFF'), game.player.godMode ? 'ok' : '');
+  },
+
+  xray(con, game) {
+    game.xray = !game.xray;
+    game.applyXray(); // take effect this frame, not the next
+    con.print('x-ray ' + (game.xray ? 'ON — NPC sprites show through walls' : 'OFF'), game.xray ? 'ok' : '');
   },
 
   heal(con, game, args) {
