@@ -43,6 +43,11 @@ export class Game {
     this._lastT = performance.now();
     this.runStarted = false; // has THIS session's run been entered at least once
     this._menuT = Math.random() * 400; // cinematic orbit clock (random start angle)
+    // x-ray cheat (dev console): draw every NPC sprite through walls. `xray` is
+    // the desired state; `_xrayActive` is the last-applied state, so exactly one
+    // restore pass runs the frame after it is switched off (see applyXray).
+    this.xray = false;
+    this._xrayActive = false;
   }
 
   async load(onProgress) {
@@ -432,6 +437,10 @@ export class Game {
     this.npc.update(dt, ctx);
     this.cockroach.update(dt, ctx);
     this.citizens.update(dt, ctx);
+
+    // x-ray cheat: run this AFTER the spawner (so any zombies streamed in this
+    // frame already exist and get caught) and after the NPCs move.
+    this.applyXray();
     this.pickups.update(dt, this.time, this.player, cam.position);
     this.world.update(dt, this.time, cam.position);
     this.sky.update(dt, cam.position);
@@ -461,4 +470,62 @@ export class Game {
       prompt: this._prompt,
     });
   }
+
+  /** Every NPC mesh the x-ray cheat reveals: the whole zombie horde plus the
+   *  friendly/critter roster. Read live each call so streamed-in zombies and a
+   *  freshly-spawned citizen are always covered. */
+  *_npcMeshes() {
+    for (const z of this.spawner.zombies) if (z.mesh) yield z.mesh;
+    if (this.npc?.mesh) yield this.npc.mesh;
+    if (this.cockroach?.mesh) yield this.cockroach.mesh;
+    if (this.citizens?.citizen?.mesh) yield this.citizens.citizen.mesh;
+  }
+
+  /**
+   * Push the x-ray state onto every NPC mesh. While the cheat is ON this runs
+   * every frame so newly-spawned NPCs inherit it; the frame after it is turned
+   * OFF, `_xrayActive` is still true so one final pass restores everything,
+   * then it goes quiet. Also callable directly (the console command does) so
+   * the toggle takes effect on the same frame with no visible lag.
+   */
+  applyXray() {
+    if (!this.xray && !this._xrayActive) return;
+    for (const mesh of this._npcMeshes()) setSeeThrough(mesh, this.xray);
+    this._xrayActive = this.xray;
+  }
+}
+
+/**
+ * Draw an object (and its descendants) on top of the world regardless of what
+ * stands between it and the camera — the "see through walls" primitive behind
+ * the x-ray cheat. Turning it on disables depth testing (so walls no longer
+ * occlude the sprite) and lifts the render order far above any world geometry
+ * (max in-world is 3), so the sprite is drawn last and wins every pixel.
+ * Originals are stashed in userData and restored on the way back, so a mesh
+ * that started with its own render order (e.g. a decal) is left exactly as it
+ * was. Idempotent: re-applying the same state is a cheap no-op-ish reassign.
+ */
+const XRAY_RENDER_ORDER = 4000;
+function setSeeThrough(root, on) {
+  root.traverse((o) => {
+    if (!o.isMesh) return;
+    const mats = Array.isArray(o.material) ? o.material : [o.material];
+    for (const m of mats) {
+      if (!m) continue;
+      if (on) {
+        if (m.userData.xrayDepthTest === undefined) m.userData.xrayDepthTest = m.depthTest;
+        m.depthTest = false;
+      } else if (m.userData.xrayDepthTest !== undefined) {
+        m.depthTest = m.userData.xrayDepthTest;
+        delete m.userData.xrayDepthTest;
+      }
+    }
+    if (on) {
+      if (o.userData.xrayRenderOrder === undefined) o.userData.xrayRenderOrder = o.renderOrder;
+      o.renderOrder = XRAY_RENDER_ORDER;
+    } else if (o.userData.xrayRenderOrder !== undefined) {
+      o.renderOrder = o.userData.xrayRenderOrder;
+      delete o.userData.xrayRenderOrder;
+    }
+  });
 }
