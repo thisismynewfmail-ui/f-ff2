@@ -1,3 +1,5 @@
+import { SettingsPanel } from './SettingsPanel.js';
+
 /**
  * The title screen — "GO BACK TO THE SANDBOX", styled after the classic
  * Counter-Strike main menus: a left-hand rail of stencilled menu entries with
@@ -11,36 +13,21 @@
  *     exists and no run is live, a RESUME LAST SESSION entry appears.
  *   - FIELD MANUAL: the control reference.
  *
- * Also owns SETTINGS (mouse sensitivity, invert Y, FOV, master volume),
- * persisted to localStorage and applied live through actions.applySettings.
+ * SETTINGS (mouse sensitivity, invert Y, FOV, master volume and the re-bindable
+ * KEY BINDINGS) live in a shared SettingsStore + SettingsPanel, so the identical
+ * form is reused by the in-game pause Settings.
  *
  * The menu is DYNAMIC: entries appear/relabel by state (fresh boot vs a live
  * run parked behind the pause menu's QUIT TO TITLE) — refresh() re-renders,
  * and the HUD calls it every time the menu screen is shown.
  */
-const SETTINGS_KEY = 'gbts.settings.v1';
-const DEFAULTS = { sensitivity: 1.0, fov: 90, volume: 0.5, invertY: false };
-
 export class TitleMenu {
-  constructor(el, actions) {
+  constructor(el, actions, store) {
     this.el = el;
     this.actions = actions;
-    this.settings = this._loadSettings();
+    this.store = store;
     this._build();
     this._wire();
-    actions.applySettings?.(this.settings);
-  }
-
-  _loadSettings() {
-    try {
-      const raw = localStorage.getItem(SETTINGS_KEY);
-      if (raw) return { ...DEFAULTS, ...JSON.parse(raw) };
-    } catch { /* storage disabled */ }
-    return { ...DEFAULTS };
-  }
-
-  _persistSettings() {
-    try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(this.settings)); } catch { /* ok */ }
   }
 
   _build() {
@@ -76,35 +63,11 @@ export class TitleMenu {
               <span>E</span><b>INTERACT</b><span>TAB</span><b>SATCHEL</b>
               <span>ESC</span><b>PAUSE</b><span>~</span><b>CONSOLE</b>
             </div>
+            <div class="tm-card-foot">REBIND ANY CONTROL IN SETTINGS &middot; KEY BINDINGS</div>
           </div>
         </div>
       </div>
-      <div class="tm-settings" hidden>
-        <div class="tm-settings-panel">
-          <div class="tm-card-head">SETTINGS</div>
-          <label class="tm-set-row">
-            <span>MOUSE SENSITIVITY</span>
-            <input id="set-sens" type="range" min="0.3" max="2.5" step="0.05">
-            <b id="set-sens-val"></b>
-          </label>
-          <label class="tm-set-row">
-            <span>FIELD OF VIEW</span>
-            <input id="set-fov" type="range" min="70" max="110" step="1">
-            <b id="set-fov-val"></b>
-          </label>
-          <label class="tm-set-row">
-            <span>MASTER VOLUME</span>
-            <input id="set-vol" type="range" min="0" max="1" step="0.05">
-            <b id="set-vol-val"></b>
-          </label>
-          <label class="tm-set-row tm-set-check">
-            <span>INVERT MOUSE Y</span>
-            <input id="set-invert" type="checkbox">
-            <b></b>
-          </label>
-          <button id="btn-settings-back">BACK</button>
-        </div>
-      </div>
+      <div class="tm-settings" hidden></div>
       <div class="tm-confirm" hidden>
         <div class="tm-confirm-panel">
           <div class="tm-card-head">START A NEW GAME?</div>
@@ -117,6 +80,15 @@ export class TitleMenu {
       </div>`;
     this.settingsEl = this.el.querySelector('.tm-settings');
     this.confirmEl = this.el.querySelector('.tm-confirm');
+
+    // The shared settings form, mounted into the overlay. BACK closes it.
+    this.panel = new SettingsPanel(this.settingsEl, this.store, {
+      footer: [{ label: 'BACK', cls: 'tm-set-back', onClick: () => this._closeSettings() }],
+    });
+    // Clicking the dim backdrop (outside the panel) also closes it.
+    this.settingsEl.addEventListener('mousedown', (e) => {
+      if (e.target === this.settingsEl && !this.panel.isCapturing()) this._closeSettings();
+    });
   }
 
   _wire() {
@@ -130,36 +102,19 @@ export class TitleMenu {
     $('btn-return').addEventListener('click', () => this.actions.onReturnToRun());
     $('btn-continue').addEventListener('click', () => this.actions.onResumeSave());
     $('btn-settings').addEventListener('click', () => this._openSettings());
-    $('btn-settings-back').addEventListener('click', () => { this.settingsEl.hidden = true; });
     // Desktop shell only: a real EXIT GAME on the title screen. In a browser
     // this entry stays hidden (see refresh()), so the web build is unchanged.
     $('btn-exit').addEventListener('click', () => this.actions.onExitGame?.());
-
-    const bind = (id, key, fmt, parse = parseFloat) => {
-      const input = $(id), val = $(id + '-val');
-      const show = () => { if (val) val.textContent = fmt(this.settings[key]); };
-      input.addEventListener('input', () => {
-        this.settings[key] = input.type === 'checkbox' ? input.checked : parse(input.value);
-        show();
-        this._persistSettings();
-        this.actions.applySettings?.(this.settings);
-      });
-      this._syncers = this._syncers || [];
-      this._syncers.push(() => {
-        if (input.type === 'checkbox') input.checked = this.settings[key];
-        else input.value = this.settings[key];
-        show();
-      });
-    };
-    bind('set-sens', 'sensitivity', (v) => v.toFixed(2) + 'x');
-    bind('set-fov', 'fov', (v) => v + '°');
-    bind('set-vol', 'volume', (v) => Math.round(v * 100) + '%');
-    bind('set-invert', 'invertY', () => '');
   }
 
   _openSettings() {
-    for (const sync of this._syncers) sync();
+    this.panel.sync();
     this.settingsEl.hidden = false;
+  }
+
+  _closeSettings() {
+    this.panel.cancelCapture();
+    this.settingsEl.hidden = true;
   }
 
   /** NEW GAME: confirm first when there is something to lose — a run already in
@@ -188,7 +143,7 @@ export class TitleMenu {
     for (const item of this.el.querySelectorAll('.tm-item')) {
       if (!item.hidden) item.querySelector('i').textContent = String(++n).padStart(2, '0');
     }
-    this.settingsEl.hidden = true;
+    this._closeSettings();
     this.confirmEl.hidden = true;
     this._fillLastSession(st.save, st.saveWhere);
   }

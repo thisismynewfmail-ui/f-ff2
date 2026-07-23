@@ -691,8 +691,11 @@ export class PropKit {
     for (const [lx, lz] of [[-1.0, -1.0], [1.0, -1.0], [-1.0, 1.0], [1.0, 1.0]]) {
       const leg = this.box(0.14, 7.5, 0.14, 'metalRust');
       leg.position.set(lx * 0.7, 3.75, lz * 0.7);
-      leg.rotation.z = -lx * 0.09;
-      leg.rotation.x = lz * 0.09;
+      // Splay the legs so the tower is WIDE at the base and tapers to a narrow
+      // top under the head — a stable lattice frame. (The signs were inverted,
+      // which made the tower balance on a point and read as upside-down.)
+      leg.rotation.z = lx * 0.09;
+      leg.rotation.x = -lz * 0.09;
       g.add(leg);
     }
     for (const yy of [2.5, 5]) {

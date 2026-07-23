@@ -94,6 +94,15 @@ export class Zones {
       this.collision.remove(b.colliderId);
       this.nav.unblockBox(...b.navRect);
       this.sinking.push({ group: b.group, t: 0, y0: b.group.position.y });
+      // The wall doesn't just quietly sink — it goes down as if blown apart:
+      // a chain of explosive debris/fire bursts along its length (Effects) and
+      // a huge blast (AudioManager) both hang off this one event.
+      const [minX, minZ, maxX, maxZ] = b.navRect;
+      this.events.emit('barrier:explode', {
+        x: (minX + maxX) / 2, z: (minZ + maxZ) / 2, y: b.group.position.y,
+        minX, minZ, maxX, maxZ,
+        length: Math.hypot(maxX - minX, maxZ - minZ),
+      });
     }
     const zone = ZONES[zoneId];
     this.events.emit('zone:unlock', { zone });

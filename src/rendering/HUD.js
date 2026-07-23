@@ -2,7 +2,7 @@ import { WIN_KILLS } from '../systems/ScoreSystem.js';
 import { Portrait } from './Portrait.js';
 import { hudTextures } from './HudTextures.js';
 import { TitleMenu } from './TitleMenu.js';
-import { Shell } from '../engine/Shell.js';
+import { SettingsPanel } from './SettingsPanel.js';
 
 /**
  * Retro survival-horror HUD, rendered as a DOM overlay.
@@ -66,7 +66,7 @@ export class HUD {
     this._menuTimer = 0;
     this._menuShown = false;
     this._scoped = false;
-    this._xmitSurge = 0;    // XMIT tube kick, set on every weapon:fire
+    this.settingsStore = actions.settingsStore;
     this._tex = hudTextures();
     this._build();
     this._wire();
@@ -378,159 +378,6 @@ export class HUD {
     this.remainEl.textContent = 'REMAINING ' + WIN_KILLS.toLocaleString('en-US');
   }
 
-  /* ==================================================================
-     CONSOLE VACUUM TUBES — the glowing analog heart of the mid console.
-     Each tube is a baked-canvas glass envelope (dome, anode plate, mica
-     spacers, getter flash, socket collar) layered over per-frame DOM glow:
-     an inner heater HEAT core behind the glass, an outer HALO bleed and a
-     POOL of warm light cast down onto the panel — the reference photos'
-     look: a dark plate with fire in its slot, washing the chassis red.
-     Envelope kinds: 'st' coke-bottle, 'gt' straight glass with a sealed
-     tip nub, 'mini' pencil tube; 'smoked' wraps the glass in near-black
-     coating so the glow only smoulders through (the trefoil-decal tube).
-     ================================================================== */
-
-  /** Build one tube: baked art + glow layers + stencil label. Returns refs
-   *  plus set(v), which drives all three glow layers from one 0..1 level. */
-  _buildTube(parent, { kind, w, h, label, smoked = false, decal = null, etch = '' }) {
-    const root = this._el('div', null, parent, 'tube' + (smoked ? ' smoked' : ''));
-    const stack = this._el('div', null, root, 'tube-stack');
-    stack.style.width = w + 'px'; stack.style.height = h + 'px';
-    const pool = this._el('div', null, stack, 'tube-pool');
-    const heat = this._el('div', null, stack, 'tube-heat');
-    const cv = document.createElement('canvas');
-    cv.width = w * 2; cv.height = h * 2; cv.className = 'tube-art';
-    this._drawTubeArt(cv, kind, { w, h, smoked, decal, etch });
-    stack.appendChild(cv);
-    const halo = this._el('div', null, stack, 'tube-halo');
-    this._el('div', null, root, 'tube-label').textContent = label;
-    return {
-      el: root, heat, halo, pool, _v: -1,
-      set(v) {
-        v = Math.max(0, Math.min(1, v));
-        if (Math.abs(v - this._v) < 0.008) return; // write styles only on real change
-        this._v = v;
-        heat.style.opacity = v.toFixed(3);
-        halo.style.opacity = (v * 0.8).toFixed(3);
-        pool.style.opacity = (v * 0.65).toFixed(3);
-      },
-    };
-  }
-
-  /** Bake one tube's static art at 2x: socket collar, glass envelope,
-   *  electrode stack, getter silvering, decal/etch and the glass glare. */
-  _drawTubeArt(cv, kind, { w, h, smoked, decal, etch }) {
-    const ctx = cv.getContext('2d');
-    ctx.scale(2, 2);
-    const baseH = Math.max(8, h * 0.1); // socket collar height
-    const gTop = kind === 'gt' ? 6 : 3; // glass starts below the tip nub
-    const gBot = h - baseH;
-    const cx = w / 2;
-
-    // envelope path, reused for fill / clip / outline
-    const glass = () => {
-      ctx.beginPath();
-      if (kind === 'st') { // coke-bottle: dome, neck, shoulder flare, body
-        const neckW = w * 0.3, bodyW = w * 0.46;
-        ctx.moveTo(cx - bodyW, gBot);
-        ctx.lineTo(cx - bodyW, gTop + h * 0.42);
-        ctx.bezierCurveTo(cx - bodyW, gTop + h * 0.24, cx - neckW, gTop + h * 0.2, cx - neckW, gTop + h * 0.12);
-        ctx.quadraticCurveTo(cx - neckW, gTop, cx, gTop);
-        ctx.quadraticCurveTo(cx + neckW, gTop, cx + neckW, gTop + h * 0.12);
-        ctx.bezierCurveTo(cx + neckW, gTop + h * 0.2, cx + bodyW, gTop + h * 0.24, cx + bodyW, gTop + h * 0.42);
-        ctx.lineTo(cx + bodyW, gBot);
-      } else { // straight-sided GT / mini pencil, domed top
-        const bw = w * 0.44, domeH = kind === 'mini' ? h * 0.1 : h * 0.14;
-        ctx.moveTo(cx - bw, gBot);
-        ctx.lineTo(cx - bw, gTop + domeH);
-        ctx.quadraticCurveTo(cx - bw, gTop, cx, gTop);
-        ctx.quadraticCurveTo(cx + bw, gTop, cx + bw, gTop + domeH);
-        ctx.lineTo(cx + bw, gBot);
-      }
-      ctx.closePath();
-    };
-
-    if (kind === 'gt') { // sealed exhaust tip on the crown
-      ctx.fillStyle = 'rgba(190,205,215,0.30)';
-      ctx.beginPath(); ctx.ellipse(cx, 3.4, 2.1, 3.2, 0, 0, Math.PI * 2); ctx.fill();
-      ctx.strokeStyle = 'rgba(235,245,250,0.35)'; ctx.lineWidth = 0.8; ctx.stroke();
-    }
-
-    glass();
-    ctx.fillStyle = 'rgba(185,205,215,0.10)'; // the faint body of the glass
-    ctx.fill();
-
-    // ---- internals, clipped to the envelope ----
-    ctx.save(); glass(); ctx.clip();
-    ctx.strokeStyle = 'rgba(214,170,120,0.75)'; ctx.lineWidth = 0.7;
-    for (const dx of [-w * 0.16, -w * 0.05, w * 0.07, w * 0.17]) { // stem wires
-      ctx.beginPath(); ctx.moveTo(cx + dx, gBot - 1); ctx.lineTo(cx + dx * 0.5, h * 0.62); ctx.stroke();
-    }
-    // anode plate: dark box, side wings, a hot slot down the middle where
-    // the heater glow (the DOM layer behind this canvas) burns through
-    const pw = w * 0.4, pTop = gTop + (gBot - gTop) * 0.28, pBot = gTop + (gBot - gTop) * 0.62;
-    ctx.fillStyle = '#25262a'; ctx.fillRect(cx - pw / 2, pTop, pw, pBot - pTop);
-    ctx.fillStyle = '#191a1d';
-    ctx.fillRect(cx - pw / 2 - 2, pTop + 3, 2, pBot - pTop - 6);
-    ctx.fillRect(cx + pw / 2, pTop + 3, 2, pBot - pTop - 6);
-    ctx.fillStyle = 'rgba(255,255,255,0.07)'; ctx.fillRect(cx - pw / 2, pTop, 1.2, pBot - pTop);
-    ctx.clearRect(cx - 1.1, pTop + 2, 2.2, pBot - pTop - 4); // heater slot
-    // mica spacer discs above and below the plate
-    ctx.fillStyle = 'rgba(206,199,178,0.85)';
-    ctx.beginPath(); ctx.ellipse(cx, pTop - 1.5, w * 0.3, 2, 0, 0, Math.PI * 2); ctx.fill();
-    ctx.beginPath(); ctx.ellipse(cx, pBot + 1.5, w * 0.28, 1.8, 0, 0, Math.PI * 2); ctx.fill();
-    ctx.strokeStyle = 'rgba(200,200,200,0.5)'; ctx.lineWidth = 0.6; // dome supports
-    ctx.beginPath(); ctx.moveTo(cx - 3, pTop - 2); ctx.lineTo(cx - 2, gTop + 4); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(cx + 3, pTop - 2); ctx.lineTo(cx + 2, gTop + 4); ctx.stroke();
-    // getter flash: the mirror silvering inside the dome
-    const gg = ctx.createRadialGradient(cx, gTop + 2, 1, cx, gTop + 2, h * 0.16);
-    gg.addColorStop(0, 'rgba(150,165,178,0.6)');
-    gg.addColorStop(0.7, 'rgba(110,125,138,0.25)');
-    gg.addColorStop(1, 'rgba(110,125,138,0)');
-    ctx.fillStyle = gg; ctx.fillRect(cx - w / 2, gTop, w, h * 0.18);
-    if (smoked) { // near-black coating with one gloss streak
-      ctx.fillStyle = 'rgba(14,15,16,0.62)'; ctx.fillRect(0, 0, w, h);
-      ctx.fillStyle = 'rgba(255,255,255,0.05)';
-      ctx.fillRect(cx - w * 0.3, gTop, w * 0.12, gBot - gTop);
-    }
-    if (decal === 'trefoil') { // the reference tube's red radiation mark
-      const dy = gTop + (gBot - gTop) * 0.3, r = Math.min(6, w * 0.16);
-      ctx.fillStyle = 'rgba(196,60,32,0.9)';
-      for (let k = 0; k < 3; k++) {
-        const a = (-90 + k * 120) * Math.PI / 180, hh = 28 * Math.PI / 180;
-        ctx.beginPath();
-        ctx.arc(cx, dy, r, a - hh, a + hh); ctx.arc(cx, dy, r * 0.4, a + hh, a - hh, true);
-        ctx.closePath(); ctx.fill();
-      }
-      ctx.beginPath(); ctx.arc(cx, dy, r * 0.24, 0, Math.PI * 2); ctx.fill();
-    }
-    if (etch) { // etched type code on the upper glass
-      ctx.fillStyle = 'rgba(238,232,214,0.30)';
-      ctx.font = 'bold 5px "Courier New", monospace'; ctx.textAlign = 'center';
-      ctx.fillText(etch, cx, gTop + (gBot - gTop) * 0.2);
-    }
-    ctx.restore();
-
-    glass(); // outline + curved glare streaks on the glass
-    ctx.strokeStyle = 'rgba(228,240,246,0.35)'; ctx.lineWidth = 1; ctx.stroke();
-    ctx.strokeStyle = 'rgba(255,255,255,0.20)'; ctx.lineWidth = 1.1;
-    ctx.beginPath();
-    ctx.moveTo(cx - w * 0.34, gTop + h * 0.16);
-    ctx.quadraticCurveTo(cx - w * 0.4, h * 0.45, cx - w * 0.33, gBot - h * 0.12);
-    ctx.stroke();
-    ctx.strokeStyle = 'rgba(255,255,255,0.10)';
-    ctx.beginPath();
-    ctx.moveTo(cx + w * 0.36, gTop + h * 0.2);
-    ctx.quadraticCurveTo(cx + w * 0.4, h * 0.38, cx + w * 0.36, h * 0.52);
-    ctx.stroke();
-
-    // socket collar: bakelite ring with a brass retaining band
-    ctx.fillStyle = '#15150f';
-    ctx.beginPath(); ctx.roundRect(cx - w * 0.48, gBot - 1, w * 0.96, baseH + 1, 2); ctx.fill();
-    ctx.fillStyle = '#7a6234'; ctx.fillRect(cx - w * 0.48, gBot + 1.4, w * 0.96, 1.6);
-    ctx.fillStyle = 'rgba(255,255,255,0.07)'; ctx.fillRect(cx - w * 0.48, gBot - 1, w * 0.96, 1);
-  }
-
   /** The bottom console bar and all of its instruments. */
   _buildConsole(parent) {
     const bar = this._el('div', 'console-bar', parent);
@@ -610,12 +457,18 @@ export class HUD {
     this.armsGrid = this._el('div', null, arms, 'cons-arms-grid');
     this.armsSlots = []; // filled on first update
 
-    // --- right tube bank: XMIT (blips per shot) + WAVE (fight state) ---
-    const rackR = this._el('div', 'cons-tubes-r', bar, 'cons-tubes');
-    this.tubeXmit = this._buildTube(rackR, { kind: 'mini', w: 25, h: 78, label: 'XMIT', etch: '6L6' });
-    this.tubeWave = this._buildTube(rackR, {
-      kind: 'gt', w: 32, h: 86, label: 'WAVE', smoked: true, decal: 'trefoil', etch: 'R-42',
-    });
+    // --- SPRINT meter (the right tube bank is gone; a vertical stamina cell
+    // takes the panel's rightmost slot, styled to match the console). The
+    // amber/green fill drains as the player sprints and recharges when they
+    // don't; it flashes red when spent. ---
+    const sprint = this._el('div', 'cons-sprint', bar);
+    this.sprintPanel = sprint;
+    this._el('div', null, sprint, 'cons-panel-label').textContent = 'SPRINT';
+    const sprintTrack = this._el('div', null, sprint, 'cons-sprint-track');
+    this.sprintFill = this._el('div', null, sprintTrack, 'cons-sprint-fill');
+    this._el('div', null, sprintTrack, 'cons-sprint-gloss');
+    this.sprintState = this._el('div', null, sprint, 'cons-sprint-state');
+    this.sprintState.textContent = 'READY';
   }
 
   _buildScreens() {
@@ -624,16 +477,33 @@ export class HUD {
     // transparent vignette so the cinematic orbit shows through.
     this.menuEl = this._el('div', 'screen-menu', null, 'screen menu-screen');
     this.menuEl.style.display = 'none';
-    this.titleMenu = new TitleMenu(this.menuEl, this.actions);
+    this.titleMenu = new TitleMenu(this.menuEl, this.actions, this.settingsStore);
     this.pauseEl = this._screen('pause', `
       <h1>PAUSED</h1>
       <div id="pause-stats" class="statrings"></div>
       <div class="pause-actions">
         <button id="btn-resume">RESUME</button>
         <button id="btn-save" class="btn-secondary">SAVE RUN</button>
+        <button id="btn-pause-settings" class="btn-secondary">SETTINGS</button>
         <button id="btn-quit" class="btn-secondary">QUIT TO TITLE</button>
-        ${Shell.isDesktop ? '<button id="btn-exit" class="btn-secondary btn-exit">EXIT GAME</button>' : ''}
       </div>`);
+    // In-game Settings overlay, layered over the pause screen. Reuses the same
+    // shared form (sliders + key bindings) as the title menu. APPLY confirms the
+    // (already-live) settings; RETURN TO GAME — like ESC — drops straight back
+    // into play. ESC is handled below so it never leaks out to also unpause.
+    this.pauseSettingsEl = this._el('div', 'screen-pause-settings', this.pauseEl, 'tm-settings');
+    this.pauseSettingsEl.hidden = true;
+    this.pausePanel = this.settingsStore ? new SettingsPanel(this.pauseSettingsEl, this.settingsStore, {
+      footer: [
+        { label: 'APPLY', cls: 'tm-set-apply', onClick: (e, btn) => this._applyPauseSettings(btn) },
+        { label: 'RETURN TO GAME', cls: 'btn-secondary', onClick: () => this._closePauseSettings(true) },
+      ],
+    }) : null;
+    this.pauseSettingsEl.addEventListener('mousedown', (e) => {
+      if (e.target === this.pauseSettingsEl && this.pausePanel && !this.pausePanel.isCapturing()) {
+        this._closePauseSettings(true);
+      }
+    });
     this.deadEl = this._screen('dead', `
       <h1 class="blood">YOU DIED</h1>
       <p class="story">The fog closes in over you. But the count survives. It always survives.</p>
@@ -655,6 +525,9 @@ export class HUD {
 
   showScreen(which) {
     for (const s of [this.menuEl, this.pauseEl, this.deadEl, this.victoryEl]) s.style.display = 'none';
+    // Every pause always opens on the action menu, never straight into the
+    // settings overlay from a previous visit.
+    if (this.pauseSettingsEl) { this.pauseSettingsEl.hidden = true; this.pausePanel?.cancelCapture(); }
     // While the title menu is up the combat chrome (dock, crosshair) hides so
     // the cinematic reads clean; see the #hud.on-menu rules in styles.css.
     this.root.classList.toggle('on-menu', which === 'menu');
@@ -665,22 +538,49 @@ export class HUD {
     }
   }
 
+  /** Pause → Settings: layer the shared settings form over the pause screen. */
+  _openPauseSettings() {
+    if (!this.pausePanel) return;
+    this.pausePanel.sync();
+    this.pauseSettingsEl.hidden = false;
+  }
+
+  /** Close the pause settings overlay. When `toGame`, drop straight back into
+   *  play (RETURN TO GAME / ESC); otherwise just fall back to the pause menu. */
+  _closePauseSettings(toGame) {
+    if (!this.pauseSettingsEl || this.pauseSettingsEl.hidden) return;
+    this.pausePanel?.cancelCapture();
+    this.pauseSettingsEl.hidden = true;
+    if (toGame) this.actions.onResume();
+  }
+
+  _applyPauseSettings(btn) {
+    this.settingsStore?.apply();
+    const prev = btn.textContent;
+    btn.textContent = 'APPLIED ✓';
+    setTimeout(() => { btn.textContent = prev; }, 1100);
+  }
+
   _wire() {
     document.getElementById('btn-resume').addEventListener('click', () => this.actions.onResume());
     document.getElementById('btn-respawn').addEventListener('click', () => this.actions.onRespawn());
     document.getElementById('btn-quit').addEventListener('click', () => this.actions.onQuitToTitle());
-    // Desktop only: EXIT GAME saves the live run, then closes the whole process
-    // (window + internal server + launcher) through the shell bridge.
-    const exitBtn = document.getElementById('btn-exit');
-    if (exitBtn) {
-      exitBtn.addEventListener('click', async (e) => {
-        const b = e.currentTarget;
-        if (b.disabled) return;
-        b.disabled = true;
-        b.textContent = 'SAVING…';
-        try { await this.actions.onExitGame(); } catch { Shell.quit(); }
-      });
-    }
+    // Pause → SETTINGS (replaces the old desktop-only EXIT GAME here; EXIT GAME
+    // still lives on the title screen). Opens the shared settings overlay.
+    document.getElementById('btn-pause-settings').addEventListener('click', () => this._openPauseSettings());
+    // ESC inside the pause settings drops the player right back into the game.
+    // A key-capture in the panel consumes ESC first (to cancel the bind), so
+    // this only fires when nothing is being rebound.
+    document.addEventListener('keydown', (e) => {
+      if (e.code !== 'Escape') return;
+      if (this.pauseSettingsEl && !this.pauseSettingsEl.hidden && !this.pausePanel?.isCapturing()) {
+        // Swallow it so nothing else (e.g. the pause/play ESC toggle) also fires
+        // and bounces the player back out of the game.
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        this._closePauseSettings(true);
+      }
+    });
     // SAVE RUN: persist the live run (server first, localStorage fallback)
     // and report where it landed right on the button.
     document.getElementById('btn-save').addEventListener('click', async (e) => {
@@ -724,7 +624,7 @@ export class HUD {
 
     on('weapon:menu:poke', () => this.showWeaponMenu());
     on('weapon:switch', () => this.showWeaponMenu());
-    on('weapon:fire', () => { this.hideWeaponMenu(); this._xmitSurge = 1; });
+    on('weapon:fire', () => this.hideWeaponMenu());
     on('weapon:reload:start', () => this.hideWeaponMenu());
   }
 
@@ -1006,10 +906,17 @@ export class HUD {
       this.resOdo.classList.toggle('empty', cur.reserve === 0 && cur.mag === 0);
     }
 
-    // --- console: XMIT tube — kicks to full on every weapon:fire, then
-    // cools; automatic fire holds it glowing like a working transmitter. ---
-    this._xmitSurge = Math.max(0, this._xmitSurge - dt * 3.4);
-    this.tubeXmit.set(0.2 + 0.03 * Math.sin(now / 300) + this._xmitSurge * 0.8);
+    // --- console: SPRINT meter — vertical stamina cell that drains as the
+    // player sprints and recharges otherwise (see Player stamina). ---
+    const stam = Math.max(0, Math.min(1, d.stamina ?? 1));
+    this.sprintFill.style.height = (stam * 100).toFixed(1) + '%';
+    const winded = stam <= 0.02 && !d.sprinting;
+    this.sprintPanel.classList.toggle('sprinting', !!d.sprinting);
+    this.sprintPanel.classList.toggle('low', stam < 0.3 && !winded);
+    this.sprintPanel.classList.toggle('winded', winded);
+    this.sprintState.textContent = winded ? 'WINDED'
+      : d.sprinting ? 'RUN'
+      : stam > 0.985 ? 'READY' : 'REGEN';
 
     // --- console: alarm lamp + AIM indicator ---
     this._alarm = Math.max(0, this._alarm - dt * 2);
@@ -1100,12 +1007,6 @@ export class HUD {
     this.waveLamps.calm.classList.toggle('lit', respite && d.wave.n === 0);
     this.waveLamps.incoming.classList.toggle('lit', respite && Math.sin(now / 160) > -0.25);
     this.waveLamps.combat.classList.toggle('lit', active);
-    // WAVE tube: rages with an erratic beat during combat, hard-blinks in
-    // step with the incoming lamp through a respite, idles on a slow breath
-    this.tubeWave.set(active
-      ? 0.52 + 0.2 * Math.sin(now / 90) * Math.sin(now / 37) + 0.14 * Math.sin(now / 210)
-      : respite ? (Math.sin(now / 160) > -0.25 ? 0.7 : 0.12)
-        : 0.16 + 0.08 * Math.sin(now / 800));
     this.supplyChip.classList.toggle('lit', respite && d.wave.n > 0);
     this.respiteEl.textContent = respite
       ? (d.wave.n === 0 ? 'THEY ARE COMING · ' : 'RESPITE · ') + Math.ceil(d.wave.respiteLeft) + 's'
