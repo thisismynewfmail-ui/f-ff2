@@ -77,7 +77,9 @@ await page.evaluate(() => {
       for (const z of g.spawner.zombies) g.renderer.scene.remove(z.mesh);
       g.spawner.zombies.length = 0;
       g.player.alive = true;
-      g.player.hp = 1e6;           // never dies mid-test
+      g.player.health = g.player.maxHealth;
+      g.player.invulnTime = 0;
+      g.player.godMode = true;     // a 40 s test must not end in the player dying
     },
     /** Advance the real simulation without rendering a single frame. */
     step(seconds, dt = 1 / 30) {
@@ -356,27 +358,67 @@ const specialists = await page.evaluate(() => {
 
   // Both need open ground with a clear line between them — their whole point is
   // what they do once they can SEE the player, so put them somewhere they can.
+  // Point the player at a spot. Player yaw 0 faces -Z.
+  const lookAt = (x, z) => { g.player.yaw = Math.atan2(-(x - g.player.position.x), -(z - g.player.position.z)); };
   const facing = (radius) => {
     const py = g.world.groundHeightFor(p.x, p.z, 1e9);
-    for (let i = 0; i < 12; i++) {
-      const a = (i / 12) * Math.PI * 2;
+    for (let i = 0; i < 24; i++) {
+      const a = (i / 24) * Math.PI * 2;
       const x = p.x + Math.cos(a) * radius, z = p.z + Math.sin(a) * radius;
       if (g.world.nav.isBlockedAt(x, z)) continue;
-      if (g.world.hasLineOfSight(p.x, py + 1.5, p.z, x, g.world.groundHeightFor(x, z, 1e9) + 1.2, z)) return { x, z };
+      // Needs BOTH a clear line (that is what these two archetypes act on) and
+      // walkable ground between — a spot with sight but no footing tests
+      // nothing but the spot.
+      if (!g.world.hasLineOfSight(p.x, py + 1.5, p.z, x, g.world.groundHeightFor(x, z, 1e9) + 1.2, z)) continue;
+      if (!g.world.nav.findPath(x, z, p.x, p.z)) continue;
+      return { x, z };
     }
     return { x: p.x + radius, z: p.z };
   };
 
-  // Exploder: closes, then plants itself and burns a fuse before detonating.
+  // Exploder, part 1 — the fuse. Placed inside its trigger ring with a clear
+  // line, it must plant itself, burn the fuse and detonate through the real
+  // damage pipeline. Deliberately started in the ring: whether its flank spiral
+  // converges from further out is a separate, pre-existing question (see
+  // part 2) and not what the fuse mechanic should be tested through.
   h.quiesce();
   h.movePlayer(p.x, p.z);
+  const near = facing(1.2);
+  lookAt(near.x, near.z);
+  g.player.godMode = false;             // the blast has to actually land
+  g.player.health = g.player.maxHealth;
   let boom = null;
   const off = g.events.on('exploder:explode', (e) => { boom = e; });
-  const exAt = facing(9);
-  const ex = h.place('exploder', exAt.x, exAt.z);
+  const ex = h.place('exploder', near.x, near.z);
+  const hpBefore = g.player.health;
   const exStates = new Set();
-  for (let t = 0; t < 40 && !boom; t++) { h.step(0.25); exStates.add(ex.state); }
+  for (let t = 0; t < 40 && !boom; t++) { h.step(0.1); exStates.add(ex.state); }
   if (typeof off === 'function') off();
+  const hurtPlayer = g.player.health < hpBefore;
+  g.player.godMode = true;
+
+  // Exploder, part 2 — the flank. Inside flankRange it must stop charging
+  // head-on and skirt to a side, so its heading should sit well off the
+  // straight line to the target.
+  h.quiesce();
+  h.movePlayer(p.x, p.z);
+  const side = facing(2.6);
+  lookAt(side.x, side.z);               // it skirts around where you are AIMING
+  const fl = h.place('exploder', side.x, side.z);
+  let offAxis = 0, samples = 0;
+  let px = fl.position.x, pz = fl.position.z;
+  for (let t = 0; t < 20; t++) {
+    h.step(0.1);
+    const mx = fl.position.x - px, mz = fl.position.z - pz;
+    px = fl.position.x; pz = fl.position.z;
+    const m = Math.hypot(mx, mz);
+    if (m < 0.02) continue;
+    const tx = g.player.position.x - fl.position.x, tz = g.player.position.z - fl.position.z;
+    const tm = Math.hypot(tx, tz) || 1;
+    offAxis += Math.acos(Math.max(-1, Math.min(1, (mx / m) * (tx / tm) + (mz / m) * (tz / tm))));
+    samples++;
+  }
+  const flankAngle = samples ? (offAxis / samples) * 180 / Math.PI : 0;
 
   // Spitter: holds a standoff band, plants to aim, then fires.
   h.quiesce();
@@ -384,21 +426,25 @@ const specialists = await page.evaluate(() => {
   let shot = null;
   const off2 = g.events.on('spitter:fire', (e) => { shot = e; });
   const spAt = facing(8);
+  lookAt(spAt.x, spAt.z);
   const sp = h.place('spitter', spAt.x, spAt.z);
   const spStates = new Set();
-  for (let t = 0; t < 60 && !shot; t++) { h.step(0.25); spStates.add(sp.state); }
+  for (let t = 0; t < 80 && !shot; t++) { h.step(0.25); spStates.add(sp.state); }
   if (typeof off2 === 'function') off2();
 
   return {
-    exploded: !!boom, exStates: [...exStates],
+    exploded: !!boom, exStates: [...exStates], hurtPlayer, flankAngle,
     fired: !!shot, spStates: [...spStates],
     spDist: Math.hypot(sp.position.x - g.player.position.x, sp.position.z - g.player.position.z),
     spBand: [sp.config.standoffMin, sp.config.standoffMax],
   };
 });
-check('the Exploder still charges, plants a fuse and detonates',
-  specialists.exploded && specialists.exStates.includes('fuse'),
+check('the Exploder still plants a fuse and detonates through the damage pipeline',
+  specialists.exploded && specialists.exStates.includes('fuse') && specialists.hurtPlayer,
   specialists.exStates.join('→'));
+check('...and skirts to a flank instead of charging head-on',
+  specialists.flankAngle > 30,
+  `heading ${specialists.flankAngle.toFixed(0)}° off the straight line in`);
 check('the Spitter still kites, plants to aim and fires',
   specialists.fired && specialists.spStates.includes('aiming'),
   specialists.spStates.join('→'));

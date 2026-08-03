@@ -5,10 +5,11 @@
  * changes. Adding an entry here makes it available everywhere through
  * TextureLib.get(name).
  *
- * `sprites` entries are processed at load time with an edge flood-fill that
- * turns the white background transparent while preserving interior whites
- * (bows, teeth). Drop any white-background sheet into assets/sprites/ and
- * list it here to use it.
+ * `sprites` entries are processed at load time: an edge flood-fill turns the
+ * white background transparent while preserving interior whites (bows, teeth),
+ * then the antialiased fringe left along the silhouette is un-matted back to
+ * the art's own colour so sprites do not wear a light halo. Drop any
+ * white-background sheet into assets/sprites/ and list it here to use it.
  */
 export const TEXTURE_DIR = 'assets/textures/';
 export const SPRITE_DIR = 'assets/sprites/';

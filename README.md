@@ -422,8 +422,11 @@ tests/              headless AI tests (ai.mjs), NPC behaviour tests against the
   the next reload instead of being served stale from the browser cache. Any
   power-of-two size works — swap the 128×128 `grass.png` for a 512×512 one and
   it tiles seamlessly with no code changes. New white-background sprite sheets
-  dropped into `assets/sprites/` are keyed automatically (edge flood fill
-  preserves interior whites).
+  dropped into `assets/sprites/` are keyed automatically: an edge flood fill
+  clears the backdrop while preserving interior whites, then the antialiased
+  fringe it leaves is un-matted — the art these sheets are drawn on is white, so
+  every silhouette texel is part white, and solving that blend back to the art's
+  own colour is what keeps sprites from wearing a light halo.
 - **Regenerate textures:** `node scripts/generate_textures.mjs`.
 
 ## Performance
