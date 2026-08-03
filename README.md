@@ -197,21 +197,27 @@ There is deliberately no command that touches the kill counter — the
   range (bolt at ~70% of it, safe past 100%), so "flee until out of sight" is
   literally correlated to zombie sight distance.
 - **Savable citizen:** a captive woman tied up **inside a building**, and the
-  one NPC you rescue rather than fight. She **starts appearing once you pass
-  100 kills**, then has a **chance to show up on any wave** — in a *random*
-  enterable building in a district you have already unlocked, so both whether
-  she appears and where she is hiding differ every playthrough (only one is
-  ever out at a time). Walk up and an **[E] prompt** offers to free her:
-  interacting swaps her from the captured sprite to the released one, **drops a
-  health kit** at her feet, and sends her running for the street. She routes
-  herself through the building's interior doorways and out its door, then keeps
-  receding outdoors and **despawns only once she is genuinely out of your line
-  of sight** — watch her and she keeps running. Unlike every other entity here
-  she does **not** snap to a new heading: she turns at a **capped rate** and her
-  speed scales with how well she is facing where she wants to go, so rounding a
+  one NPC you rescue rather than fight. **Wave 2 always has one** — a scripted
+  introduction to the mechanic, long before any kill gate — and after that she
+  **starts appearing once you pass 100 kills**, with a **chance to show up on
+  any wave**. She is always in a *random* enterable building in a district you
+  have already unlocked, so both whether she appears and where she is hiding
+  differ every playthrough (only one is ever out at a time). Walk up and an
+  **[E] prompt** offers to free her: interacting swaps her from the captured
+  sprite to the released one, **drops a health kit** at her feet, and sends her
+  running for the street. She routes herself through the building's interior
+  doorways and out its door, then keeps receding outdoors. **Five seconds after
+  the rescue she despawns — but only while you cannot see her**, so you always
+  get a few seconds of watching her run, and she never blinks out in view; keep
+  her in sight and she just keeps going. Unlike every other entity here she does
+  **not** snap to a new heading: she turns at a **capped rate** and her speed
+  scales with how well she is facing where she wants to go, so rounding a
   doorway visibly slows her and straightens her out before she accelerates —
   a turning circle instead of a slide (a straight-line intent made her spin
-  toward the exit and drift straight back off it in tight interiors).
+  toward the exit and drift straight back off it in tight interiors). If a prop
+  wedges her — a bench square between her and where she wants to go — she
+  **sidesteps around it** rather than pressing into it, committing to one side
+  for a beat so she rounds it instead of ping-ponging off it.
 - **Cockroach:** an AI-test critter on the same stack. It skitters and wanders,
   **hides inside buildings by day**, **roams outdoors at night**, and **darts
   away from the player** — but only a very short distance before settling.

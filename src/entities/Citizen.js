@@ -15,8 +15,9 @@ import { local2world } from '../world/Buildings.js';
  *             [E] prompt is live on her.
  *   fleeing   interacting swaps her to npc_save_release.png, drops a health
  *             kit at her feet, and sends her for the door.
- *   gone      she has cleared the building and broken the player's line of
- *             sight (or a safety timer elapsed); CitizenSystem despawns her.
+ *   gone      at least 5 seconds have passed since the rescue and the player
+ *             cannot see her (or a safety timer elapsed); CitizenSystem
+ *             despawns her.
  *
  * The flee movement deliberately does NOT use the instant snap-to-heading
  * model every other entity here uses (yaw = atan2(intent), move on intent
@@ -52,27 +53,38 @@ const GAP_RADIUS = 0.9;
 const OUTSIDE_MARGIN = 3.5;  // how far past the door threshold counts as "outside"
 const VANISH_STEP = 11;      // length of each leg once she's outside and still receding
 const VANISH_MAX = 70;       // total outdoor flee distance before she just holds position
-const CLEAR_DIST = 11;       // must be at least this far from the door before despawn
-const MIN_FLEE_TIME = 1.0;   // grace period after freeing before despawn can trigger
+// She is only allowed to leave the world 5 seconds after the rescue, and even
+// then only while the player cannot see her — so the player always gets a few
+// seconds of watching her actually run before she is eligible to vanish, and
+// she never blinks out in view. Deliberately a pure time + line-of-sight test:
+// no distance-from-the-door term, so once the 5 seconds are up she goes the
+// moment she is unseen, whether she made it down the street or is still
+// picking her way through the back room.
+const DESPAWN_DELAY = 5.0;
 const MAX_FLEE_TIME = 45;    // hard safety cap in case she gets stuck somewhere
 
-// Recovery for a case reactive avoidance can't solve on its own: furniture
-// (a counter, a shelf) doesn't block the nav grid, only real walls do — so a
-// found path can legitimately route close past a piece of it, and in a small
-// room the corner of that piece can sit close enough to both her and her
-// waypoint that "steer away from it" and "seek the waypoint" roughly cancel,
-// spinning her in place rather than nudging her past the corner. If she's
-// made near-zero net progress for a beat, lean harder on the goal-seek
-// direction and correspondingly less on avoidance — real walls still stop
-// her dead via collision resolution below regardless of this weighting, so
-// this only ever helps her barge past a grazing obstacle, never through solid
-// geometry. Escalates the longer she stays stuck, and resets the moment she's
-// moving normally again.
+// Recovery for the case reactive avoidance cannot solve on its own: a prop
+// that blocks movement but not the route — street furniture and interior
+// furniture are collision boxes, not nav-grid walls — sitting square between
+// her and a goal that lies straight through it. "Steer away from it" and
+// "seek the goal" then cancel, and she grinds to a halt against it.
+//
+// The fix has to be LATERAL. Pressing harder toward the goal (the obvious
+// "just push through" recovery) is actively wrong here: the goal is on the
+// far side of a solid box, so leaning into it only presses her into the box,
+// collision resolution pins her flat against it, and she never recovers —
+// a bench 2 m wide outside a door was enough to strand her there until the
+// safety timer fired. So when she stops making progress, blend a sideways
+// component into the desired direction instead, pick the side the whiskers
+// say is clearer, and COMMIT to it for a beat — if the slide were dropped the
+// instant she moved, she would immediately re-aim at the goal, walk back into
+// the same box and ping-pong. Repeated episodes slide harder.
 const STUCK_WINDOW = 0.6;    // seconds of net movement to sample before judging "stuck"
 const STUCK_EPS = 0.25;      // metres of net movement below which she counts as stuck
-const BASE_AVOID_WEIGHT = 2.0;
-const MIN_AVOID_WEIGHT = 0.25;
-const STUCK_LEVEL_MAX = 6;
+const AVOID_WEIGHT = 2.0;
+const SLIDE_HOLD = 1.4;      // seconds a sidestep stays committed once started
+const SLIDE_STEP = 0.7;      // lateral blend added per repeated stuck episode
+const SLIDE_MAX = 2.1;       // cap on the lateral blend (vs. a unit goal direction)
 
 export class Citizen extends Entity {
   constructor(events, world, texCaptured, texReleased, built) {
@@ -132,7 +144,9 @@ export class Citizen extends Entity {
 
     this._stuckClock = 0;
     this._stuckMark = null;
-    this._stuckLevel = 0;
+    this._slideLevel = 0;   // how many stuck episodes in a row
+    this._slideTimer = 0;   // seconds the current sidestep stays committed
+    this._slideSide = 0;    // +1/-1 once chosen, 0 = pick against the whiskers
 
     this.senses = new Senses(world, { whiskerRange: 2.4, interval: 0.13 });
 
@@ -212,6 +226,27 @@ export class Citizen extends Entity {
     return { x: this.vanishTarget.x - pos.x, z: this.vanishTarget.z - pos.z };
   }
 
+  /**
+   * Blend the committed sideways component into a goal direction while she is
+   * wedged, so she rounds an obstacle instead of pressing into it. The side is
+   * chosen once per episode from the whiskers' own avoidance vector — whichever
+   * way the sensors already say is clearer — and then held, so she keeps
+   * committing to that side rather than re-deciding every frame.
+   */
+  _slide(desired) {
+    if (this._slideTimer <= 0 || this._slideLevel <= 0) return desired;
+    const len = Math.hypot(desired.x, desired.z);
+    if (!len) return desired;
+    const ux = desired.x / len, uz = desired.z / len;
+    const perpX = -uz, perpZ = ux;
+    if (!this._slideSide) {
+      const a = this.senses.avoid;
+      this._slideSide = a && (a.x * perpX + a.z * perpZ) < 0 ? -1 : 1;
+    }
+    const amount = Math.min(SLIDE_MAX, this._slideLevel * SLIDE_STEP) * this._slideSide;
+    return { x: ux + perpX * amount, z: uz + perpZ * amount };
+  }
+
   _despawn() {
     if (this.state === 'gone') return;
     this.state = 'gone';
@@ -232,14 +267,22 @@ export class Citizen extends Entity {
       this._stuckClock += dt;
       if (this._stuckClock >= STUCK_WINDOW) {
         const moved = Math.hypot(this.position.x - this._stuckMark.x, this.position.z - this._stuckMark.z);
-        this._stuckLevel = moved < STUCK_EPS ? Math.min(STUCK_LEVEL_MAX, this._stuckLevel + 1) : 0;
+        if (moved < STUCK_EPS) {
+          // Wedged again: slide harder, re-arm the commitment and re-pick the
+          // side against whatever the whiskers can see from here.
+          this._slideLevel++;
+          this._slideTimer = SLIDE_HOLD;
+          this._slideSide = 0;
+        } else if (this._slideTimer <= 0) {
+          this._slideLevel = 0; // moving freely with no sidestep running — done
+        }
         this._stuckMark = { x: this.position.x, z: this.position.z };
         this._stuckClock = 0;
       }
+      if (this._slideTimer > 0) this._slideTimer -= dt;
 
-      const desired = this._fleeDesire();
-      const avoidWeight = Math.max(MIN_AVOID_WEIGHT, BASE_AVOID_WEIGHT / (1 + this._stuckLevel * 1.5));
-      const dir = avoidObstacles(desired.x, desired.z, this.senses, avoidWeight);
+      const desired = this._slide(this._fleeDesire());
+      const dir = avoidObstacles(desired.x, desired.z, this.senses, AVOID_WEIGHT);
       if (dir.x || dir.z) {
         const desiredYaw = Math.atan2(dir.x, dir.z);
         this.yaw = turnToward(this.yaw, desiredYaw, dt, TURN_RATE);
@@ -252,13 +295,12 @@ export class Citizen extends Entity {
       this.world.collision.resolveCapsule(this.position, this.radius, this.height);
       this.position.y = this.world.groundHeightFor(this.position.x, this.position.z, this.position.y + 0.5);
 
-      if (this.fleeTimer > MIN_FLEE_TIME) {
+      if (this.fleeTimer > DESPAWN_DELAY) {
         const player = ctx.player;
         const visible = player && player.alive && this.world.hasLineOfSight(
           player.position.x, player.position.y + 1.5, player.position.z,
           this.position.x, this.position.y + 1.2, this.position.z);
-        const distFromDoor = Math.hypot(this.position.x - this.doorPoint.x, this.position.z - this.doorPoint.z);
-        if ((distFromDoor > CLEAR_DIST && !visible) || this.fleeTimer > MAX_FLEE_TIME) {
+        if (!visible || this.fleeTimer > MAX_FLEE_TIME) {
           this._despawn();
           return;
         }

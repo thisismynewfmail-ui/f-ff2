@@ -712,16 +712,17 @@ const cit = await page.evaluate(async () => {
   };
   const interactablesIdle = world.interactables.length; // baseline: nobody live
 
-  // 1. Kill gate: however many waves roll, no captive appears below 100 kills.
+  // 1. Kill gate: however many ordinary waves roll, no captive appears below
+  //    100 kills (wave 2 is the one exemption, covered in section 7).
   g.score.kills = 99;
   let rolledUnder = 0;
-  for (let i = 0; i < 300; i++) if (g.citizens._maybeSpawn()) rolledUnder++;
+  for (let i = 0; i < 300; i++) if (g.citizens._maybeSpawn(7)) rolledUnder++;
   out.gateOff = rolledUnder === 0 && g.citizens.citizen === null && !g.citizens.unlocked;
 
   // ...and she starts appearing once the run is exactly 100 kills deep.
   g.score.kills = 100;
   let firstSpawn = null;
-  for (let i = 0; i < 300 && !firstSpawn; i++) firstSpawn = g.citizens._maybeSpawn();
+  for (let i = 0; i < 300 && !firstSpawn; i++) firstSpawn = g.citizens._maybeSpawn(7);
   out.gateOn = !!firstSpawn && g.citizens.unlocked;
 
   // 2. Indoor-only, and a different building from playthrough to playthrough.
@@ -771,30 +772,50 @@ const cit = await page.evaluate(async () => {
 
   // 5. The escape. Force line of sight ON so the despawn rule cannot fire: she
   //    must still navigate out of the house and well clear of the door, turning
-  //    at a capped rate the whole way (never snapping to a new heading).
+  //    at a capped rate the whole way (never snapping to a new heading). Run it
+  //    for a full 20 s — four times the 5 s despawn delay — so "watched, so she
+  //    stays" is proved well past the point where being unseen would end her.
   const realLos = world.hasLineOfSight.bind(world);
   world.hasLineOfSight = () => true;
   const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
-  let maxYawRate = 0, leftBuilding = false, prevYaw = c.yaw;
-  const doorDist = () => Math.hypot(c.position.x - c.doorPoint.x, c.position.z - c.doorPoint.z);
-  for (let i = 0; i < 400 && !c.toRemove && doorDist() <= 12; i++) {
+  let maxYawRate = 0, leftBuilding = false, maxDoorDist = 0, prevYaw = c.yaw;
+  for (let i = 0; i < 400 && !c.toRemove; i++) {
     g.citizens.update(DT, mkCtx());
     maxYawRate = Math.max(maxYawRate, Math.abs(wrap(c.yaw - prevYaw)) / DT);
     prevYaw = c.yaw;
+    maxDoorDist = Math.max(maxDoorDist, Math.hypot(c.position.x - c.doorPoint.x, c.position.z - c.doorPoint.z));
     if (!inFootprint(spec, c.position.x, c.position.z)) leftBuilding = true;
   }
   out.escapedBuilding = leftBuilding;
-  out.clearedDoor = doorDist();
+  out.clearedDoor = maxDoorDist;
   out.turnRateCapped = maxYawRate;
-  out.staysWhileWatched = !c.toRemove && g.citizens.citizen === c;
+  out.watchedFor = c.fleeTimer;
+  out.staysWhileWatched = !c.toRemove && g.citizens.citizen === c && c.fleeTimer > 5;
 
   // 6. Break line of sight and she is gone — and takes her [E] prompt with her.
   world.hasLineOfSight = () => false;
   g.citizens.update(DT, mkCtx());
-  world.hasLineOfSight = realLos;
   out.despawnsOnceUnseen = c.toRemove && g.citizens.citizen === null;
   out.beatTheSafetyCap = c.fleeTimer < 45; // left via stealth, not the stuck-timer
   out.promptReleased = world.interactables.length === interactablesIdle;
+
+  // 6b. The 5-second grace, isolated: freed with the player unable to see her
+  //     from the very first frame, she must STILL stay in the world for a full
+  //     5 seconds of running, then leave on the next tick after that.
+  let c2 = null;
+  for (let i = 0; i < 20 && !c2; i++) { g.citizens.reset(); c2 = g.citizens.spawnNow(); }
+  world.hasLineOfSight = () => false; // unseen from the instant she is freed
+  c2.interactable.onInteract();
+  let goneAt = null, seenAliveAt5 = false;
+  for (let i = 0; i < 300 && !c2.toRemove; i++) {
+    g.citizens.update(DT, mkCtx());
+    if (!c2.toRemove && c2.fleeTimer >= 5 - DT) seenAliveAt5 = true;
+    if (c2.toRemove) goneAt = c2.fleeTimer;
+  }
+  world.hasLineOfSight = realLos;
+  out.survivedTheDelay = seenAliveAt5 && goneAt !== null && goneAt >= 5;
+  out.wentRightAfterDelay = goneAt !== null && goneAt <= 5 + DT * 2;
+  out.goneAt = goneAt;
 
   // 7. The dev console's `spawn citizen`: on demand, below the kill gate, one
   //    at a time, and listed among the spawnable types.
@@ -807,6 +828,37 @@ const cit = await page.evaluate(async () => {
   out.consoleNoStacking = g.citizens.citizen === forced && /already/.test(g.devConsole.logEl.lastChild.textContent);
   g.devConsole.execute('spawn banana');
   out.consoleListsCitizen = /^usage: spawn <.*\bcitizen\b.*>/.test(g.devConsole.logEl.lastChild.textContent.replace(/^error: /, ''));
+
+  // 8. Wave 2 ALWAYS delivers a captive, with the run nowhere near the kill
+  //    gate — never a dice roll, every single time.
+  g.score.kills = 0;
+  let waveTwoHits = 0;
+  for (let i = 0; i < 50; i++) {
+    g.citizens.reset();
+    if (g.citizens._maybeSpawn(2)) waveTwoHits++;
+  }
+  out.waveTwoAlways = waveTwoHits === 50 && !g.citizens.unlocked;
+
+  // ...and wave 2 is the ONLY exemption: every other wave is still gated, so
+  //    the guarantee is a scripted introduction and not an open door.
+  let otherWaveHits = 0;
+  for (const w of [1, 3, 4, 5, 12, 30]) {
+    for (let i = 0; i < 50; i++) {
+      g.citizens.reset();
+      if (g.citizens._maybeSpawn(w)) otherWaveHits++;
+    }
+  }
+  out.otherWavesStillGated = otherWaveHits === 0;
+
+  // ...driven through the real 'wave:start' event the wave director emits, so
+  //    the wiring is covered and not just the method.
+  g.citizens.reset();
+  g.events.emit('wave:start', { wave: 1, size: 11 });
+  const afterWave1 = g.citizens.citizen;
+  g.events.emit('wave:start', { wave: 2, size: 14 });
+  out.waveTwoViaEvent = afterWave1 === null && !!g.citizens.citizen;
+  out.waveTwoIsIndoors = !!g.citizens.citizen
+    && inFootprint(g.citizens.citizen.building.spec, g.citizens.citizen.position.x, g.citizens.citizen.position.z);
 
   // tidy up: no captive live, real kill count back, frame loop running again
   g.citizens.reset();
@@ -830,13 +882,21 @@ check('citizen navigates out of the building', cit.escapedBuilding);
 check('citizen runs well clear of the door', cit.clearedDoor > 12, `${cit.clearedDoor.toFixed(1)} m from the door`);
 check('citizen turns at a capped rate instead of snapping', cit.turnRateCapped <= 2.05,
   `peak ${cit.turnRateCapped.toFixed(2)} rad/s vs 2.0 cap`);
-check('citizen does NOT despawn while the player can see her', cit.staysWhileWatched);
+check('citizen does NOT despawn while the player can see her', cit.staysWhileWatched,
+  `still there after ${cit.watchedFor?.toFixed(1)}s watched`);
 check('citizen despawns once out of the player\'s line of sight', cit.despawnsOnceUnseen && cit.beatTheSafetyCap);
+check('citizen sticks around for a full 5s after the rescue', cit.survivedTheDelay,
+  `despawned at ${cit.goneAt?.toFixed(2)}s unseen`);
+check('citizen despawns right after the 5s delay once unseen', cit.wentRightAfterDelay);
 check('despawned citizen releases her [E] prompt', cit.promptReleased);
 check('"spawn citizen" spawns one on demand below the kill gate', cit.consoleSpawns);
 check('"spawn citizen" reports which building she landed in', cit.consoleReportsWhere);
 check('"spawn citizen" refuses to stack a second captive', cit.consoleNoStacking);
 check('citizen is listed among the spawnable types', cit.consoleListsCitizen);
+check('wave 2 ALWAYS spawns a citizen, kill gate or not', cit.waveTwoAlways);
+check('every other wave stays behind the kill gate', cit.otherWavesStillGated);
+check('wave 2 spawns her through the real wave:start event', cit.waveTwoViaEvent);
+check('the guaranteed wave-2 citizen is inside a building', cit.waveTwoIsIndoors);
 
 // SPAWN SURGE: on top of "heat" (which barely moves before ~3000 kills), a
 // second ramp on the OVERALL spawn rate kicks in past ~400 kills — shorter
