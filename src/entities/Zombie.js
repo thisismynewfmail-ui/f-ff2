@@ -43,11 +43,8 @@ import { aiFlag } from '../ai/Flags.js';
  */
 const ACTIVE_RANGE = 115;
 const DEATH_TIME = 1.3;
-// Exported so a friendly's flee logic can be written against the very numbers
-// its hunters detect it with, instead of a second set that has to be kept in
-// sync by hand (see NPC.js).
-export const FRIENDLY_FOV = 3.66;   // ~210° detection cone for non-player targets
-export const FRIENDLY_PROX = 6;     // ...but anything this close is felt regardless
+const FRIENDLY_FOV = 3.66;   // ~210° detection cone for non-player targets
+const FRIENDLY_PROX = 6;     // ...but anything this close is felt regardless
 const FRIENDLY_MEMORY = 6;   // seconds a lost friendly is still hunted for
 // Melee "jump" pounce: across each attack wind-up the sprite rises and lunges
 // forward on a sine arc, landing exactly as the strike connects. Purely

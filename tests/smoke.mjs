@@ -130,8 +130,12 @@ check('every enterable building has a furnished interior', town.interiors === to
   `${town.interiors}/${town.enterable}`);
 check('interior loot points registered', town.lootPoints > 100, `${town.lootPoints}`);
 
-// zombies spawn once wave 1 starts (grace period is ~5s)
-await page.waitForFunction(() => window.__game.spawner.zombies.length > 0, null, { timeout: 25000 });
+// Zombies spawn once wave 1 starts. The grace period is ~10 s of GAME time,
+// which is only ~10 s of wall time on a machine that renders quickly — on a
+// software-GL box running at a few frames a second it takes several times
+// longer, and everything below was failing for that reason alone. Wait long
+// enough for the slow case; a fast machine still sails through in seconds.
+await page.waitForFunction(() => window.__game.spawner.zombies.length > 0, null, { timeout: 90000 });
 const zc = await page.evaluate(() => window.__game.spawner.zombies.length);
 check('wave 1 spawns zombies', zc > 0, `${zc} active`);
 

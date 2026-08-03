@@ -221,11 +221,13 @@ There is deliberately no command that touches the kill counter — the
   dead end. When the danger passes she makes her own way back to the square —
   routed through the navigator, so she can find her way out of a building — and
   settles into roaming and idling again. Her flee band is tied to the hunting
-  zombie's **own** sight range and its **own** detection envelope: she bolts at
-  ~70% of the range that zombie type detects friendlies at, keeps running until
-  past 105% of it, and a zombie facing away or behind a wall is not something to
-  run from. "Flee until out of sight" is literally correlated to zombie sight
-  distance, with the same constants both sides read.
+  zombie's **own** sight range, read off that zombie's config: she bolts at ~70%
+  of the range that type detects friendlies at (35 m for a Walker, 42 m for a
+  Sprinter), and keeps running until the nearest one is past 105% of it. Losing
+  line of sight also ends the flight, so ducking round a corner is a real escape
+  rather than a 50-metre sprint — but a zombie facing away still counts, because
+  it is still coming. "Flee until out of sight" is literally correlated to
+  zombie sight distance.
 - **Savable citizen:** a captive woman tied up **inside a building**, and the
   one NPC you rescue rather than fight. **Wave 2 always has one** — a scripted
   introduction to the mechanic, long before any kill gate — and after that she

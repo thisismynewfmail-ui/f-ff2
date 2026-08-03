@@ -4,7 +4,6 @@ import { Senses } from '../ai/Senses.js';
 import { NavAgent } from '../ai/NavAgent.js';
 import { Brain, Behavior } from '../ai/Behavior.js';
 import { flee, contextSteer } from '../ai/Steering.js';
-import { FRIENDLY_FOV, FRIENDLY_PROX } from './Zombie.js';
 
 /**
  * The peaceful survivor by the well in Old Town Square.
@@ -38,11 +37,9 @@ const LINES = [
 // the two can never drift apart. A Walker sees 50 m and she bolts at 35; a
 // Sprinter sees 60 and she bolts at 42.
 //
-// And "could detect her" means the hunter's whole detection envelope, not just
-// its range — the same forward cone, close-range bubble and line-of-sight test
-// the zombie itself applies when it picks a friendly target (imported from
-// Zombie.js so there is exactly one definition of it). A zombie facing the
-// other way, or with a wall between them, is not something to run from.
+// A zombie with a wall between them is not something to run from — see _seenBy
+// for why line of sight is the right second gate and the hunter's facing cone
+// is not.
 //
 // The gap between the two thresholds is deliberate hysteresis: she bolts at
 // 70% of that range and keeps running until the nearest hunter is past 105% of
@@ -164,18 +161,19 @@ export class NPC extends Entity {
   }
 
   /**
-   * Could this zombie detect her right now? Deliberately the hunter's test, not
-   * hers: its forward cone (with the same close-range bubble that ignores the
-   * cone) and a clear line between them. Range is pre-filtered by the caller.
+   * Is this zombie a threat to her right now? Range is the caller's job (it
+   * comes from the hunter's own sight range, see the flee band above); the only
+   * other gate here is a clear line between the two of them.
+   *
+   * Deliberately NOT the hunter's forward cone, even though the cone is part of
+   * how a zombie picks a friendly target. A shambling zombie's facing changes
+   * constantly and arbitrarily, so gating her panic on it makes her flicker in
+   * and out of flight for a reason she could not possibly perceive — and a
+   * zombie facing away is still walking toward her. A wall between them is a
+   * different matter: that genuinely means it has not seen her, and it is what
+   * makes ducking round a corner a real escape rather than a 50-metre sprint.
    */
-  _perceivedBy(z, d) {
-    if (d > FRIENDLY_PROX) {
-      const dx = this.position.x - z.position.x;
-      const dz = this.position.z - z.position.z;
-      let bearing = Math.atan2(dx, dz) - z.yaw;
-      bearing = Math.atan2(Math.sin(bearing), Math.cos(bearing));
-      if (Math.abs(bearing) > FRIENDLY_FOV / 2) return false;
-    }
+  _seenBy(z) {
     return this.senses.lineOfSight(this, z);
   }
 
@@ -203,7 +201,7 @@ export class NPC extends Entity {
     this._threats.length = 0;
     let nearest = null;
     for (let i = 0; i < near.length && i < LOS_CHECKS; i++) {
-      if (!this._perceivedBy(near[i].z, near[i].d)) continue;
+      if (!this._seenBy(near[i].z)) continue;
       this._threats.push(near[i].z);
       if (!nearest) nearest = near[i].z;
     }
