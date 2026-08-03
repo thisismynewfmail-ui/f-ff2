@@ -2,7 +2,7 @@ import * as THREE from '../../lib/three.module.js';
 import { Entity } from './Entity.js';
 import { Senses } from '../ai/Senses.js';
 import { Brain, Behavior } from '../ai/Behavior.js';
-import { seek, flee, avoidObstacles, gaitWobble } from '../ai/Steering.js';
+import { flee, contextSteer, gaitWobble } from '../ai/Steering.js';
 
 /**
  * The AI-test cockroach.
@@ -27,7 +27,7 @@ class FleeBehavior extends Behavior {
   step(_dt, ctx) {
     const s = ctx.self, p = ctx.player.position;
     const away = flee(s.position.x, s.position.z, p.x, p.z);
-    const dir = avoidObstacles(away.x, away.z, s.senses, 2.4);
+    const dir = contextSteer(away.x, away.z, s.senses, { danger: 1.7 });
     return { x: dir.x, z: dir.z, speed: s.runSpeed };
   }
 }
@@ -41,7 +41,7 @@ class HideBehavior extends Behavior {
     if (s._insideShelter()) { s._fidget(); return null; } // hidden: sit tight
     const t = s._hideTarget || (s._hideTarget = s._nearestShelter());
     if (!t) return null;
-    const dir = avoidObstacles(t.x - s.position.x, t.z - s.position.z, s.senses);
+    const dir = contextSteer(t.x - s.position.x, t.z - s.position.z, s.senses);
     return { x: dir.x, z: dir.z, speed: s.roamSpeed };
   }
 }
@@ -54,7 +54,7 @@ class RoamOutBehavior extends Behavior {
     if (s._insideShelter()) {
       // Head for the open air.
       const out = s._nearestOutdoors();
-      const dir = avoidObstacles(out.x - s.position.x, out.z - s.position.z, s.senses);
+      const dir = contextSteer(out.x - s.position.x, out.z - s.position.z, s.senses);
       return { x: dir.x, z: dir.z, speed: s.runSpeed };
     }
     return s._wanderStep(ctx);
@@ -91,7 +91,9 @@ export class Cockroach extends Entity {
     this.mesh = this._buildMesh();
     this.mesh.position.copy(this.position);
 
-    this.senses = new Senses(world, { whiskerRange: 1.6, whiskerAngles: [0, 0.7, -0.7, 1.3, -1.3], interval: 0.1 });
+    // A small body needs a short reach but a fine ring: at this scale a
+    // doorway or a gap under a bench is only a couple of slots wide.
+    this.senses = new Senses(world, { range: 1.6, rays: 12, interval: 0.1 });
     this.brain = new Brain()
       .add(new FleeBehavior())
       .add(new HideBehavior())
@@ -171,7 +173,7 @@ export class Cockroach extends Entity {
       this._wanderTarget = { x: cx + Math.cos(a) * r, z: cz + Math.sin(a) * r };
       return null;
     }
-    const dir = avoidObstacles(t.x - this.position.x, t.z - this.position.z, this.senses);
+    const dir = contextSteer(t.x - this.position.x, t.z - this.position.z, this.senses);
     return { x: dir.x, z: dir.z, speed: this.roamSpeed };
   }
 

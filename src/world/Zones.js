@@ -72,7 +72,9 @@ export class Zones {
       const hz = alongX ? 1.2 : len / 2;
       const y = terrain.heightAt(mx, mz);
       const colliderId = collision.addBox(mx - hx, y - 1, mz - hz, mx + hx, y + 6.2, mz + hz, 'barrier');
-      nav.blockBox(mx - hx, mz - hz, mx + hx, mz + hz);
+      // `force`: a sealed district must close even where a building's carved
+      // doorway portal happens to fall on the barrier line.
+      nav.blockBox(mx - hx, mz - hz, mx + hx, mz + hz, true);
       if (!this.barriers.has(seg.zone)) this.barriers.set(seg.zone, []);
       this.barriers.get(seg.zone).push({ group: g, colliderId, navRect: [mx - hx, mz - hz, mx + hx, mz + hz], upY: g.position.y });
     }
@@ -126,7 +128,7 @@ export class Zones {
       if (!b.group.parent) this.scene.add(b.group);
       // restore the collider + nav block it had while sealed
       this.collision.restore(b.colliderId);
-      this.nav.blockBox(...b.navRect);
+      this.nav.blockBox(...b.navRect, true);
     }
     this.events.emit('zone:lock', { zone: ZONES[zoneId] });
   }
