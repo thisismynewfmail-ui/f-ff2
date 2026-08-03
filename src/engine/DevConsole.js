@@ -113,6 +113,7 @@ const COMMANDS = {
     con.print('speed <mult>    movement speed multiplier (0.1 – 10)');
     con.print('cull <s|off>    remove zombies blind to the player for s seconds');
     con.print('spawn <type> [n] spawn n enemies near you (walker/sprinter/tank/exploder/spitter)');
+    con.print('                or "citizen" — a captive in a random building, ignores n');
     con.print('kill [n]        add n kills through the scoring pipeline (default 1)');
     con.print('time <0-24>     set the time of day (6=dawn, 12=noon, 0=midnight)');
     con.print('pos             print current position');
@@ -171,8 +172,20 @@ const COMMANDS = {
 
   spawn(con, game, args) {
     const type = (args[0] || '').toLowerCase();
-    const valid = ['walker', 'sprinter', 'tank', 'exploder', 'spitter'];
+    const valid = ['walker', 'sprinter', 'tank', 'exploder', 'spitter', 'citizen'];
     if (!valid.includes(type)) throw new Error('usage: spawn <' + valid.join('|') + '> [count]');
+    // The savable citizen is not horde stock: she spawns captive inside a
+    // random building rather than near you, and only one is ever live, so she
+    // takes no count. Spawning her here deliberately skips both her 100-kill
+    // gate and her per-wave dice roll — on-demand is the whole point — and
+    // reports where she landed, since it won't be anywhere near you.
+    if (type === 'citizen') {
+      const c = game.citizens.spawnNow();
+      if (!c) throw new Error(game.citizens.citizen ? 'a captive is already out there' : 'no enterable building available');
+      const { x, z } = c.position;
+      con.print(`captive spawned in ${c.building.spec.name} — tp ${x.toFixed(0)} ${z.toFixed(0)}`, 'ok');
+      return;
+    }
     const n = args[1] ? Math.floor(Number(args[1])) : 1;
     if (!Number.isFinite(n) || n < 1 || n > 40) throw new Error('count must be 1–40');
     let made = 0;

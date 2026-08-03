@@ -270,6 +270,7 @@ export class Citizen extends Entity {
   }
 
   dispose() {
+    this.world.removeInteractable(this.interactable);
     this.billboard.dispose();
   }
 }

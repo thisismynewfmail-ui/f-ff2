@@ -686,6 +686,158 @@ check('player kill drops sniper ammo', exp.playerKillDropsAmmo);
 check('killed exploder blows up during its death animation', exp.deathExplodes);
 check('self-detonation as an attack drops no ammo', exp.attackDropsNothing);
 
+// SAVABLE CITIZEN: the captive tied up inside a random building. Gated at 100
+// kills, indoor-only and randomly placed, freed with [E] — which swaps her to
+// the release sprite, drops a health kit, and sends her out of the building on
+// a rate-limited turn until she is out of the player's line of sight and
+// despawns. Driven deterministically with the frame loop paused.
+const cit = await page.evaluate(async () => {
+  const g = window.__game;
+  const world = g.world, player = g.player, cam = g.renderer.camera;
+  const groundAt = (x, z) => world.groundHeightFor(x, z, 1e9);
+  const mkCtx = () => ({ player, camPos: cam.position, pathBudget: { n: 4 }, time: g.time,
+    zombies: g.spawner.zombies, friendlies: g.friendlies });
+  const out = {};
+  const killsReal = g.score.kills;
+  const DT = 0.05;
+  g.state.state = 'paused'; // drive by hand
+  g.citizens.reset();
+
+  // Is a world point inside a building's footprint? Buildings only ever sit at
+  // 90° steps (see local2world), so a rotated footprint just swaps w and d.
+  const inFootprint = (spec, x, z) => {
+    const rot = ((spec.rot || 0) % 360 + 360) % 360;
+    const [hw, hd] = rot === 90 || rot === 270 ? [spec.d / 2, spec.w / 2] : [spec.w / 2, spec.d / 2];
+    return Math.abs(x - spec.x) <= hw && Math.abs(z - spec.z) <= hd;
+  };
+  const interactablesIdle = world.interactables.length; // baseline: nobody live
+
+  // 1. Kill gate: however many waves roll, no captive appears below 100 kills.
+  g.score.kills = 99;
+  let rolledUnder = 0;
+  for (let i = 0; i < 300; i++) if (g.citizens._maybeSpawn()) rolledUnder++;
+  out.gateOff = rolledUnder === 0 && g.citizens.citizen === null && !g.citizens.unlocked;
+
+  // ...and she starts appearing once the run is exactly 100 kills deep.
+  g.score.kills = 100;
+  let firstSpawn = null;
+  for (let i = 0; i < 300 && !firstSpawn; i++) firstSpawn = g.citizens._maybeSpawn();
+  out.gateOn = !!firstSpawn && g.citizens.unlocked;
+
+  // 2. Indoor-only, and a different building from playthrough to playthrough.
+  const seen = new Set();
+  let allIndoors = true;
+  for (let i = 0; i < 60; i++) {
+    g.citizens.reset();
+    const s = g.citizens.spawnNow();
+    if (!s) { allIndoors = false; break; }
+    const sp = s.building.spec;
+    seen.add(sp.name);
+    if (sp.solid || !sp.door || !inFootprint(sp, s.position.x, s.position.z)) allIndoors = false;
+  }
+  out.indoorsOnly = allIndoors;
+  out.randomBuildings = seen.size;
+  g.citizens.reset();
+  // 60 spawn/despawn cycles must leave no [E] prompts behind on the world.
+  out.noPromptLeak = world.interactables.length === interactablesIdle;
+
+  // 3. Settle on one known building (a partitioned house — an interior wall
+  //    between her and the door) so the rescue below is reproducible.
+  let c = null;
+  for (let i = 0; i < 600 && !c; i++) {
+    g.citizens.reset();
+    const s = g.citizens.spawnNow();
+    if (s && s.building.spec.name === 'npcHouse') c = s;
+  }
+  out.gotTestHouse = !!c;
+  if (!c) { g.score.kills = killsReal; g.state.state = 'playing'; return out; }
+  const spec = c.building.spec;
+  out.promptAdded = world.interactables.length === interactablesIdle + 1;
+  out.startsCaptured = c.state === 'captured' && c.billboard.material.map === g.citizens.texCaptured;
+
+  // 4. Freeing her through the REAL [E] path: the interactable the world hands
+  //    the player when they are close enough, not a direct free() call.
+  player.teleport(spec.x, groundAt(spec.x, spec.z), spec.z);
+  player.alive = true; player.health = 100;
+  const it = world.nearestInteractable(c.position.x, c.position.y, c.position.z);
+  out.promptIsHers = it === c.interactable && /\[E\]/.test(it.prompt);
+  let healthDrops = 0;
+  const offLoot = g.events.on('loot:spawn', (e) => { if (e.type === 'health') healthDrops++; });
+  it.onInteract();
+  offLoot();
+  out.freedSwapsSprite = c.state === 'fleeing' && c.billboard.material.map === g.citizens.texReleased;
+  out.droppedHealthKit = healthDrops === 1;
+  out.promptGoesCold = !c.interactable.enabled();
+
+  // 5. The escape. Force line of sight ON so the despawn rule cannot fire: she
+  //    must still navigate out of the house and well clear of the door, turning
+  //    at a capped rate the whole way (never snapping to a new heading).
+  const realLos = world.hasLineOfSight.bind(world);
+  world.hasLineOfSight = () => true;
+  const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
+  let maxYawRate = 0, leftBuilding = false, prevYaw = c.yaw;
+  const doorDist = () => Math.hypot(c.position.x - c.doorPoint.x, c.position.z - c.doorPoint.z);
+  for (let i = 0; i < 400 && !c.toRemove && doorDist() <= 12; i++) {
+    g.citizens.update(DT, mkCtx());
+    maxYawRate = Math.max(maxYawRate, Math.abs(wrap(c.yaw - prevYaw)) / DT);
+    prevYaw = c.yaw;
+    if (!inFootprint(spec, c.position.x, c.position.z)) leftBuilding = true;
+  }
+  out.escapedBuilding = leftBuilding;
+  out.clearedDoor = doorDist();
+  out.turnRateCapped = maxYawRate;
+  out.staysWhileWatched = !c.toRemove && g.citizens.citizen === c;
+
+  // 6. Break line of sight and she is gone — and takes her [E] prompt with her.
+  world.hasLineOfSight = () => false;
+  g.citizens.update(DT, mkCtx());
+  world.hasLineOfSight = realLos;
+  out.despawnsOnceUnseen = c.toRemove && g.citizens.citizen === null;
+  out.beatTheSafetyCap = c.fleeTimer < 45; // left via stealth, not the stuck-timer
+  out.promptReleased = world.interactables.length === interactablesIdle;
+
+  // 7. The dev console's `spawn citizen`: on demand, below the kill gate, one
+  //    at a time, and listed among the spawnable types.
+  g.score.kills = 0;
+  g.devConsole.execute('spawn citizen');
+  const forced = g.citizens.citizen;
+  out.consoleSpawns = !!forced && !g.citizens.unlocked; // bypasses the gate
+  out.consoleReportsWhere = /captive spawned in \w+ — tp /.test(g.devConsole.logEl.lastChild.textContent);
+  g.devConsole.execute('spawn citizen 5');
+  out.consoleNoStacking = g.citizens.citizen === forced && /already/.test(g.devConsole.logEl.lastChild.textContent);
+  g.devConsole.execute('spawn banana');
+  out.consoleListsCitizen = /^usage: spawn <.*\bcitizen\b.*>/.test(g.devConsole.logEl.lastChild.textContent.replace(/^error: /, ''));
+
+  // tidy up: no captive live, real kill count back, frame loop running again
+  g.citizens.reset();
+  g.score.kills = killsReal;
+  player.teleport(0, groundAt(0, 20), 20); player.alive = true; player.health = 100;
+  g.state.state = 'playing';
+  return out;
+});
+check('citizen stays out of the game before 100 kills', cit.gateOff);
+check('citizen starts spawning at 100 kills', cit.gateOn);
+check('citizen only ever spawns inside an enterable building', cit.indoorsOnly);
+check('citizen picks a random building, not a fixed one', cit.randomBuildings > 1,
+  `${cit.randomBuildings} distinct buildings over 60 spawns`);
+check('citizen leaves no [E] prompts behind after despawning', cit.noPromptLeak);
+check('citizen spawns captured on npc_save_captured', cit.gotTestHouse && cit.startsCaptured);
+check('citizen registers a live [E] prompt', cit.promptAdded && cit.promptIsHers);
+check('freeing with [E] swaps her to npc_save_release', cit.freedSwapsSprite);
+check('freeing drops exactly one health kit', cit.droppedHealthKit);
+check('freed citizen can no longer be interacted with', cit.promptGoesCold);
+check('citizen navigates out of the building', cit.escapedBuilding);
+check('citizen runs well clear of the door', cit.clearedDoor > 12, `${cit.clearedDoor.toFixed(1)} m from the door`);
+check('citizen turns at a capped rate instead of snapping', cit.turnRateCapped <= 2.05,
+  `peak ${cit.turnRateCapped.toFixed(2)} rad/s vs 2.0 cap`);
+check('citizen does NOT despawn while the player can see her', cit.staysWhileWatched);
+check('citizen despawns once out of the player\'s line of sight', cit.despawnsOnceUnseen && cit.beatTheSafetyCap);
+check('despawned citizen releases her [E] prompt', cit.promptReleased);
+check('"spawn citizen" spawns one on demand below the kill gate', cit.consoleSpawns);
+check('"spawn citizen" reports which building she landed in', cit.consoleReportsWhere);
+check('"spawn citizen" refuses to stack a second captive', cit.consoleNoStacking);
+check('citizen is listed among the spawnable types', cit.consoleListsCitizen);
+
 // SPAWN SURGE: on top of "heat" (which barely moves before ~3000 kills), a
 // second ramp on the OVERALL spawn rate kicks in past ~400 kills — shorter
 // spawn interval, fatter batches, higher concurrent cap. Read the pacing at
