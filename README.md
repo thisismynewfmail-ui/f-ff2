@@ -120,6 +120,7 @@ keyboard while open and the game keeps running behind it. Commands:
 | `give` | Fill every weapon's magazine and reserve |
 | `tp <x> <z>` | Teleport to map coordinates (spawn is `0 20`) |
 | `speed <mult>` | Movement speed multiplier (0.1–10) |
+| `spawn <type> [n]` | Spawn `n` enemies near you (`walker`/`sprinter`/`tank`/`exploder`/`spitter`), or `citizen` for a captive in a random building — she ignores `n`, skips her 100-kill gate, and the console prints which building to `tp` to |
 | `pos` | Print current position |
 | `help` / `clear` | List commands / clear the log |
 
@@ -195,6 +196,28 @@ There is deliberately no command that touches the kill counter — the
   roaming near home. Her flee band is tied to the hunting zombie's own sight
   range (bolt at ~70% of it, safe past 100%), so "flee until out of sight" is
   literally correlated to zombie sight distance.
+- **Savable citizen:** a captive woman tied up **inside a building**, and the
+  one NPC you rescue rather than fight. **Wave 2 always has one** — a scripted
+  introduction to the mechanic, long before any kill gate — and after that she
+  **starts appearing once you pass 100 kills**, with a **chance to show up on
+  any wave**. She is always in a *random* enterable building in a district you
+  have already unlocked, so both whether she appears and where she is hiding
+  differ every playthrough (only one is ever out at a time). Walk up and an
+  **[E] prompt** offers to free her: interacting swaps her from the captured
+  sprite to the released one, **drops a health kit** at her feet, and sends her
+  running for the street. She routes herself through the building's interior
+  doorways and out its door, then keeps receding outdoors. **Five seconds after
+  the rescue she despawns — but only while you cannot see her**, so you always
+  get a few seconds of watching her run, and she never blinks out in view; keep
+  her in sight and she just keeps going. Unlike every other entity here she does
+  **not** snap to a new heading: she turns at a **capped rate** and her speed
+  scales with how well she is facing where she wants to go, so rounding a
+  doorway visibly slows her and straightens her out before she accelerates —
+  a turning circle instead of a slide (a straight-line intent made her spin
+  toward the exit and drift straight back off it in tight interiors). If a prop
+  wedges her — a bench square between her and where she wants to go — she
+  **sidesteps around it** rather than pressing into it, committing to one side
+  for a beat so she rounds it instead of ping-ponging off it.
 - **Cockroach:** an AI-test critter on the same stack. It skitters and wanders,
   **hides inside buildings by day**, **roams outdoors at night**, and **darts
   away from the player** — but only a very short distance before settling.
@@ -315,7 +338,8 @@ lib/three.module.js vendored Three.js r169
 scripts/            generate_textures.mjs — regenerates assets/textures/
 src/engine/         game loop, input, event bus
 src/ai/             sensory system: senses, steering, behaviour arbiter
-src/entities/       player, zombies, exploder, spitter, NPC, cockroach, pickups
+src/entities/       player, zombies, exploder, spitter, NPC, savable citizen,
+                    cockroach, pickups
 src/weapons/        weapon configs + firing/ammo/hit resolution
 src/rendering/      renderer, texture pipeline, billboards, HUD (console bar +
                     Portrait CRT + HudTextures), 3D weapon view + PBR weapon
@@ -324,7 +348,8 @@ src/audio/          WebAudio synthesis (all sounds)
 src/world/          terrain, buildings, props, vegetation, zones, nav, secrets,
                     anomalies (cosmic-horror layer + dynamic props), companion
                     cube, scarecrow (aware animated set piece), sky
-src/systems/        score/win condition, waves, spawning, game state, inventory
+src/systems/        score/win condition, waves, spawning, savable-citizen
+                    director, game state, inventory
 src/engine/Shell.js desktop-shell bridge (detects the Electron launcher)
 launcher/           Windows desktop launcher (Electron): startup window,
                     harmonograph boot animation, isolated fullscreen game window

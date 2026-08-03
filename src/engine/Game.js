@@ -91,9 +91,11 @@ export class Game {
     // night, and skitters away from the player.
     this.cockroach = new Cockroach(this.events, this.world);
     this.renderer.scene.add(this.cockroach.mesh);
-    // The savable citizen: a chance, every wave, to appear captured inside a
-    // random unlocked building — free her with [E] for a health-kit drop.
-    this.citizens = new CitizenSystem(this.events, this.world, this.texLib, this.renderer.scene);
+    // The savable citizen: guaranteed on wave 2, then — once the run is 100
+    // kills deep — a chance every wave to appear captured inside a random
+    // unlocked building. Free her with [E] for a health-kit drop. Takes the
+    // score so it can read that kill gate.
+    this.citizens = new CitizenSystem(this.events, this.world, this.texLib, this.renderer.scene, this.score);
     this.effects = new Effects(this.events, this.renderer.scene, this.texLib, this.player);
     this.viewModel = new WeaponView(this.events, this.renderer, this.texLib);
     this.audio = new AudioManager(this.events);

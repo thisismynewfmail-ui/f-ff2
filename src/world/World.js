@@ -138,6 +138,15 @@ export class World {
     return it;
   }
 
+  /** Drop an interactable registered by addInteractable(). Fixtures never need
+   *  this, but an entity that comes and goes (the savable citizen, one per
+   *  wave roll) does: its handle closes over the entity, so leaving spent
+   *  prompts on the list pins every disposed sprite for the rest of the run. */
+  removeInteractable(it) {
+    const i = this.interactables.indexOf(it);
+    if (i >= 0) this.interactables.splice(i, 1);
+  }
+
   nearestInteractable(x, y, z) {
     let best = null, bestD = Infinity;
     for (const it of this.interactables) {
