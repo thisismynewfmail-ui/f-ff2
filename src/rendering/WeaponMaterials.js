@@ -14,8 +14,11 @@ import * as THREE from '../../lib/three.module.js';
  *
  * The steampunk / Bioshock palette lives here: warm polished brass, blued
  * gunsteel, pitted cast iron, oxidised copper, gunmetal, oiled walnut, oak,
- * cracked leather, waxed canvas and lens glass. Each palette carries its own
- * wear, rivet and grain character so no two weapons read the same.
+ * cracked leather, waxed canvas and lens glass, plus the machine pistol's
+ * matte phosphate and its chipped yellow/black caution banding. Each palette
+ * carries its own wear, rivet and grain character so no two weapons read the
+ * same. A palette may declare `color2` for a two-tone finish; the 'hazard'
+ * style uses it to paint diagonal caution stripes over the base metal.
  *
  * Materials are cached by name and shared across weapons; ask for one with
  * `WeaponMaterials.get(name)`.
@@ -52,11 +55,12 @@ function fbm(x, y, seed, oct = 4) {
 
 /* ---------------- per-pixel field sampler ---------------- */
 
-// Returns { h, wear, edge } for a surface point in [0,1]². h is a height for
-// the normal map, wear is grime (0 clean .. 1 filthy), edge is exposed-metal
-// scratch/rivet-rim brightness (0 none .. 1 bright).
+// Returns { h, wear, edge, paint } for a surface point in [0,1]². h is a
+// height for the normal map, wear is grime (0 clean .. 1 filthy), edge is
+// exposed-metal scratch/rivet-rim brightness (0 none .. 1 bright), and paint
+// blends toward cfg.color2 for two-tone palettes (0 = base, 1 = second tone).
 function sampleField(u, v, cfg) {
-  let h = 0.5, wear = 0, edge = 0;
+  let h = 0.5, wear = 0, edge = 0, paint = 0;
   const s = cfg.seed;
 
   if (cfg.style === 'metal') {
@@ -115,8 +119,31 @@ function sampleField(u, v, cfg) {
     const wv = Math.sin(v * cfg.weave * Math.PI * 2);
     h += (wu * wv) * 0.18;
     wear = 0.5 + 0.5 * fbm(u * 10, v * 10, s, 3);
+  } else if (cfg.style === 'hazard') {
+    // Caution banding sprayed over sheet steel: diagonal stripes with a
+    // slightly proud paint film, chipped back to bare metal along the
+    // handled edges. Drives the machine pistol's yellow flashes.
+    let band = (u * cfg.bands + v * cfg.bands * (cfg.skew ?? 1.4)) % 1;
+    if (band < 0) band += 1;
+    // soft ramp at each boundary so the stripe edge doesn't crawl when minified
+    const ramp = 0.03;
+    paint = smooth(Math.min(1, Math.max(0, (band - 0.5) / ramp))) -
+            smooth(Math.min(1, Math.max(0, (band - (1 - ramp)) / ramp)));
+    h += 0.03 * (1 - paint);                            // yellow film sits proud
+    // orange-peel in the spray plus flaked-off patches down to the steel
+    h += (fbm(u * 60, v * 60, s + 7, 2) - 0.5) * 0.08;
+    const chip = fbm(u * 13, v * 13, s + 40, 4);
+    if (chip > 0.63) {
+      const bare = Math.min(1, (chip - 0.63) * 3.4);
+      edge = Math.max(edge, bare * 0.8);
+      h -= bare * 0.05;
+    }
+    wear = 0.25 + 0.55 * fbm(u * 6, v * 6, s + 9, 3);
   }
-  return { h: Math.min(1, Math.max(0, h)), wear: Math.min(1, wear), edge: Math.min(1, edge) };
+  return {
+    h: Math.min(1, Math.max(0, h)), wear: Math.min(1, wear),
+    edge: Math.min(1, edge), paint: Math.min(1, Math.max(0, paint)),
+  };
 }
 
 /* ---------------- texture builders ---------------- */
@@ -148,6 +175,12 @@ function buildMaps(cfg) {
     const shade = 0.72 + f.h * 0.5;            // height → lambert-ish shading baked faint
     const eg = f.edge * cfg.edgeBright;
     let cr = br * shade, cg = bg * shade, cb = bb * shade;
+    if (cfg.color2 && f.paint > 0) {
+      // two-tone palette (hazard banding): blend to the second tone
+      cr = mix(cr, cfg.color2[0] * shade, f.paint);
+      cg = mix(cg, cfg.color2[1] * shade, f.paint);
+      cb = mix(cb, cfg.color2[2] * shade, f.paint);
+    }
     if (cfg.wearTint) {
       // wear shifts toward a tint color (verdigris on old bronze) instead of
       // plain darkening
@@ -244,6 +277,9 @@ const PALETTES = {
   bronzePatina: P({ seed: 73, color: [128, 106, 58], rough: 0.52, wear: 0.9, grainV: 24, rivets: 5, grimeAmt: 0.6, edgeBright: 1.0, wearTint: [88, 134, 110] }),
   hammeredIron: P({ seed: 74, color: [54, 52, 54], rough: 0.6, wear: 0.7, grain: 2.4, grainU: 12, grainV: 12, edgeBright: 0.9 }),
   ivory:        P({ seed: 75, color: [216, 204, 178], style: 'wood', metal: 0, rough: 0.3, normalStr: 0.8, grimeAmt: 0.35 }),
+  // --- machine-pistol family: matte phosphate body, chipped caution banding ---
+  parkerized:   P({ seed: 81, color: [82, 78, 70], rough: 0.58, wear: 0.65, grain: 1.5, grainU: 10, grainV: 14, panels: 4, edgeBright: 1.2, grimeAmt: 0.45 }),
+  hazardEnamel: P({ seed: 82, color: [206, 158, 22], color2: [26, 24, 22], style: 'hazard', metal: 0.25, rough: 0.52, normalStr: 1.9, bands: 7, skew: 1.5, edgeBright: 1.5, grimeAmt: 0.5 }),
   ebony:        P({ seed: 76, color: [40, 32, 28], style: 'wood', metal: 0, rough: 0.4, normalStr: 1.4, grimeAmt: 0.3 }),
   cherry:       P({ seed: 77, color: [116, 54, 36], style: 'wood', metal: 0, rough: 0.5, normalStr: 1.6, grimeAmt: 0.45 }),
 };

@@ -89,8 +89,9 @@ seconds (or the instant you fire).
 ## Arsenal
 
 Every weapon is a fully 3D, PBR-textured model with a steampunk / Bioshock
-finish — brass, blued gunsteel, cast iron, copper, oiled walnut and cracked
-leather — each a novel take on its type with a **working action**. All are
+finish — brass, blued gunsteel, cast iron, copper, oiled walnut, cracked
+leather, and on the machine pistol matte phosphate under chipped caution
+banding — each a novel take on its type with a **working action**. All are
 animated with an idle sway, a three-phase fire recoil, extensive part motion
 (slides, hammers, bolts, cranes, ratcheting drums), a full reload
 choreography, equip/unequip transitions, and **ejected brass** (cases, spent
@@ -101,7 +102,7 @@ firing sound and a distinct right-mouse secondary action:
 
 | Slot | Weapon | Action | Secondary (RMB) |
 | --- | --- | --- | --- |
-| 1 | Regent Autoloader (pistol) | short-recoil auto; slide racks, hammer re-cocks, case + mag eject | **Hair-trigger** — rapid auto fire, less damage per round |
+| 1 | Mainspring Auto (pistol) | industrial blowback machine pistol built to reference art — exposed coil mainspring wound round the barrel visibly compresses and rebounds as the bolt cycles, the open-flanked magazine empties round by round as you shoot, case + mag eject | **Hair-trigger** — rapid auto fire, less damage per round |
 | 2 | Crane Coachgun (shotgun) | modern over-under that **breaks UPWARD** — barrels crane skyward, twin hulls eject over the shoulder, two fresh shells seat, action snaps home | **Both barrels** — twin blast, two shells, big knockback |
 | 3 | Foundry Gun (rifle) | Lewis-pattern steam machine gun; flank pan drum ratchets a round per shot, charging handle reciprocates, live pressure valve, drum swap reload | **3-round burst** — tight grouping |
 | 4 | Meridian Long Rifle (sniper) | precision **bolt-action** — full lift/draw/eject/close cycle each shot, glowing telescope reticle, rangefinder drum, en-bloc clip reload | **Scope** — telescopic zoom |

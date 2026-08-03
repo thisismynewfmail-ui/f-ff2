@@ -350,6 +350,59 @@ check('supporting cues exist (empty click, reload, equip)',
   `dry=${audio.hasDry} reload=${audio.hasReload} equip=${audio.hasEquip}`);
 
 /* ------------------------------------------------------------------ */
+/* audio: loudness normalization, measured by rendering each shot       */
+/* ------------------------------------------------------------------ */
+// The spec wants no weapon riding louder or quieter than the rest. That is a
+// measurement, not an opinion: render each weapon's real firing recipe through
+// a copy of the live bus (same compressor settings) and compare peak levels.
+const levels = await page.evaluate(async () => {
+  const am = window.__game.audio;
+  const SR = 44100;
+  const render = async (play) => {
+    const oac = new OfflineAudioContext(2, SR * 1.2, SR);
+    const saved = { ctx: am.ctx, master: am.master, buf: am._noiseBuf };
+    am.ctx = oac;
+    am.master = oac.createGain();
+    am.master.gain.value = 0.5;
+    const comp = oac.createDynamicsCompressor();      // mirrors unlock()
+    comp.threshold.value = -16; comp.knee.value = 12; comp.ratio.value = 5;
+    comp.attack.value = 0.002; comp.release.value = 0.12;
+    am.master.connect(comp); comp.connect(oac.destination);
+    am._noiseBuf = oac.createBuffer(1, SR * 1.5, SR);
+    const d = am._noiseBuf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    play(am);
+    const out = await oac.startRendering();
+    am.ctx = saved.ctx; am.master = saved.master; am._noiseBuf = saved.buf;
+    let peak = 0, sum = 0, n = 0;
+    for (let c = 0; c < out.numberOfChannels; c++) {
+      const ch = out.getChannelData(c);
+      for (let i = 0; i < ch.length; i++) { const v = Math.abs(ch[i]); if (v > peak) peak = v; sum += ch[i] * ch[i]; n++; }
+    }
+    return { peak, rms: Math.sqrt(sum / n) };
+  };
+  const out = [];
+  for (const cfg of window.__game.weapons.weapons.map((w) => w.config)) {
+    // the bat's swing is carried by whoosh()/thud(), not a gunshot branch
+    const play = cfg.melee
+      ? (a) => { a.whoosh(); a.thud(); }
+      : (a) => a.gunshot(cfg.sound);
+    out.push({ id: cfg.id, ...(await render(play)) });
+  }
+  return out;
+});
+
+const dbfs = (v) => 20 * Math.log10(Math.max(1e-6, v));
+const peaks = levels.map((l) => dbfs(l.peak));
+const spread = Math.max(...peaks) - Math.min(...peaks);
+check('no weapon is louder or quieter than the rest (peak within 6 dB)',
+  spread <= 6,
+  levels.map((l, i) => `${l.id} ${peaks[i].toFixed(1)}dB`).join('  ') + ` — spread ${spread.toFixed(1)}dB`);
+check('every weapon actually makes a sound',
+  levels.every((l) => l.rms > 0.001),
+  levels.map((l) => `${l.id} rms ${l.rms.toFixed(4)}`).join('  '));
+
+/* ------------------------------------------------------------------ */
 /* HUD weapon menu                                                      */
 /* ------------------------------------------------------------------ */
 const menu = await page.evaluate(async () => {

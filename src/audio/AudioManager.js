@@ -154,71 +154,73 @@ export class AudioManager {
   gunshot(kind) {
     if (!this.ctx) return;
     switch (kind) {
-      case 'pistol': // nickel target automatic: bright snap + singing slide ping
-        this._punch(340, 78, 0.07, 0.42, 0, 0, 'triangle');
-        this._noise(0.05, 'bandpass', 3400, 1.1, 0.4);
-        this._noise(0.06, 'lowpass', 2200, 1, 0.3);
-        this._tone('sine', 5200, 0.07, 0.05, 0.045, 0.08, 3600); // nickel ring
-        this._brassTick(0.055, 0.07);
+      case 'pistol': // mainspring machine pistol: blunt blowback slap, a heavy
+        // bolt running its rails, and the coil mainspring singing as it rebounds
+        this._punch(260, 62, 0.085, 0.57, 0, 0, 'square');
+        this._noise(0.055, 'bandpass', 2400, 1.2, 0.52);
+        this._noise(0.07, 'lowpass', 1500, 1, 0.42);               // body of the report
+        this._tone('triangle', 1800, 0.03, 0.13, 0.03, -0.06, 900); // bolt hits the stop
+        this._tone('sine', 3100, 0.11, 0.07, 0.05, 0.09, 2100);     // spring ring-off
+        this._brassTick(0.075, 0.09);
         break;
-      case 'pistolAuto': // hair-trigger: clipped snap so rapid fire stays clean
-        this._punch(300, 95, 0.045, 0.3, 0, 0, 'triangle');
-        this._noise(0.04, 'bandpass', 3600, 1.3, 0.32);
-        this._tone('sine', 4800, 0.04, 0.03, 0.03, 0.06, 3400);
+      case 'pistolAuto': // hair-trigger: clipped so the spring ring can't smear
+        this._punch(240, 76, 0.05, 0.42, 0, 0, 'square');
+        this._noise(0.042, 'bandpass', 2600, 1.4, 0.42);
+        this._tone('triangle', 1700, 0.02, 0.09, 0.022, -0.05, 1000);
         break;
       case 'shotgun': // coachgun: tight modern 12-bore slam + hammer clack
-        this._punch(170, 34, 0.16, 0.6, 0, 0, 'sine');
-        this._punch(72, 26, 0.3, 0.46, 0, 0, 'sine');
-        this._noise(0.16, 'lowpass', 1400, 0.9, 0.58);             // sharp crack
-        this._noise(0.08, 'bandpass', 3200, 1.2, 0.2);             // muzzle sizzle
-        this._noise(0.34, 'lowpass', 480, 0.6, 0.16, 0.06);        // short tail
-        this._tone('square', 1500, 0.02, 0.08, 0.002, 0.05, 900);  // hammer clack
-        this._tone('sine', 2400, 0.05, 0.04, 0.05, 0.08, 1700);    // bore ring
+        this._punch(170, 34, 0.16, 0.36, 0, 0, 'sine');
+        this._punch(72, 26, 0.3, 0.28, 0, 0, 'sine');
+        this._noise(0.16, 'lowpass', 1400, 0.9, 0.35);             // sharp crack
+        this._noise(0.08, 'bandpass', 3200, 1.2, 0.12);            // muzzle sizzle
+        this._noise(0.34, 'lowpass', 480, 0.6, 0.1, 0.06);         // short tail
+        this._tone('square', 1500, 0.02, 0.05, 0.002, 0.05, 900);  // hammer clack
+        this._tone('sine', 2400, 0.05, 0.025, 0.05, 0.08, 1700);   // bore ring
         break;
       case 'shotgunDouble': // both barrels: stacked slams, the biggest voice
-        this._punch(170, 30, 0.2, 0.66, 0, 0, 'sine');
-        this._punch(140, 28, 0.22, 0.5, 0.02, 0, 'sine');
-        this._punch(58, 22, 0.42, 0.44, 0, 0, 'sine');
-        this._noise(0.2, 'lowpass', 1300, 0.9, 0.62);
-        this._noise(0.5, 'lowpass', 420, 0.5, 0.2, 0.1);
-        this._tone('square', 1500, 0.02, 0.08, 0.002, 0.05, 900);
+        this._punch(170, 30, 0.2, 0.4, 0, 0, 'sine');
+        this._punch(140, 28, 0.22, 0.3, 0.02, 0, 'sine');
+        this._punch(58, 22, 0.42, 0.27, 0, 0, 'sine');
+        this._noise(0.2, 'lowpass', 1300, 0.9, 0.37);
+        this._noise(0.5, 'lowpass', 420, 0.5, 0.12, 0.1);
+        this._tone('square', 1500, 0.02, 0.05, 0.002, 0.05, 900);
         break;
       case 'rifle': // foundry gun: industrial hammer-crack + steam exhaust
-        this._punch(210, 68, 0.05, 0.38, 0, 0, 'square');
-        this._noise(0.05, 'bandpass', 1900, 1.4, 0.4);
-        this._noise(0.05, 'highpass', 5600, 0.8, 0.09, 0.015);     // steam spit
-        this._tone('square', 1300, 0.025, 0.09, 0.01, -0.08, 2200); // link rattle
+        this._punch(210, 68, 0.05, 0.6, 0, 0, 'square');
+        this._noise(0.05, 'bandpass', 1900, 1.4, 0.62);
+        this._noise(0.05, 'highpass', 5600, 0.8, 0.14, 0.015);     // steam spit
+        this._tone('square', 1300, 0.025, 0.14, 0.01, -0.08, 2200); // link rattle
         break;
       case 'rifleBurst': // burst: tighter hammer, hotter steam
-        this._punch(230, 80, 0.045, 0.4, 0, 0, 'square');
-        this._noise(0.045, 'bandpass', 2200, 1.5, 0.42);
-        this._noise(0.04, 'highpass', 6000, 0.8, 0.08, 0.012);
+        this._punch(230, 80, 0.045, 0.62, 0, 0, 'square');
+        this._noise(0.045, 'bandpass', 2200, 1.5, 0.65);
+        this._noise(0.04, 'highpass', 6000, 0.8, 0.12, 0.012);
         break;
       case 'sniper': // meridian long rifle: colossal crack, then the whole
         // bolt cycle plays out — lift, draw, case ping, return, lock
-        this._punch(160, 34, 0.24, 0.64, 0, 0, 'sawtooth');
-        this._punch(58, 24, 0.36, 0.42, 0, 0, 'sine');
-        this._noise(0.12, 'lowpass', 4200, 1, 0.58);
-        this._noise(0.6, 'lowpass', 680, 0.6, 0.2, 0.16);          // valley echo 1
-        this._noise(0.8, 'lowpass', 440, 0.6, 0.12, 0.4);          // valley echo 2
-        this._tone('square', 1400, 0.02, 0.07, 0.24, 0.1, 900);    // bolt lifts
-        this._noise(0.07, 'bandpass', 1100, 1.5, 0.09, 0.36, 0.12);// draw back
-        this._tone('sine', 3400, 0.09, 0.05, 0.5, 0.2, 2400);      // spent case pings
-        this._noise(0.06, 'bandpass', 1200, 1.5, 0.09, 0.72, 0.1); // bolt returns
-        this._tone('square', 1100, 0.025, 0.09, 0.94, 0.06, 700);  // locks
+        this._punch(160, 34, 0.24, 0.32, 0, 0, 'sawtooth');
+        this._punch(58, 24, 0.36, 0.21, 0, 0, 'sine');
+        this._noise(0.12, 'lowpass', 4200, 1, 0.3);
+        this._noise(0.6, 'lowpass', 680, 0.6, 0.12, 0.16);         // valley echo 1
+        this._noise(0.8, 'lowpass', 440, 0.6, 0.07, 0.4);          // valley echo 2
+        this._tone('square', 1400, 0.02, 0.05, 0.24, 0.1, 900);    // bolt lifts
+        this._noise(0.07, 'bandpass', 1100, 1.5, 0.07, 0.36, 0.12);// draw back
+        this._tone('sine', 3400, 0.09, 0.04, 0.5, 0.2, 2400);      // spent case pings
+        this._noise(0.06, 'bandpass', 1200, 1.5, 0.07, 0.72, 0.1); // bolt returns
+        this._tone('square', 1100, 0.025, 0.07, 0.94, 0.06, 700);  // locks
         break;
       case 'batCharge': // sprung heavy swing: spring creak, whip, iron slam
-        this._tone('triangle', 240, 0.18, 0.14, 0, 0, 90);         // spring compress creak
-        this._noise(0.3, 'bandpass', 700, 1.4, 0.26, 0.1, 0, 1900); // whip
-        this._tone('sine', 66, 0.14, 0.36, 0.32, 0, 38);           // iron slam
-        this._noise(0.07, 'lowpass', 420, 1, 0.36, 0.33);          // clank
+        this._tone('triangle', 240, 0.18, 0.2, 0, 0, 90);          // spring compress creak
+        this._noise(0.3, 'bandpass', 700, 1.4, 0.36, 0.1, 0, 1900); // whip
+        this._tone('sine', 66, 0.14, 0.5, 0.32, 0, 38);            // iron slam
+        this._noise(0.07, 'lowpass', 420, 1, 0.5, 0.33);           // clank
         break;
       case 'bat': break; // primary swing carried by whoosh()/thud()
     }
   }
 
-  whoosh() { this._noise(0.16, 'bandpass', 500, 1.6, 0.28, 0, 0, 1500); }
-  thud() { this._noise(0.1, 'lowpass', 300, 1, 0.55); this._tone('sine', 90, 0.1, 0.4, 0, 0, 50); }
+  whoosh() { this._noise(0.16, 'bandpass', 500, 1.6, 0.39, 0, 0, 1500); }
+  thud() { this._noise(0.1, 'lowpass', 300, 1, 0.77); this._tone('sine', 90, 0.1, 0.56, 0, 0, 50); }
   click(freq = 1800, gain = 0.08, when = 0) { this._noise(0.025, 'highpass', freq, 1, gain, when); }
 
   /** Dry hammer-on-empty-chamber click. */
@@ -234,7 +236,8 @@ export class AudioManager {
     this._tone('square', 1600, 0.03, 0.07, 0.05, 0, 2400);  // draw
     this._brassTick(0.1, 0.09);
     switch (id) {
-      case 'pistol': this._tone('sine', 3800, 0.05, 0.04, 0.12, 0.06, 2800); break; // nickel ring
+      case 'pistol': this._tone('triangle', 1500, 0.05, 0.09, 0.12, 0.06, 820);
+        this._tone('sine', 2900, 0.06, 0.035, 0.15, 0.08, 2000); break;            // bolt seats, spring rings
       case 'shotgun': this._tone('sine', 110, 0.06, 0.16, 0.12, 0, 62); break;      // heavy seat
       case 'rifle': this._noise(0.06, 'highpass', 5200, 0.8, 0.06, 0.12); break;    // steam sigh
       case 'sniper': this._tone('sine', 120, 0.05, 0.13, 0.12, 0, 70);
