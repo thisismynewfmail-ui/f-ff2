@@ -6,8 +6,11 @@ import * as THREE from '../../lib/three.module.js';
  * Every weapon surface is a full physically-based material set — albedo,
  * normal, roughness and metalness maps — generated on a <canvas> at load
  * time (no image files, matching the rest of the game's synthesised assets).
- * Albedo and normal maps are 1024² on the close-up "hero" palettes (brass,
- * blued steel, walnut) and 512² elsewhere; roughness/metalness ride at 512².
+ * Every map is 1024² — the spec's minimum, and measured to be the right
+ * ceiling too: these are generated procedurally at load, and pushing the
+ * close-up palettes to 2048 tripled boot time (14 s to 42 s) and took weapon
+ * texture memory from 25 to 168 megapixels for detail that is not visible at
+ * the size a first-person weapon actually occupies.
  *
  * The steampunk / Bioshock palette lives here: warm polished brass, blued
  * gunsteel, pitted cast iron, oxidised copper, gunmetal, oiled walnut, oak,
@@ -211,9 +214,11 @@ function buildMaps(cfg) {
 
 /* ---------------- palettes ---------------- */
 
-// aSize 1024 = hero close-up detail; 512 = supporting parts.
+// `aSize` sizes albedo + normal, `dSize` roughness + metalness. Both sit at
+// 1024²: these are first-person weapons filling a third of the screen, and 512
+// showed its texels on the close-up parts. See the header for why not higher.
 const P = (o) => ({
-  aSize: 512, dSize: 512, normalStr: 2.2, grain: 1, grainU: 3, grainV: 60,
+  aSize: 1024, dSize: 1024, normalStr: 2.2, grain: 1, grainU: 3, grainV: 60,
   wear: 0.6, grimeAmt: 0.4, edgeBright: 1, rough: 0.4, metal: 1, polish: 1,
   rivets: 0, panels: 0, ...o,
 });
