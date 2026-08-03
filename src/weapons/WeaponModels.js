@@ -531,8 +531,21 @@ function buildRifle() {
       p.valve.material.emissiveIntensity = 2.0 * (1 - f) + 0.4; // pressure flares
       p.strap.rotation.z += 0.06 * (1 - f);             // fire rate rattles the sling
     },
-    reload(f, p) {
+    reload(f, p, tactical) {
       const ss = (t) => { t = Math.max(0, Math.min(1, t)); return t * t * (3 - 2 * t); };
+      if (tactical) {
+        // Quick-tap: the drum is not empty, so it never comes off the spindle.
+        // The gunner just slaps the feed latch and runs the bolt — a short,
+        // tight action that reads as obviously cheaper than a drum swap.
+        const slap = Math.sin(ss(Math.min(1, f / 0.45)) * Math.PI);
+        p.drum.position.x = p.drum.userData.baseP.x;
+        p.drum.position.y = p.drum.userData.baseP.y + slap * 0.012;
+        p.drum.visible = true;
+        p.drum.rotation.x = this._step + slap * 0.5;
+        p.bolt.position.z = p.bolt.userData.baseP.z + Math.sin(ss(Math.max(0, (f - 0.35)) / 0.65) * Math.PI) * 0.055;
+        p.valve.material.emissiveIntensity = 0.4;
+        return;
+      }
       // swing the spent drum out to the left off its spindle, dwell, seat a
       // fresh one back on
       let out;
@@ -543,6 +556,7 @@ function buildRifle() {
       p.drum.position.y = p.drum.userData.baseP.y + out * 0.05;
       p.drum.visible = !(f > 0.42 && f < 0.58);          // swapped while pulled clear
       p.drum.rotation.x = this._step + out * 3.4;        // spins as it's handled
+      p.bolt.position.z = p.bolt.userData.baseP.z;
       p.valve.material.emissiveIntensity = 0.4;
     },
   };

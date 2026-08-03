@@ -183,7 +183,41 @@ export class BuildingKit {
                     spec.door === 'S' ? d / 2 : spec.door === 'N' ? -d / 2 : (spec.doorOffset ?? 0) * d * 0.5)
       : null;
 
-    return { group, lootPoints, spawnPoints, doorWorld };
+    // ---- navigation portals -------------------------------------------
+    // The walls above sealed every opening on the nav grid (a 1.5 m door and a
+    // 1.2 m partition gap are both narrower than one 2 m cell, so the blocks
+    // either side always meet in the middle). Declare the openings we just
+    // built from the very coordinates we built them from, now that those walls
+    // are registered, so pathing can actually route in and out of the building.
+    const portals = spec.solid ? [] : this._registerPortals(spec, rot, doorWorld, w, d);
+
+    return { group, lootPoints, spawnPoints, doorWorld, portals };
+  }
+
+  /**
+   * Carve the building's exterior door and every interior partition gap into
+   * the nav grid, and hand the list back so NPCs can route through the exact
+   * same points (see Citizen's escape chain).
+   */
+  _registerPortals(spec, rot, doorWorld, w, d) {
+    const portals = [];
+    if (doorWorld) {
+      const side = spec.door;
+      const n = localDir2world(rot,
+        side === 'E' ? 1 : side === 'W' ? -1 : 0,
+        side === 'S' ? 1 : side === 'N' ? -1 : 0);
+      portals.push(this.nav.addPortal(doorWorld.x, doorWorld.z, n.x, n.z, DOOR_W, 'door'));
+    }
+    for (const p of spec.partitions ?? []) {
+      const gapAt = p.gapAt ?? (p.from + p.to) / 2;
+      const [lx, lz] = p.axis === 'x' ? [gapAt, p.at] : [p.at, gapAt];
+      const world = local2world(spec, rot, lx, lz);
+      // The gap's normal is perpendicular to the wall it sits in: an 'x' axis
+      // partition runs along local X, so you pass through it along local Z.
+      const n = localDir2world(rot, p.axis === 'x' ? 0 : 1, p.axis === 'x' ? 1 : 0);
+      portals.push(this.nav.addPortal(world.x, world.z, n.x, n.z, p.gapW ?? 1.2, 'gap'));
+    }
+    return portals;
   }
 
   _wallSegment(group, spec, rot, side, from, to, yBase, height, tex, lift = 0) {
@@ -360,6 +394,14 @@ export class BuildingKit {
     this.collision.addBox(cx - ex, spec.y, cz - ez, cx + ex, spec.y + height, cz + ez, 'wall');
     this.nav.blockBox(cx - ex, cz - ez, cx + ex, cz + ez);
   }
+}
+
+/** Rotate a local direction into world space (same 90° steps as local2world). */
+export function localDir2world(rot, dx, dz) {
+  if (rot === 90) return { x: dz, z: -dx };
+  if (rot === 180) return { x: -dx, z: -dz };
+  if (rot === 270) return { x: -dz, z: dx };
+  return { x: dx, z: dz };
 }
 
 export function local2world(spec, rot, lx, lz) {

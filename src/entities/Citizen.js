@@ -1,7 +1,8 @@
 import { Entity } from './Entity.js';
 import { SpriteBillboard, makeSpriteMaterial } from '../rendering/Billboard.js';
 import { Senses } from '../ai/Senses.js';
-import { avoidObstacles, turnToward } from '../ai/Steering.js';
+import { NavAgent } from '../ai/NavAgent.js';
+import { turnToward } from '../ai/Steering.js';
 import { local2world } from '../world/Buildings.js';
 
 /**
@@ -63,28 +64,16 @@ const VANISH_MAX = 70;       // total outdoor flee distance before she just hold
 const DESPAWN_DELAY = 5.0;
 const MAX_FLEE_TIME = 45;    // hard safety cap in case she gets stuck somewhere
 
-// Recovery for the case reactive avoidance cannot solve on its own: a prop
-// that blocks movement but not the route — street furniture and interior
-// furniture are collision boxes, not nav-grid walls — sitting square between
-// her and a goal that lies straight through it. "Steer away from it" and
-// "seek the goal" then cancel, and she grinds to a halt against it.
-//
-// The fix has to be LATERAL. Pressing harder toward the goal (the obvious
-// "just push through" recovery) is actively wrong here: the goal is on the
-// far side of a solid box, so leaning into it only presses her into the box,
-// collision resolution pins her flat against it, and she never recovers —
-// a bench 2 m wide outside a door was enough to strand her there until the
-// safety timer fired. So when she stops making progress, blend a sideways
-// component into the desired direction instead, pick the side the whiskers
-// say is clearer, and COMMIT to it for a beat — if the slide were dropped the
-// instant she moved, she would immediately re-aim at the goal, walk back into
-// the same box and ping-pong. Repeated episodes slide harder.
-const STUCK_WINDOW = 0.6;    // seconds of net movement to sample before judging "stuck"
-const STUCK_EPS = 0.25;      // metres of net movement below which she counts as stuck
-const AVOID_WEIGHT = 2.0;
-const SLIDE_HOLD = 1.4;      // seconds a sidestep stays committed once started
-const SLIDE_STEP = 0.7;      // lateral blend added per repeated stuck episode
-const SLIDE_MAX = 2.1;       // cap on the lateral blend (vs. a unit goal direction)
+// Obstacle steering and wedge recovery both come from the shared NavAgent.
+// The case it solves for her is a prop that blocks movement but not the route —
+// street furniture and interior furniture are collision boxes, not nav-grid
+// walls — sitting square between her and a goal that lies straight through it.
+// "Steer away from it" and "seek the goal" then cancel and she grinds to a
+// halt against it; the recovery has to be LATERAL, because leaning harder into
+// the goal only presses her into the box and collision pins her there. She uses
+// the navigator purely as a steering + unwedging layer: the route itself stays
+// her own explicit waypoint chain below, since the nav grid's 2 m cells are
+// coarse next to these buildings' ~1.2 m interior gaps.
 
 export class Citizen extends Entity {
   constructor(events, world, texCaptured, texReleased, built) {
@@ -103,29 +92,40 @@ export class Citizen extends Entity {
     const y = world.groundHeightFor(sp.x, sp.z, 1e9);
     this.position.set(sp.x, y, sp.z);
 
-    // Outward direction is just the vector from the building's centre to its
-    // door — exact for a centred door, close enough for an offset one; either
-    // way the nav path she takes to get there corrects for the approximation.
+    // Every opening in this building was declared to the nav grid as a portal
+    // when it was built (BuildingKit._registerPortals), each carrying the exact
+    // centre and outward normal of the gap it was cut from. Read her escape
+    // geometry straight off those rather than recomputing it from the spec —
+    // one definition of where the doors are, shared with pathfinding.
+    const doorPortal = (built.portals ?? []).find((p) => p.tag === 'door');
     const door = built.doorWorld ?? { x: spec.x, z: spec.z + spec.d / 2 };
-    const nx = door.x - spec.x, nz = door.z - spec.z;
-    const nlen = Math.hypot(nx, nz) || 1;
-    this.outDir = { x: nx / nlen, z: nz / nlen };
+    if (doorPortal) {
+      this.outDir = { x: doorPortal.nx, z: doorPortal.nz };
+    } else {
+      // No declared door (shouldn't happen for an enterable building): fall back
+      // to the vector from the building's centre to its door.
+      const nx = door.x - spec.x, nz = door.z - spec.z;
+      const nlen = Math.hypot(nx, nz) || 1;
+      this.outDir = { x: nx / nlen, z: nz / nlen };
+    }
     this.doorPoint = { x: door.x, z: door.z };
     this.exitPoint = { x: door.x + this.outDir.x * OUTSIDE_MARGIN, z: door.z + this.outDir.z * OUTSIDE_MARGIN };
 
     // Interior partition walls (housePartitions/lobbyPartitions/etc.) hang
     // their doorway gap off-centre — a straight line from her spawn to the
     // exit runs broadside into the solid part of that wall, and reactive
-    // avoidance alone can't discover an opening off to one side that her
-    // forward-fanned whiskers never look toward. The gap's own coordinates
-    // are right there on the spec (the building was built from them), so
-    // route her through each one explicitly instead of guessing.
+    // steering alone can't discover an opening off to one side that is not on
+    // the way. The gaps are declared portals too, in partition order, so route
+    // her through each one explicitly instead of guessing.
     const rot = ((spec.rot || 0) % 360 + 360) % 360;
-    this.gapWaypoints = (spec.partitions ?? []).map((p) => {
-      const gapAt = p.gapAt ?? (p.from + p.to) / 2;
-      const [lx, lz] = p.axis === 'x' ? [gapAt, p.at] : [p.at, gapAt];
-      return local2world(spec, rot, lx, lz);
-    });
+    const gapPortals = (built.portals ?? []).filter((p) => p.tag === 'gap');
+    this.gapWaypoints = gapPortals.length
+      ? gapPortals.map((p) => ({ x: p.x, z: p.z }))
+      : (spec.partitions ?? []).map((p) => {
+        const gapAt = p.gapAt ?? (p.from + p.to) / 2;
+        const [lx, lz] = p.axis === 'x' ? [gapAt, p.at] : [p.at, gapAt];
+        return local2world(spec, rot, lx, lz);
+      });
 
     this.yaw = Math.atan2(this.outDir.x, this.outDir.z);
 
@@ -142,13 +142,11 @@ export class Citizen extends Entity {
     this.fleeTimer = 0;
     this.toRemove = false;
 
-    this._stuckClock = 0;
-    this._stuckMark = null;
-    this._slideLevel = 0;   // how many stuck episodes in a row
-    this._slideTimer = 0;   // seconds the current sidestep stays committed
-    this._slideSide = 0;    // +1/-1 once chosen, 0 = pick against the whiskers
-
-    this.senses = new Senses(world, { whiskerRange: 2.4, interval: 0.13 });
+    this.senses = new Senses(world, { range: 2.4, rays: 12, interval: 0.13 });
+    // Steering + wedge recovery only: her route is the waypoint chain below,
+    // never the nav grid, so the navigator is always driven in `direct` mode
+    // with the leg she is currently walking as its desired direction.
+    this.nav = new NavAgent(world, { steer: { pad: this.radius + 0.15 } });
 
     this.interactable = world.addInteractable({
       x: this.position.x, y, z: this.position.z, radius: 1.9,
@@ -195,16 +193,16 @@ export class Citizen extends Entity {
    * for good and never re-sought, so there is nothing left for her to swing
    * back around toward.
    */
-  _fleeDesire() {
+  _fleeGoal() {
     const pos = this.position;
     if (this.phase === 'toExit') {
       if (this.waypointIndex < this.waypoints.length) {
         const w = this.waypoints[this.waypointIndex];
         if (Math.hypot(w.x - pos.x, w.z - pos.z) < w.radius) {
           this.waypointIndex++;
-          return this._fleeDesire();
+          return this._fleeGoal();
         }
-        return { x: w.x - pos.x, z: w.z - pos.z };
+        return w;
       }
       this.phase = 'outside'; // clear of the doorway — never seek a "toExit" point again
     }
@@ -222,29 +220,7 @@ export class Citizen extends Entity {
         this.vanishTarget = null;
       }
     }
-    if (!this.vanishTarget) return { x: 0, z: 0 };
-    return { x: this.vanishTarget.x - pos.x, z: this.vanishTarget.z - pos.z };
-  }
-
-  /**
-   * Blend the committed sideways component into a goal direction while she is
-   * wedged, so she rounds an obstacle instead of pressing into it. The side is
-   * chosen once per episode from the whiskers' own avoidance vector — whichever
-   * way the sensors already say is clearer — and then held, so she keeps
-   * committing to that side rather than re-deciding every frame.
-   */
-  _slide(desired) {
-    if (this._slideTimer <= 0 || this._slideLevel <= 0) return desired;
-    const len = Math.hypot(desired.x, desired.z);
-    if (!len) return desired;
-    const ux = desired.x / len, uz = desired.z / len;
-    const perpX = -uz, perpZ = ux;
-    if (!this._slideSide) {
-      const a = this.senses.avoid;
-      this._slideSide = a && (a.x * perpX + a.z * perpZ) < 0 ? -1 : 1;
-    }
-    const amount = Math.min(SLIDE_MAX, this._slideLevel * SLIDE_STEP) * this._slideSide;
-    return { x: ux + perpX * amount, z: uz + perpZ * amount };
+    return this.vanishTarget;
   }
 
   _despawn() {
@@ -263,27 +239,16 @@ export class Citizen extends Entity {
     if (this.state === 'fleeing') {
       this.fleeTimer += dt;
 
-      if (!this._stuckMark) this._stuckMark = { x: this.position.x, z: this.position.z };
-      this._stuckClock += dt;
-      if (this._stuckClock >= STUCK_WINDOW) {
-        const moved = Math.hypot(this.position.x - this._stuckMark.x, this.position.z - this._stuckMark.z);
-        if (moved < STUCK_EPS) {
-          // Wedged again: slide harder, re-arm the commitment and re-pick the
-          // side against whatever the whiskers can see from here.
-          this._slideLevel++;
-          this._slideTimer = SLIDE_HOLD;
-          this._slideSide = 0;
-        } else if (this._slideTimer <= 0) {
-          this._slideLevel = 0; // moving freely with no sidestep running — done
-        }
-        this._stuckMark = { x: this.position.x, z: this.position.z };
-        this._stuckClock = 0;
-      }
-      if (this._slideTimer > 0) this._slideTimer -= dt;
-
-      const desired = this._slide(this._fleeDesire());
-      const dir = avoidObstacles(desired.x, desired.z, this.senses, AVOID_WEIGHT);
-      if (dir.x || dir.z) {
+      // The navigator supplies obstacle steering and the lateral unwedge; the
+      // leg to walk is always hers. `direct` keeps it out of the routing path
+      // entirely — the waypoint chain IS the route.
+      const goal = this._fleeGoal();
+      const dir = goal && this.nav.steer(dt, this, goal, {
+        direct: true,
+        desired: { x: goal.x - this.position.x, z: goal.z - this.position.z },
+        senses: this.senses,
+      });
+      if (dir) {
         const desiredYaw = Math.atan2(dir.x, dir.z);
         this.yaw = turnToward(this.yaw, desiredYaw, dt, TURN_RATE);
         const align = Math.max(MIN_ALIGN_SPEED, Math.cos(desiredYaw - this.yaw));

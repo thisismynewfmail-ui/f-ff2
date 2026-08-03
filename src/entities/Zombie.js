@@ -1,12 +1,16 @@
 import { Entity } from './Entity.js';
 import { SpriteBillboard } from '../rendering/Billboard.js';
 import { Senses } from '../ai/Senses.js';
-import { avoidObstacles, gaitWobble } from '../ai/Steering.js';
+import { NavAgent } from '../ai/NavAgent.js';
+import { contextSteer, gaitWobble } from '../ai/Steering.js';
+import { aiFlag } from '../ai/Flags.js';
 
 /**
  * Zombie AI: a small state machine over
  *   idle -> wandering -> alerted -> chasing -> attacking -> dead
- * driven by the shared sensory stack (Senses + steering).
+ * driven by the shared AI stack (Senses + NavAgent + steering). Everything in
+ * here is inherited by the Exploder and the Spitter, which swap out only how
+ * they close the last few metres.
  *
  * Perception model:
  * - The PLAYER is sensed with global awareness — zombies always know where the
@@ -16,23 +20,32 @@ import { avoidObstacles, gaitWobble } from '../ai/Steering.js';
  * - FRIENDLY NPCs are sensed the ordinary way: a limited detection range, a
  *   forward field-of-view cone (with a close sixth-sense bubble) and line of
  *   sight. The player always outranks them, so a zombie only hunts a friendly
- *   when there is no live player to chase.
- * - Obstacle whiskers ride under all movement, so zombies feel their way out
- *   of spawn houses and around props instead of grinding on walls.
+ *   when there is no live player to chase. Losing sight of a friendly does not
+ *   erase it: the hunter keeps going to where it last saw the target for a few
+ *   seconds before giving up, so ducking behind a wall buys time rather than
+ *   instant amnesia.
+ * - The sensory ring rides under all movement, so zombies feel their way out of
+ *   spawn houses and around props instead of grinding on walls.
  *
- * Movement: direct steering when the target is visible, A* on the nav grid
- * otherwise (repaths on a timer, throttled by a global budget). Beyond the
- * activity range zombies idle invisibly and cost nothing.
+ * Movement is delegated wholesale to the shared NavAgent: direct steering when
+ * the target is in sight, A* on the nav grid otherwise (repaths on a timer,
+ * throttled by a global budget), doorway portals threaded exactly, an exit
+ * hunt when the grid has no answer, and lateral recovery when a prop wedges
+ * them. Beyond the activity range zombies idle invisibly and cost nothing.
  *
- * Flags (opt-in, set on `flags` from outside — never default behaviour):
- * - cullBlindSeconds: if > 0, a zombie that cannot get an unobstructed line to
- *   the player for that many seconds is culled (removed without scoring) to
- *   keep a stuck straggler from stalling a wave.
+ * Flags (opt-in, stamped on `flags` from outside — never default behaviour;
+ * see src/ai/Flags.js):
+ * - cullBlindSeconds: a zombie that cannot get an unobstructed line to the
+ *   player for that many seconds is culled (removed without scoring) so a
+ *   stuck straggler cannot stall a wave.
+ * - friendlyRangeMul / noWander / deaf: detection reach, idle behaviour, and
+ *   whether noises are heard at all.
  */
 const ACTIVE_RANGE = 115;
 const DEATH_TIME = 1.3;
 const FRIENDLY_FOV = 3.66;   // ~210° detection cone for non-player targets
 const FRIENDLY_PROX = 6;     // ...but anything this close is felt regardless
+const FRIENDLY_MEMORY = 6;   // seconds a lost friendly is still hunted for
 // Melee "jump" pounce: across each attack wind-up the sprite rises and lunges
 // forward on a sine arc, landing exactly as the strike connects. Purely
 // cosmetic — the AI, collision and hit test all read `position`, not the mesh.
@@ -67,9 +80,6 @@ export class Zombie extends Entity {
     this.stateTime = Math.random() * 3;
     this.wanderTarget = null;
     this.alertPos = null;
-    this.path = null;
-    this.pathIndex = 0;
-    this.repathTimer = 0;
     this.attackTimer = 0;
     this.windup = -1;
     this.attackLunge = 0;     // eased forward offset (m) of the current pounce
@@ -80,16 +90,26 @@ export class Zombie extends Entity {
     this.blindTimer = 0;      // time since an unobstructed line to the player
     this.knockVX = 0;
     this.knockVZ = 0;
+    this.playerDist = Infinity;
     this._losTimer = Math.random() * 0.3;
     this._hasLos = false;
     this.victim = null;
     this._victimLos = false;
     this._victimDist = Infinity;
+    // Where the hunter is actually walking to: the victim's live position while
+    // it can sense it, the remembered one while it cannot.
+    this._victimPoint = { x: 0, z: 0 };
 
     this.senses = new Senses(world, {
-      whiskerRange: 2.2 + this.radius * 2,
-      whiskerAngles: [0, 0.55, -0.55, 1.15, -1.15],
+      range: 2.2 + this.radius * 2,
+      rays: 12,
       interval: 0.15,
+      memorySpan: FRIENDLY_MEMORY,
+    });
+    this.nav = new NavAgent(world, {
+      // Wider berth than the default: a shambling body is not a point, and a
+      // horde funnelling through one doorway needs the room.
+      steer: { pad: this.radius + 0.2, minClear: this.radius + 0.1 },
     });
 
     this.billboard = this._makeBillboard(baseMaterial);
@@ -110,13 +130,18 @@ export class Zombie extends Entity {
     this.position.set(x, y, z);
     this.yaw = Math.random() * Math.PI * 2;
     this.mesh.position.copy(this.position);
+    this.nav.reset();
+    this.senses.clearMemory();
   }
 
   onNoise(pos, radius) {
+    if (aiFlag(this, 'deaf')) return;
     if (this.state === 'dead' || this.state === 'chasing' || this.state === 'attacking') return;
     const d = Math.hypot(pos.x - this.position.x, pos.z - this.position.z);
     if (d > radius) return;
+    this.senses.hear(pos.x, pos.z, radius);
     this.alertPos = { x: pos.x + (Math.random() - 0.5) * 6, z: pos.z + (Math.random() - 0.5) * 6 };
+    this.nav.clearPath();
     this._setState('alerted');
   }
 
@@ -171,48 +196,22 @@ export class Zombie extends Entity {
   }
 
   /**
-   * Decide who to chase this frame. Player first (global awareness, always
-   * known); otherwise the nearest friendly the zombie can actually perceive.
+   * Shared per-frame perception for every hunter built on this class.
+   * Handles dormancy, the sensory ring, the staggered player line-of-sight and
+   * its blind timer, the opt-in blind cull, and victim acquisition.
+   *
+   * Returns false when the caller should stop updating this frame — the agent
+   * is dormant (too far to matter) or has just been culled.
    */
-  _acquireVictim(ctx) {
+  _sense(dt, ctx) {
     const player = ctx.player;
-    if (player && player.alive) {
-      this.victim = player;
-      this._victimLos = this._hasLos;
-      this._victimDist = Math.hypot(player.position.x - this.position.x, player.position.z - this.position.z);
-      return;
-    }
-    const f = this.senses.perceiveNearest(this, ctx.friendlies || EMPTY, {
-      range: this.config.sightRange,
-      fov: FRIENDLY_FOV,
-      proximity: FRIENDLY_PROX,
-      requireLOS: true,
-    });
-    this.victim = f ? f.target : null;
-    this._victimLos = f ? f.los : false;
-    this._victimDist = f ? f.dist : Infinity;
-  }
-
-  update(dt, ctx) {
-    const { player, camPos, pathBudget } = ctx;
-    this.stateTime += dt;
-
-    if (this.state === 'dead') {
-      this.deathTimer += dt;
-      this.billboard.deathPose(Math.min(1, this.deathTimer / DEATH_TIME));
-      if (this.deathTimer >= DEATH_TIME) this.toRemove = true;
-      return;
-    }
-
     const pdx = player.position.x - this.position.x;
     const pdz = player.position.z - this.position.z;
     const pdist = Math.hypot(pdx, pdz);
+    this.playerDist = pdist;
 
     // Dormant when far away: no AI, no rendering.
-    if (pdist > ACTIVE_RANGE) {
-      this.mesh.visible = false;
-      return;
-    }
+    if (pdist > ACTIVE_RANGE) { this.mesh.visible = false; return false; }
     this.mesh.visible = true;
 
     this.senses.update(dt, this);
@@ -229,10 +228,70 @@ export class Zombie extends Entity {
     if (player.alive && pdist < 4) this._hasLos = true;
     if (this._hasLos) this.blindTimer = 0; else this.blindTimer += dt;
 
-    const cullS = this.flags.cullBlindSeconds;
-    if (cullS > 0 && player.alive && this.blindTimer > cullS) { this._cull(); return; }
+    const cullS = aiFlag(this, 'cullBlindSeconds');
+    if (cullS > 0 && player.alive && this.blindTimer > cullS) { this._cull(); return false; }
 
     this._acquireVictim(ctx);
+    return true;
+  }
+
+  /**
+   * Decide who to chase this frame. Player first (global awareness, always
+   * known); otherwise the nearest friendly the zombie can actually perceive;
+   * failing that, the place a friendly was last seen, until that memory fades.
+   */
+  _acquireVictim(ctx) {
+    const player = ctx.player;
+    if (player && player.alive) {
+      this.victim = player;
+      this._victimLos = this._hasLos;
+      this._victimDist = this.playerDist;
+      this._victimPoint.x = player.position.x;
+      this._victimPoint.z = player.position.z;
+      return;
+    }
+    const f = this.senses.perceiveNearest(this, ctx.friendlies || EMPTY, {
+      range: this.config.sightRange * aiFlag(this, 'friendlyRangeMul'),
+      fov: FRIENDLY_FOV,
+      proximity: FRIENDLY_PROX,
+      requireLOS: true,
+    });
+    if (f) {
+      this.victim = f.target;
+      this._victimLos = f.los;
+      this._victimDist = f.dist;
+      this._victimPoint.x = f.target.position.x;
+      this._victimPoint.z = f.target.position.z;
+      return;
+    }
+    // Nothing in sight. If it was hunting something a moment ago, go to where
+    // that was — a friendly who slips behind a wall is followed, not forgotten.
+    const mem = this.senses.recall(this.victim);
+    if (mem && this.victim && this.victim.alive !== false && mem.age < FRIENDLY_MEMORY) {
+      this._victimLos = false;
+      this._victimDist = this.distanceTo(this.victim);
+      this._victimPoint.x = mem.x;
+      this._victimPoint.z = mem.z;
+      // Arrived at the last known spot and it's still not there: give up.
+      if (Math.hypot(mem.x - this.position.x, mem.z - this.position.z) > 1.5) return;
+    }
+    this.victim = null;
+    this._victimLos = false;
+    this._victimDist = Infinity;
+  }
+
+  update(dt, ctx) {
+    const { camPos } = ctx;
+    this.stateTime += dt;
+
+    if (this.state === 'dead') {
+      this.deathTimer += dt;
+      this.billboard.deathPose(Math.min(1, this.deathTimer / DEATH_TIME));
+      if (this.deathTimer >= DEATH_TIME) this.toRemove = true;
+      return;
+    }
+
+    if (!this._sense(dt, ctx)) return;
     const victim = this.victim;
 
     let moveX = 0, moveZ = 0, speed = 0, moving = false;
@@ -266,46 +325,33 @@ export class Zombie extends Entity {
           this._setState('attacking');
           this.windup = this.config.attackWindup;
         } else {
+          // The navigator owns the whole "how do I get there" problem: beeline
+          // on a clear line, A* through doorways otherwise, exit hunt when the
+          // grid has nothing, lateral recovery when a prop pins them.
           speed = this.config.chaseSpeed;
-          moving = true;
-          let desX, desZ;
-          if (vLos || vdist < 3) {
-            desX = vdx; desZ = vdz;
-            this.path = null;
-          } else {
-            // No clear line: pathfind out of the building / around the block.
-            this.repathTimer -= dt;
-            if ((!this.path || this.repathTimer <= 0) && pathBudget.n > 0) {
-              pathBudget.n--;
-              this.repathTimer = 1.4 + Math.random() * 0.6;
-              this.path = this.world.nav.findPath(this.position.x, this.position.z, vpos.x, vpos.z);
-              this.pathIndex = 0;
-            }
-            if (this.path && this.pathIndex < this.path.length) {
-              const [wx, wz] = this.path[this.pathIndex];
-              const wd = Math.hypot(wx - this.position.x, wz - this.position.z);
-              if (wd < 1.2) { this.pathIndex++; desX = vdx; desZ = vdz; }
-              else { desX = wx - this.position.x; desZ = wz - this.position.z; }
-            } else {
-              desX = vdx; desZ = vdz; // no path: shamble + wall-slide hopefully
-              speed *= 0.75;
-            }
+          const step = this.nav.steer(dt, this, this._victimPoint, {
+            direct: vLos || vdist < 3,
+            budget: ctx.pathBudget,
+            senses: this.senses,
+          });
+          if (step) {
+            moveX = step.x; moveZ = step.z; speed *= step.scale; moving = true;
           }
-          const steer = avoidObstacles(desX, desZ, this.senses);
-          moveX = steer.x; moveZ = steer.z;
         }
       }
     } else {
       // No victim (player gone, no friendly perceivable): idle / wander /
-      // investigate a noise — all with obstacle avoidance so they never stick.
+      // investigate a noise — all steered by the sensory ring so they never
+      // stick to a wall.
       switch (this.state) {
         case 'chasing':
         case 'attacking':
+          this.nav.clearPath();
           this._setState('wandering');
           this.wanderTarget = { x: this.position.x + (Math.random() - 0.5) * 8, z: this.position.z + (Math.random() - 0.5) * 8 };
           break;
         case 'idle':
-          if (this.stateTime > 2 + Math.random() * 3) {
+          if (!aiFlag(this, 'noWander') && this.stateTime > 2 + Math.random() * 3) {
             const a = Math.random() * Math.PI * 2;
             const r = 5 + Math.random() * 12;
             this.wanderTarget = { x: this.position.x + Math.cos(a) * r, z: this.position.z + Math.sin(a) * r };
@@ -314,9 +360,9 @@ export class Zombie extends Entity {
           break;
         case 'wandering': {
           const t = this.wanderTarget;
-          const wd = Math.hypot(t.x - this.position.x, t.z - this.position.z);
-          if (wd < 1 || this.stateTime > 12) { this._setState('idle'); break; }
-          const steer = avoidObstacles(t.x - this.position.x, t.z - this.position.z, this.senses);
+          const wd = t ? Math.hypot(t.x - this.position.x, t.z - this.position.z) : 0;
+          if (!t || wd < 1 || this.stateTime > 12) { this._setState('idle'); break; }
+          const steer = contextSteer(t.x - this.position.x, t.z - this.position.z, this.senses);
           moveX = steer.x; moveZ = steer.z;
           speed = this.config.wanderSpeed;
           moving = true;
@@ -326,16 +372,46 @@ export class Zombie extends Entity {
           const t = this.alertPos;
           const ad = Math.hypot(t.x - this.position.x, t.z - this.position.z);
           if (ad < 2.5 || this.stateTime > 16) { this._setState('wandering'); this.wanderTarget = { x: this.position.x + 4, z: this.position.z + 4 }; break; }
-          const steer = avoidObstacles(t.x - this.position.x, t.z - this.position.z, this.senses);
-          moveX = steer.x; moveZ = steer.z;
-          speed = Math.min(this.config.chaseSpeed, this.config.wanderSpeed * 2.2);
-          moving = true;
+          const step = this.nav.steer(dt, this, t, { budget: ctx.pathBudget, senses: this.senses });
+          if (step) {
+            moveX = step.x; moveZ = step.z;
+            speed = Math.min(this.config.chaseSpeed, this.config.wanderSpeed * 2.2) * step.scale;
+            moving = true;
+          }
           break;
         }
       }
     }
 
-    // --- integrate movement
+    this._move(dt, ctx, moveX, moveZ, speed, moving);
+
+    // --- present: melee attackers pounce on every strike (see JUMP_ARC above).
+    // The wind-up drives a sine arc that rises and lunges forward, peaking mid
+    // leap and landing (hop back to 0) at the instant the hit lands; the forward
+    // lunge then eases back out during the cooldown instead of snapping.
+    const attacking = this.state === 'attacking';
+    const leaping = attacking && this.windup > 0;
+    const p = leaping ? 1 - Math.max(0, this.windup) / this.config.attackWindup : 0;
+    const arc = Math.sin(Math.PI * p);          // 0 at take-off/land, 1 at the apex
+    const hop = JUMP_ARC * this.height * arc;
+    this.attackLunge += ((leaping ? JUMP_LUNGE * p : 0) - this.attackLunge) * Math.min(1, dt * 14);
+    const fwdX = Math.sin(this.yaw), fwdZ = Math.cos(this.yaw);
+    this.mesh.position.set(
+      this.position.x + fwdX * this.attackLunge,
+      this.position.y + hop,
+      this.position.z + fwdZ * this.attackLunge,
+    );
+    this.mesh.scale.set(1 - 0.06 * arc, 1 + 0.12 * arc, 1); // subtle stretch at the apex
+    const fps = this.config.walkFps * (leaping ? 2.2 : this.state === 'chasing' ? 1.4 : 1);
+    this.billboard.update(dt, camPos, this.yaw, leaping || moving, fps);
+  }
+
+  /**
+   * Integrate a steering direction: weave the gait, ease up on slopes, apply
+   * knockback, then resolve the capsule and settle onto the ground. Shared by
+   * every subclass so movement feels identical across the horde.
+   */
+  _move(dt, ctx, moveX, moveZ, speed, moving) {
     if (moving && speed > 0) {
       // Weave the heading a little (damped when hugging a wall so avoidance
       // still wins), so the horde doesn't converge into straight columns.
@@ -358,26 +434,6 @@ export class Zombie extends Entity {
     }
     this.world.collision.resolveCapsule(this.position, this.radius, this.collisionHeight);
     this.position.y = this.world.groundHeightFor(this.position.x, this.position.z, this.position.y + 0.5);
-
-    // --- present: melee attackers pounce on every strike (see JUMP_ARC above).
-    // The wind-up drives a sine arc that rises and lunges forward, peaking mid
-    // leap and landing (hop back to 0) at the instant the hit lands; the forward
-    // lunge then eases back out during the cooldown instead of snapping.
-    const attacking = this.state === 'attacking';
-    const leaping = attacking && this.windup > 0;
-    const p = leaping ? 1 - Math.max(0, this.windup) / this.config.attackWindup : 0;
-    const arc = Math.sin(Math.PI * p);          // 0 at take-off/land, 1 at the apex
-    const hop = JUMP_ARC * this.height * arc;
-    this.attackLunge += ((leaping ? JUMP_LUNGE * p : 0) - this.attackLunge) * Math.min(1, dt * 14);
-    const fwdX = Math.sin(this.yaw), fwdZ = Math.cos(this.yaw);
-    this.mesh.position.set(
-      this.position.x + fwdX * this.attackLunge,
-      this.position.y + hop,
-      this.position.z + fwdZ * this.attackLunge,
-    );
-    this.mesh.scale.set(1 - 0.06 * arc, 1 + 0.12 * arc, 1); // subtle stretch at the apex
-    const fps = this.config.walkFps * (leaping ? 2.2 : this.state === 'chasing' ? 1.4 : 1);
-    this.billboard.update(dt, camPos, this.yaw, leaping || moving, fps);
   }
 
   dispose() {

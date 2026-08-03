@@ -459,6 +459,7 @@ export class Game {
       maxHealth: this.player.maxHealth,
       stamina: this.player.staminaFrac,
       sprinting: this.player.sprinting,
+      winded: this.player.winded,
       weapons: this.weapons.hudState(),
       kills: this.score.kills,
       points: this.score.points,

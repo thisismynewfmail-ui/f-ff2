@@ -910,7 +910,9 @@ export class HUD {
     // player sprints and recharges otherwise (see Player stamina). ---
     const stam = Math.max(0, Math.min(1, d.stamina ?? 1));
     this.sprintFill.style.height = (stam * 100).toFixed(1) + '%';
-    const winded = stam <= 0.02 && !d.sprinting;
+    // The player's own lockout flag, so the lamp stays on for the whole winded
+    // period rather than only while the meter reads empty.
+    const winded = d.winded ?? (stam <= 0.02 && !d.sprinting);
     this.sprintPanel.classList.toggle('sprinting', !!d.sprinting);
     this.sprintPanel.classList.toggle('low', stam < 0.3 && !winded);
     this.sprintPanel.classList.toggle('winded', winded);

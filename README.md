@@ -134,25 +134,48 @@ There is deliberately no command that touches the kill counter — the
   pipeline; the victory screen (time survived, accuracy, kills by type)
   fires the moment the counter reaches 250,000 — verified by an automated
   test at 249,999 vs 250,000.
-- **NPC AI (sensory system):** a shared, modular perception→behaviour stack in
-  `src/ai/` any NPC composes. `Senses` turns the world into readings —
-  direction-aware obstacle whiskers (so agents wander and escape spawn houses
-  without grinding on walls), target perception with detection range, a
-  forward field-of-view cone and line of sight. `Steering` blends seek/flee
-  with those whiskers (avoidance rides under everything, which is where the
-  emergent behaviour comes from). `Behavior` is a priority arbiter with
-  anti-flicker hysteresis. Faction **tags** and per-entity **flags** on the
-  base `Entity` let targeting and opt-in behaviours attach without touching
-  subclasses.
+- **NPC AI (sensory system + navigation):** a shared, modular
+  perception→steering→behaviour stack in `src/ai/` any NPC composes.
+  - `Senses` turns the world into readings: a facing basis (yaw 0 is +Z,
+    right is that rotated −90° about Y, so forward really is forward and sides
+    really are sides), a **360° obstacle ring** of probes reporting how far the
+    agent could walk each way, target perception with detection range, a forward
+    field-of-view cone and line of sight, **memory** of where a target was last
+    actually seen, and hearing. Heavy work is throttled on a per-agent stagger.
+  - `Steering` turns those readings into a direction. `contextSteer()` scores
+    every direction on the ring — how much it points where you want to go, minus
+    how blocked it is — and picks the winner. It **chooses** rather than summing
+    repulsions, which is what lets an agent thread a doorway instead of being
+    pushed back out of it, and resolve a dead end into the way back out.
+  - `NavAgent` owns the whole route lifecycle: budgeted, throttled A*; waypoint
+    following with string-pulling; doorways threaded exactly and only ticked off
+    once the agent is genuinely through them; a committed walk-out through the
+    nearest door when the grid has no answer; and lateral unwedging when a prop
+    (a collision box the nav grid does not model) pins an agent against it.
+  - `Behavior`/`Brain` is a priority arbiter: one scoring pass per tick,
+    incumbent stickiness and a minimum dwell so switching never flickers, plus a
+    shared blackboard behaviours can leave notes on.
+  - **Doorways are declared, not inferred.** The nav grid's 2 m cells are wider
+    than a 1.5 m door, so blocking each wall segment used to seal every opening
+    and A* could never route in or out of a building. Buildings now register
+    each door and interior partition gap as a **nav portal** (`NavGrid.addPortal`),
+    carved through the wall line, pinned open against anything built later, and
+    snapped to the real opening in reconstructed paths.
+  - Faction **tags** and per-entity **flags** on the base `Entity` let targeting
+    and opt-in behaviours attach without touching subclasses; the flag registry
+    lives in `src/ai/Flags.js` and every flag defaults to inert.
 - **Zombies:** Walkers (30 HP, 1 pt), Sprinters (15 HP, fast, 2 pts), Tanks
   (220 HP, 5 pts), each spawned at a slightly randomised size and given an
   individual weaving gait so a horde never marches in stamped straight columns.
   State machine: idle → wandering → alerted → chasing → attacking → dead. They
   have **global awareness of the player** (always know where you are, anywhere
-  on the map) but must earn a clear line of sight to attack or beeline vs. A*
-  pathfind out of a building. They also detect the **friendly NPC within a
-  limited sight range**, but the player always takes priority. Gunshots emit
-  noise the idle/wandering ones investigate. Opt-in flag: `cullBlindSeconds`
+  on the map) but must earn a clear line of sight to attack or beeline vs.
+  pathfind their way to you — out of the house they spawned in, through its
+  interior doorways and front door, and around the block. They also detect the
+  **friendly NPC within a limited sight range** (with a forward cone and a close
+  sixth-sense bubble), but the player always takes priority; losing sight of a
+  friendly sends them to where it was last seen rather than erasing it. Gunshots
+  emit noise the idle/wandering ones investigate. Opt-in flag: `cullBlindSeconds`
   (set to 30 by the game, `cull` in the dev console) removes any zombie that
   can't get an unobstructed line to the player for that long, so a straggler
   stuck behind geometry never stalls a wave. Deaths are graphic: a wide gib
@@ -191,11 +214,20 @@ There is deliberately no command that touches the kill counter — the
   muzzle flash, takes the normal hit/blood/gib feedback, and starts appearing once
   you pass **100 kills** — with its **spawn share stepping up past 120 kills**.
 - **Friendly NPC:** the survivor by the well runs the same stack — Flee ▸
-  Wander ▸ Idle behaviours arbitrated by her Senses. She flees any zombie that
-  comes hunting and keeps running until it is out of sight, then returns to
-  roaming near home. Her flee band is tied to the hunting zombie's own sight
-  range (bolt at ~70% of it, safe past 100%), so "flee until out of sight" is
-  literally correlated to zombie sight distance.
+  Regroup ▸ Wander ▸ Idle behaviours arbitrated by her Senses. She flees any
+  zombie that has actually noticed her, runs from the group of them rather than
+  just the nearest (so two converging zombies push her out sideways instead of
+  between them) and picks the most open heading so she does not sprint into a
+  dead end. When the danger passes she makes her own way back to the square —
+  routed through the navigator, so she can find her way out of a building — and
+  settles into roaming and idling again. Her flee band is tied to the hunting
+  zombie's **own** sight range, read off that zombie's config: she bolts at ~70%
+  of the range that type detects friendlies at (35 m for a Walker, 42 m for a
+  Sprinter), and keeps running until the nearest one is past 105% of it. Losing
+  line of sight also ends the flight, so ducking round a corner is a real escape
+  rather than a 50-metre sprint — but a zombie facing away still counts, because
+  it is still coming. "Flee until out of sight" is literally correlated to
+  zombie sight distance.
 - **Savable citizen:** a captive woman tied up **inside a building**, and the
   one NPC you rescue rather than fight. **Wave 2 always has one** — a scripted
   introduction to the mechanic, long before any kill gate — and after that she
@@ -337,7 +369,8 @@ assets/sprites/     provided NPC/zombie sprite sheets (3x4 walk cycles)
 lib/three.module.js vendored Three.js r169
 scripts/            generate_textures.mjs — regenerates assets/textures/
 src/engine/         game loop, input, event bus
-src/ai/             sensory system: senses, steering, behaviour arbiter
+src/ai/             NPC AI: senses (360° ring + memory), context steering,
+                    shared navigator, behaviour arbiter, opt-in flag registry
 src/entities/       player, zombies, exploder, spitter, NPC, savable citizen,
                     cockroach, pickups
 src/weapons/        weapon configs + firing/ammo/hit resolution
@@ -353,7 +386,9 @@ src/systems/        score/win condition, waves, spawning, savable-citizen
 src/engine/Shell.js desktop-shell bridge (detects the Electron launcher)
 launcher/           Windows desktop launcher (Electron): startup window,
                     harmonograph boot animation, isolated fullscreen game window
-tests/              Playwright smoke test (boot, combat, exact win condition)
+tests/              headless AI tests (ai.mjs), NPC behaviour tests against the
+                    real world (npc-behavior.mjs), Playwright smoke test
+                    (boot, combat, exact win condition)
 ```
 
 ## Extensibility
@@ -372,9 +407,14 @@ tests/              Playwright smoke test (boot, combat, exact win condition)
   `_makeBillboard` and declares its layout in `TextureConfig.js`.
 - **New NPC / behaviour:** give the entity a `Senses` from `src/ai/` and a
   `Brain` composed of `Behavior`s (each scores itself from the sensory
-  context; highest wins). Reuse `seek`/`flee`/`avoidObstacles` for movement.
-  New behaviours slot into the arbiter without touching the others; new
-  factions are just a tag; new opt-in switches are just a flag.
+  context; highest wins). Use `contextSteer` for movement, and add a `NavAgent`
+  if it needs to cross the world rather than just mill about — that one line
+  buys pathfinding, doorway traversal, exit hunting and stuck recovery. New
+  behaviours slot into the arbiter without touching the others; new factions are
+  just a tag; new opt-in switches are just a flag declared in `src/ai/Flags.js`.
+  Anything built out of these pieces inherits the senses automatically: the
+  Exploder's flank spiral and the Spitter's kiting are each one vector handed to
+  the shared navigator, and they get obstacle steering and unwedging for free.
 - **Reskin:** every texture path lives in
   `src/rendering/TextureConfig.js`; replace a PNG on disk (e.g. the brick
   wall) and every wall in the game changes. The loader cache-busts each asset
@@ -382,25 +422,55 @@ tests/              Playwright smoke test (boot, combat, exact win condition)
   the next reload instead of being served stale from the browser cache. Any
   power-of-two size works — swap the 128×128 `grass.png` for a 512×512 one and
   it tiles seamlessly with no code changes. New white-background sprite sheets
-  dropped into `assets/sprites/` are keyed automatically (edge flood fill
-  preserves interior whites).
+  dropped into `assets/sprites/` are keyed automatically: an edge flood fill
+  clears the backdrop while preserving interior whites, then the antialiased
+  fringe it leaves is un-matted — the art these sheets are drawn on is white, so
+  every silhouette texel is part white, and solving that blend back to the art's
+  own colour is what keeps sprites from wearing a light halo.
 - **Regenerate textures:** `node scripts/generate_textures.mjs`.
 
 ## Performance
 
 Pooled particles (no GC spikes), shared materials with per-mesh UV frames,
 distance-dormant AI, camera far plane at the fog wall for culling, merged
-grass-tuft geometry, and a windowed A* with a per-frame path budget.
+grass-tuft geometry, and a windowed A* with a per-frame path budget. Sensory
+probing is throttled and staggered per agent, so a horde spreads its perception
+cost across frames instead of spiking on one.
 Renders at 0.75 internal scale with nearest-neighbour upscaling — chunky
 and fast.
 
 ## Tests
 
 ```
-npm install playwright-core   # anywhere; NODE_PATH it if needed
+node tests/ai.mjs                     # no browser needed
+
+npm install playwright-core           # anywhere; NODE_PATH it if needed
+node tests/npc-behavior.mjs
 node tests/smoke.mjs [--screens]
 ```
 
-Drives the real game headless: boot without errors, movement, wave
-spawning, ammo consumption, an end-to-end gunfire kill, zone unlocks, and
-the exact-250,000 victory (no win at 249,999; stats screen at 250,000).
+`ai.mjs` builds a one-room house with a real 1.5 m doorway out of the same
+collision boxes and nav blocks the building kit registers, and checks the
+navigation primitives directly: that a declared doorway survives on the nav grid
+where a wall-blocked one seals shut, that sensory directions line up with the
+agent's facing, that steering threads a doorway and escapes a dead end, that the
+navigator walks an agent out of the house, and that behaviour arbitration
+switches promptly without thrashing.
+
+`npc-behavior.mjs` boots the real game and drives `game.update(dt)` directly at
+a fixed timestep instead of waiting on frames, so it runs the same simulation on
+a software-rendered machine as on a fast one. It asserts the behaviour that
+matters in the actual town: zombies spawned inside houses get out (through
+interior partition gaps and the front door) and close on the player from either
+side of the building, hunters prioritise the player and only fall back to a
+friendly inside their detection envelope, the friendly's flee band tracks each
+zombie type's own sight range with hysteresis and returns to ordinary behaviour
+afterwards, the Exploder still fuses and the Spitter still kites and aims, and
+`cullBlindSeconds` culls a permanently blind zombie when set and leaves it alone
+when not.
+
+`smoke.mjs` drives the real game headless: boot without errors, movement, town
+structure, wave spawning, ammo consumption, an end-to-end gunfire kill, zone
+unlocks, and the exact-250,000 victory (no win at 249,999; stats screen at
+250,000). Its wave-spawn step waits on wall-clock time, so it needs a machine
+that renders faster than software GL.

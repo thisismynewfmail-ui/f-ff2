@@ -132,11 +132,9 @@ function makeTexture(img) {
  * Remove the background of a white-backdrop sprite sheet.
  *
  * Flood fills from every border pixel across near-white pixels and clears
- * only that connected region, so interior white details survive. Then erodes
- * the antialiased near-white *fringe* the flood leaves behind — otherwise a
- * ring of half-white edge pixels stays opaque and reads as a white halo
- * around every sprite (which it did). Erosion only touches bright, desaturated
- * pixels on the silhouette edge, so grey skin and interior whites are safe.
+ * only that connected region, so interior white details survive. Then undoes
+ * the white matte on the antialiased fringe the flood leaves behind — see
+ * unmatteWhiteFringe, which is what stops every sprite wearing a light halo.
  */
 function keyOutBackground(img, threshold = 232) {
   const c = document.createElement('canvas');
@@ -165,41 +163,107 @@ function keyOutBackground(img, threshold = 232) {
     stack.push(x + 1, y, x - 1, y, x, y + 1, x, y - 1);
   }
 
-  erodeWhiteFringe(d, w, h);
+  unmatteWhiteFringe(d, w, h);
   ctx.putImageData(data, 0, 0);
   return c;
 }
 
 /**
- * Clear the bright, near-white fringe pixels left along a keyed silhouette.
- * A pixel is eroded only if it is (a) still opaque, (b) near-white/desaturated
- * — EVERY channel high, so the test keys on "blended toward the white
- * backdrop" and leaves saturated colours (red robe, green vest, gold trim) and
- * dark outlines untouched — and (c) touching a transparent pixel.
+ * Undo the white matte along a keyed silhouette.
  *
- * `lightMin` is a min-channel floor: the antialiased halo ramps from the white
- * backdrop down through desaturated greys (measured as low as ~150 on these
- * sheets — the old 176 floor missed that band and left a grey rim), while true
- * skin/coloured pixels keep at least one low channel and survive. Each pass
- * peels one pixel; three passes clear the ~1–3px halo (95% of it) while the
- * pass count caps erosion so large light areas (turbans, hair) only lose a
- * hair's edge rather than dissolving.
+ * These sheets are RGB art composited over a white backdrop, so every edge
+ * texel is a blend of the art and that white: c = a*S + (1-a)*255, for some
+ * coverage a and the art's true colour S. The flood fill removes what is
+ * near-white enough to read as pure background, which leaves the tail of that
+ * blend behind — texels carrying real coverage but a colour washed toward
+ * white. Drawn against grass they are a light rim around the whole sprite.
+ *
+ * Eroding them does not work, and neither does any brightness threshold. The
+ * fringe's colour depends entirely on what the art is blending INTO: white over
+ * pale skin lands near 240 and white over dark hair lands near 150, so a floor
+ * high enough to spare the skin leaves the hair haloed, and one low enough to
+ * catch the hair eats the skin. Judging a texel against its neighbours fails
+ * too, because in a two-or-three-texel ramp a fringe texel's neighbours are
+ * mostly more fringe.
+ *
+ * So solve the blend instead of guessing at it:
+ *   1. peel `rim` layers inward to separate rim texels from solid core art,
+ *   2. flood the core's colour back out through those layers, giving every rim
+ *      texel an estimate of the S it was blended from,
+ *   3. recover a = (255 - c) / (255 - S) on whichever channel has the most
+ *      contrast against white, and rewrite the texel as opaque S or drop it,
+ *      splitting at half coverage the way alpha-tested rendering does anyway.
+ *
+ * Two guards keep real art safe. A texel whose own core colour is near-white
+ * (a shirt, teeth, the eye whites) carries no usable signal, so it is left
+ * exactly as it is. And a feature too thin to have any core at all — a finger,
+ * a bikini strap — is left alone rather than thinned away.
  */
-function erodeWhiteFringe(d, w, h, passes = 3, lightMin = 150) {
+function unmatteWhiteFringe(d, w, h, rim = 3) {
   const n = w * h;
-  for (let pass = 0; pass < passes; pass++) {
-    const alpha0 = new Uint8Array(n);
-    for (let p = 0; p < n; p++) alpha0[p] = d[p * 4 + 3];
+  const CUT = 0.5;      // coverage below which a texel is background
+  const FLAT = 25;      // channel contrast against white needed to trust `a`
+
+  // 1. Layer the silhouette: 0 = transparent, 1..rim = fringe, 255 = core art.
+  const layer = new Uint8Array(n);
+  for (let p = 0; p < n; p++) layer[p] = d[p * 4 + 3] ? 255 : 0;
+  for (let k = 1; k <= rim; k++) {
+    const front = [];
     for (let y = 0; y < h; y++) {
       for (let x = 0; x < w; x++) {
         const p = y * w + x;
-        if (alpha0[p] === 0) continue;
-        const i = p * 4;
-        if (Math.min(d[i], d[i + 1], d[i + 2]) < lightMin) continue; // grey/coloured body: keep
-        const edge = (x > 0 && alpha0[p - 1] === 0) || (x < w - 1 && alpha0[p + 1] === 0)
-          || (y > 0 && alpha0[p - w] === 0) || (y < h - 1 && alpha0[p + w] === 0);
-        if (edge) d[i + 3] = 0;
+        if (layer[p] !== 255) continue;
+        const near = (x > 0 && layer[p - 1] < k) || (x < w - 1 && layer[p + 1] < k)
+          || (y > 0 && layer[p - w] < k) || (y < h - 1 && layer[p + w] < k);
+        if (near) front.push(p);
       }
     }
+    for (const p of front) layer[p] = k;
+  }
+
+  // 2. Flood the core colour outward, one layer at a time.
+  const sr = new Uint8Array(n), sg = new Uint8Array(n), sb = new Uint8Array(n);
+  const known = new Uint8Array(n);
+  for (let p = 0; p < n; p++) {
+    if (layer[p] !== 255) continue;
+    const i = p * 4;
+    sr[p] = d[i]; sg[p] = d[i + 1]; sb[p] = d[i + 2]; known[p] = 1;
+  }
+  for (let k = rim; k >= 1; k--) {
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const p = y * w + x;
+        if (layer[p] !== k || known[p]) continue;
+        let r = 0, g = 0, b = 0, count = 0;
+        for (let dy = -1; dy <= 1; dy++) {
+          for (let dx = -1; dx <= 1; dx++) {
+            if (!dx && !dy) continue;
+            const nx = x + dx, ny = y + dy;
+            if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+            const q = ny * w + nx;
+            if (!known[q] || layer[q] <= k) continue;   // strictly further in
+            r += sr[q]; g += sg[q]; b += sb[q]; count++;
+          }
+        }
+        if (!count) continue;                            // no core behind it
+        sr[p] = r / count; sg[p] = g / count; sb[p] = b / count; known[p] = 1;
+      }
+    }
+  }
+
+  // 3. Solve the blend and rewrite.
+  for (let p = 0; p < n; p++) {
+    const k = layer[p];
+    if (k === 0 || k === 255 || !known[p]) continue;
+    const i = p * 4;
+    const S = [sr[p], sg[p], sb[p]];
+    let denom = 0, a = 1;
+    for (let ch = 0; ch < 3; ch++) {
+      const dk = 255 - S[ch];
+      if (dk > denom) { denom = dk; a = (255 - d[i + ch]) / dk; }
+    }
+    if (denom < FLAT) continue;                          // art is near-white: leave it
+    if (a < CUT) { d[i + 3] = 0; continue; }
+    d[i] = S[0]; d[i + 1] = S[1]; d[i + 2] = S[2];       // un-washed art colour
   }
 }

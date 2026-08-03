@@ -18,10 +18,20 @@ const GRAVITY = 20;
 const EYE_STAND = 1.62;
 const EYE_CROUCH = 0.95;
 // Sprint stamina: a full meter is worth SPRINT_MAX seconds of sprinting, and an
-// empty meter takes SPRINT_REFILL seconds to fill back up. Sprint may be
-// re-engaged the instant there is any charge — there is no depletion lockout.
+// empty meter takes SPRINT_REFILL seconds to fill back up.
+//
+// Emptying the meter WINDS the player: sprint is then locked out until the meter
+// has recovered past SPRINT_RECOVER of full. The lockout is not flavour, it is
+// what makes the meter mean anything. Gating sprint on "is there any charge at
+// all" cannot work, because the two branches below fight each other one frame
+// apart: the frame that drains the last of the meter leaves it at zero, so the
+// next frame is not a sprint and refills a little, so the frame after that is a
+// sprint again. Hold the key and that cycle repeats forever — the meter sits
+// pinned at zero while the player runs at roughly the average of walk and sprint
+// speed indefinitely, which is to say sprint never actually runs out.
 const SPRINT_MAX = 5;
 const SPRINT_REFILL = 7;
+const SPRINT_RECOVER = 0.35;   // fraction of the meter needed to sprint again
 
 export class Player extends Entity {
   constructor(events, world, input) {
@@ -39,9 +49,11 @@ export class Player extends Entity {
     this.crouching = false;
     this.sprinting = false;
     // Sprint meter (seconds of charge left). Drains while sprinting, refills
-    // otherwise; the HUD reads staminaFrac.
+    // otherwise; the HUD reads staminaFrac. `winded` is the post-depletion
+    // lockout (see SPRINT_RECOVER) and is what the HUD's WINDED lamp reports.
     this.stamina = SPRINT_MAX;
     this.staminaMax = SPRINT_MAX;
+    this.winded = false;
     this.eyeHeight = EYE_STAND;
     this.bobPhase = 0;
     this.bobAmp = 0;
@@ -112,11 +124,16 @@ export class Player extends Entity {
     if (input.isActionDown('left')) mx += 1;
     if (input.isActionDown('right')) mx -= 1;
     const moving = mx !== 0 || mz !== 0;
-    // Sprint engages only running forward and only while there is charge left.
-    this.sprinting = wantSprint && mz > 0 && this.stamina > 0;
+    // Recover from being winded first, so the frame the meter passes the
+    // threshold is already a frame you can sprint on.
+    if (this.winded && this.stamina >= this.staminaMax * SPRINT_RECOVER) this.winded = false;
+    // Sprint engages only running forward, only with charge left, and never
+    // while winded.
+    this.sprinting = wantSprint && mz > 0 && !this.winded && this.stamina > 0;
     // Drain while sprinting (5 s to empty), otherwise refill (7 s to full).
     if (this.sprinting) {
       this.stamina = Math.max(0, this.stamina - dt);
+      if (this.stamina <= 0) this.winded = true;   // spent: locked out until recovered
     } else {
       this.stamina = Math.min(this.staminaMax, this.stamina + dt * (this.staminaMax / SPRINT_REFILL));
     }
@@ -243,6 +260,7 @@ export class Player extends Entity {
     const s = this.world.playerSpawn;
     this.health = this.maxHealth;
     this.stamina = this.staminaMax; // crawl back out with a full wind
+    this.winded = false;
     this.alive = true;
     this.teleport(s.x, this.world.groundHeightFor(s.x, s.z, 1e9), s.z);
   }

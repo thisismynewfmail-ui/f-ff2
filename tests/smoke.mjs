@@ -130,8 +130,12 @@ check('every enterable building has a furnished interior', town.interiors === to
   `${town.interiors}/${town.enterable}`);
 check('interior loot points registered', town.lootPoints > 100, `${town.lootPoints}`);
 
-// zombies spawn once wave 1 starts (grace period is ~5s)
-await page.waitForFunction(() => window.__game.spawner.zombies.length > 0, null, { timeout: 25000 });
+// Zombies spawn once wave 1 starts. The grace period is ~10 s of GAME time,
+// which is only ~10 s of wall time on a machine that renders quickly — on a
+// software-GL box running at a few frames a second it takes several times
+// longer, and everything below was failing for that reason alone. Wait long
+// enough for the slow case; a fast machine still sails through in seconds.
+await page.waitForFunction(() => window.__game.spawner.zombies.length > 0, null, { timeout: 90000 });
 const zc = await page.evaluate(() => window.__game.spawner.zombies.length);
 check('wave 1 spawns zombies', zc > 0, `${zc} active`);
 
@@ -225,6 +229,54 @@ check('"noclip" command enables flight', noclipOn);
 check('noclip passes through solid geometry', flew.stayedInside);
 check('noclip flies upward on Space', spaceFly > 1, `rose ${spaceFly.toFixed(2)}m`);
 check('noclip off restores collision', noclipOff.off && noclipOff.ejected, JSON.stringify(noclipOff));
+
+// SPRINT STAMINA. Hold sprint + forward and drive the player directly at a
+// fixed step: the meter must actually run out and lock sprint out for a real
+// stretch of time. The bug this guards against is the drain and refill branches
+// alternating one frame apart at the bottom of the meter — sprint on the frame
+// there is any charge, refill on the frame there is none — which pins the meter
+// at zero and lets a held sprint key run forever.
+const sprint = await page.evaluate(() => {
+  const g = window.__game, p = g.player, input = g.input;
+  const held = new Set(['sprint', 'forward']);
+  const realActionDown = input.isActionDown, realDown = input.isDown, realPressed = input.wasActionPressed;
+  input.isActionDown = (a) => held.has(a);
+  input.isDown = () => false;
+  input.wasActionPressed = () => false;
+  p.noclip = false;
+  p.teleport(150, g.world.groundHeightFor(150, 90, 1e9), 90); // open knoll field
+  p.stamina = p.staminaMax;
+  p.winded = false;
+
+  const dt = 1 / 60, frames = 60 * 20;
+  let sprintFrames = 0, off = 0, longestOff = 0, hitEmpty = false, sawWinded = false, resumed = false;
+  for (let i = 0; i < frames; i++) {
+    input.mouseDX = 0; input.mouseDY = 0;
+    p.update(dt);
+    if (p.stamina <= 0) hitEmpty = true;
+    if (p.winded) sawWinded = true;
+    if (p.sprinting) {
+      if (off > 60) resumed = true;   // sprinted again after a real lockout
+      longestOff = Math.max(longestOff, off);
+      off = 0;
+      sprintFrames++;
+    } else off++;
+  }
+  longestOff = Math.max(longestOff, off);
+
+  input.isActionDown = realActionDown;
+  input.isDown = realDown;
+  input.wasActionPressed = realPressed;
+  p.stamina = p.staminaMax;
+  p.winded = false;
+  return { longestOff: longestOff * dt, frac: sprintFrames / frames, hitEmpty, sawWinded, resumed };
+});
+check('holding sprint actually empties the meter', sprint.hitEmpty && sprint.sawWinded);
+check('an emptied sprint meter locks sprint out', sprint.longestOff > 1.5,
+  `longest non-sprint stretch ${sprint.longestOff.toFixed(2)}s`);
+check('sprint returns once the meter has recovered', sprint.resumed);
+check('a held sprint key cannot sprint forever', sprint.frac < 0.75,
+  `sprinted ${(sprint.frac * 100).toFixed(0)}% of a 20 s hold`);
 
 // AI SENSORY SYSTEM. Freeze the frame loop and drive the perception/behaviour
 // stack deterministically: directional senses, wall avoidance, the friendly

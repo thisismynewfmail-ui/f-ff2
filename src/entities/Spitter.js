@@ -2,7 +2,7 @@ import * as THREE from '../../lib/three.module.js';
 import { Zombie } from './Zombie.js';
 import { SpriteBillboard } from '../rendering/Billboard.js';
 import { SPITTER_LAYOUT } from '../rendering/TextureConfig.js';
-import { avoidObstacles, gaitWobble, norm } from '../ai/Steering.js';
+import { contextSteer, norm } from '../ai/Steering.js';
 
 /**
  * The Spitter — a CS:GO-styled dual-pistol ranged enemy, built on the Zombie
@@ -28,7 +28,6 @@ import { avoidObstacles, gaitWobble, norm } from '../ai/Steering.js';
  * walk rows plus a dedicated top row of front-facing aim/fire poses; the Spitter
  * turns to face the player to shoot, so the front poses read correctly.
  */
-const ACTIVE_RANGE = 115;   // matches the base zombie's dormancy radius
 const DEATH_TIME = 1.3;     // matches the base zombie's death dissolve
 const PLAYER_HIT_RADIUS = 0.5; // torso half-width the shot must pass within
 const EMPTY = [];
@@ -63,35 +62,11 @@ export class Spitter extends Zombie {
       return;
     }
 
-    const player = ctx.player;
-    const pdx = player.position.x - this.position.x;
-    const pdz = player.position.z - this.position.z;
-    const pdist = Math.hypot(pdx, pdz);
-
-    // Dormant when far away: no AI, no rendering.
-    if (pdist > ACTIVE_RANGE) { this.mesh.visible = false; return; }
-    this.mesh.visible = true;
-
-    this.senses.update(dt, this);
-
-    // Staggered line-of-sight to the player + the blind timer for the cull flag.
-    this._losTimer -= dt;
-    if (this._losTimer <= 0) {
-      this._losTimer = 0.25 + Math.random() * 0.15;
-      this._hasLos = player.alive && this.senses.lineOfSight(this, player);
-      if (this._hasLos) this.lastSeenPlayer = 0;
-    }
-    this.lastSeenPlayer += dt;
-    if (player.alive && pdist < 4) this._hasLos = true;
-    if (this._hasLos) this.blindTimer = 0; else this.blindTimer += dt;
-
-    const cullS = this.flags.cullBlindSeconds;
-    if (cullS > 0 && player.alive && this.blindTimer > cullS) { this._cull(); return; }
-
+    // Dormancy, sensory ring, staggered player LOS, blind-cull flag and victim
+    // acquisition are all the shared hunter perception on Zombie.
+    if (!this._sense(dt, ctx)) return;
     if (this._cd > 0) this._cd -= dt;
     if (this._firePose > 0) this._firePose -= dt;
-
-    this._acquireVictim(ctx);
     const victim = this.victim;
 
     // ---- firing: the muzzle-flash pose holds a beat (planted, no movement) ----
@@ -144,37 +119,24 @@ export class Spitter extends Zombie {
         return;
       }
 
-      // Otherwise reposition to hold the band, circle-strafing for organic motion.
+      // Otherwise reposition to hold the band, circle-strafing for organic
+      // motion while it can see the target; when it cannot, the shared
+      // navigator routes it back into a firing position (doorways, exit hunt
+      // and unwedging included).
       speed = cfg.chaseSpeed;
-      moving = true;
       this._strafeTimer -= dt;
       if (this._strafeTimer <= 0) { this._strafeTimer = 1.5 + Math.random() * 2.5; this.strafeSign *= -1; }
 
-      let desX, desZ;
-      if (vLos || vdist < 3) {
-        const k = this._kite(vdx, vdz, vdist);
-        desX = k.x; desZ = k.z;
-        this.path = null;
-      } else {
-        // No clear line: pathfind toward the player to re-establish a shot.
-        this.repathTimer -= dt;
-        if ((!this.path || this.repathTimer <= 0) && ctx.pathBudget.n > 0) {
-          ctx.pathBudget.n--;
-          this.repathTimer = 1.4 + Math.random() * 0.6;
-          this.path = this.world.nav.findPath(this.position.x, this.position.z, victim.position.x, victim.position.z);
-          this.pathIndex = 0;
-        }
-        if (this.path && this.pathIndex < this.path.length) {
-          const [wx, wz] = this.path[this.pathIndex];
-          const wd = Math.hypot(wx - this.position.x, wz - this.position.z);
-          if (wd < 1.2) { this.pathIndex++; desX = vdx; desZ = vdz; }
-          else { desX = wx - this.position.x; desZ = wz - this.position.z; }
-        } else {
-          desX = vdx; desZ = vdz; speed *= 0.75;
-        }
+      const direct = vLos || vdist < 3;
+      const step = this.nav.steer(dt, this, this._victimPoint, {
+        direct,
+        desired: direct ? this._kite(vdx, vdz, vdist) : null,
+        budget: ctx.pathBudget,
+        senses: this.senses,
+      });
+      if (step) {
+        moveX = step.x; moveZ = step.z; speed *= step.scale; moving = true;
       }
-      const steer = avoidObstacles(desX, desZ, this.senses);
-      moveX = steer.x; moveZ = steer.z;
     } else {
       // No victim (player gone, no friendly perceivable): idle / wander gently.
       switch (this.state) {
@@ -187,7 +149,7 @@ export class Spitter extends Zombie {
           const t = this.wanderTarget;
           const wd = t ? Math.hypot(t.x - this.position.x, t.z - this.position.z) : 0;
           if (!t || wd < 1 || this.stateTime > 12) { this._setState('idle'); break; }
-          const steer = avoidObstacles(t.x - this.position.x, t.z - this.position.z, this.senses);
+          const steer = contextSteer(t.x - this.position.x, t.z - this.position.z, this.senses);
           moveX = steer.x; moveZ = steer.z; speed = this.config.wanderSpeed; moving = true;
           break;
         }
@@ -298,29 +260,7 @@ export class Spitter extends Zombie {
     return Math.atan2(target.position.x - this.position.x, target.position.z - this.position.z);
   }
 
-  /* ---------------- shared integrate + present (mirrors Exploder) ---------------- */
-
-  _move(dt, ctx, moveX, moveZ, speed, moving) {
-    if (moving && speed > 0) {
-      const amp = 0.16 * (1 - this.senses.avoid.strength);
-      const w = gaitWobble(moveX, moveZ, ctx.time || 0, this.gaitPhase, this.gaitFreq, amp);
-      moveX = w.x; moveZ = w.z;
-      const slope = this.world.terrain.slopeAlong(this.position.x, this.position.z, moveX, moveZ);
-      let s = speed;
-      if (slope > 0.35) s /= 1 + (slope - 0.35) * 2;
-      this.position.x += moveX * s * dt;
-      this.position.z += moveZ * s * dt;
-      this.yaw = Math.atan2(moveX, moveZ);
-    }
-    if (Math.abs(this.knockVX) + Math.abs(this.knockVZ) > 0.01) {
-      this.position.x += this.knockVX * dt;
-      this.position.z += this.knockVZ * dt;
-      this.knockVX *= Math.pow(0.005, dt);
-      this.knockVZ *= Math.pow(0.005, dt);
-    }
-    this.world.collision.resolveCapsule(this.position, this.radius, this.collisionHeight);
-    this.position.y = this.world.groundHeightFor(this.position.x, this.position.z, this.position.y + 0.5);
-  }
+  /* ---------------- present (movement integration is Zombie._move) ---------------- */
 
   _present(dt, ctx, moving, pose = 'walk') {
     this.mesh.position.copy(this.position);
