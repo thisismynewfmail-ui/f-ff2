@@ -28,10 +28,14 @@ import { WeaponMaterials as M } from '../rendering/WeaponMaterials.js';
  *              bolt, casing ejection, swaying canvas sling. Reload swaps
  *              the whole drum overhead.
  *   sniper   — MERIDIAN LONG RIFLE: precision bolt-action observatory
- *              instrument — slim fluted barrel inside a skeleton cage,
- *              brass telescope with glowing reticle, rangefinder drum,
- *              full bolt choreography on every shot (lift, draw, eject,
- *              close), en-bloc clip reload with five seat clicks.
+ *              instrument — slim octagonal barrel under a tensioned brass
+ *              truss (collars clamped on the barrel, tied by three rods),
+ *              a 1-inch brass telescope with a glowing reticle seated low
+ *              in split rings on the receiver rail, rangefinder drum, full
+ *              bolt choreography on every shot (lift, draw, eject, close),
+ *              en-bloc clip reload with five seat clicks. Its furniture is
+ *              continuous: fore-end into receiver, receiver into wrist,
+ *              wrist into butt, grip up into the trigger housing.
  *   bat      — IRONSHOD SLUGGER: oak club clad in riveted hammered-iron
  *              plates with proud studs, a compression spring collar that
  *              slams on impact, leather wrap and a swinging wrist strap.
@@ -791,33 +795,53 @@ function buildSniper() {
   g.add(oct);
   g.add(barrel(0.017, 0.0145, 0.035, nickel(), 8, 0, 0.03, -0.715)); // muzzle crown
   g.add(box(0.007, 0.016, 0.005, nickel(), 0, 0.055, -0.69));        // blade sight
-  // skeleton stabilizer cage around the front half — brass rails + rings
-  for (let i = 0; i < 4; i++) {
-    const a = Math.PI / 4 + (i / 4) * Math.PI * 2;
-    g.add(box(0.006, 0.006, 0.3, brass(),
-      Math.cos(a) * 0.027, 0.03 + Math.sin(a) * 0.027, -0.52));
+  // Barrel truss: solid collars clamped ON the barrel, tied together by three
+  // tension rods that land on them. (This replaced a "skeleton cage" of hoops
+  // floating a centimetre off the barrel on stick rails, which read as bent
+  // wire flapping loose rather than as structure.)
+  for (const z of [-0.66, -0.5, -0.34]) {
+    g.add(tube(0.0215, 0.018, steel(), 12, 0, 0.03, z));
+    g.add(ring(0.0225, 0.003, brass(), 6, 14).translateY(0.03).translateZ(z));
   }
-  for (const z of [-0.4, -0.52, -0.645]) {
-    const r = ring(0.028, 0.0045, brass(), 6, 16);
-    r.position.set(0, 0.03, z); g.add(r);
+  for (let i = 0; i < 3; i++) {
+    const a = Math.PI / 2 + (i / 3) * Math.PI * 2;
+    const rod = tube(0.0042, 0.4, brass(), 8,
+      Math.cos(a) * 0.0198, 0.03 + Math.sin(a) * 0.0198, -0.49);
+    g.add(rod);
+    // knurled tensioner nut where each rod passes the centre collar
+    const nut = cyl(0.0075, 0.0075, 0.012, brassWornMat(), 8,
+      Math.cos(a) * 0.0198, 0.03 + Math.sin(a) * 0.0198, -0.5);
+    nut.rotation.x = Math.PI / 2; g.add(nut);
   }
-  // compact blued receiver
-  g.add(box(0.055, 0.075, 0.17, blued(), 0, 0.02, -0.01));
-  g.add(box(0.05, 0.014, 0.16, steel(), 0, 0.062, -0.01)); // polished top rail
+  // compact blued receiver, long enough to bridge barrel to wrist
+  g.add(box(0.055, 0.08, 0.2, blued(), 0, 0.022, -0.015));
+  g.add(box(0.05, 0.014, 0.1, steel(), 0, 0.064, -0.062)); // polished top rail
+  g.add(box(0.058, 0.02, 0.03, blued(), 0, 0.012, -0.112)); // barrel shank collar
   // ---- the bolt: full lift / draw / return / lock cycle on every shot ----
-  const bolt = anim(new THREE.Group());
-  bolt.position.set(0.026, 0.055, 0.045);
+  const bolt = new THREE.Group();
   const boltBody = tube(0.011, 0.115, steel(), 10, 0, 0, -0.02);
   bolt.add(boltBody);
   bolt.add(barrel(0.013, 0.011, 0.02, steel(), 10, 0, 0, 0.04)); // bolt shroud
-  const handle = anim(new THREE.Group());
-  const arm = cyl(0.0055, 0.0055, 0.05, steel(), 8);
-  arm.rotation.z = Math.PI / 2; arm.position.x = 0.025;
-  handle.add(arm);
-  handle.add(sphere(0.0135, brass(), 10).translateX(0.052)); // brass ball knob
+  // Bolt handle. The rest pose (turned DOWN against the stock) lives on an
+  // inner group so the fire/reload hooks can keep driving handle.rotation.z as
+  // an absolute lift. It used to stand straight out sideways on a 5 cm rod,
+  // which read as a brass ball floating beside the gun.
+  const handle = new THREE.Group();
+  const armG = new THREE.Group();
+  armG.rotation.z = -0.95;
+  const arm = cyl(0.0052, 0.0052, 0.038, steel(), 8);
+  arm.rotation.z = Math.PI / 2; arm.position.x = 0.019;
+  armG.add(arm);
+  armG.add(cyl(0.0075, 0.0075, 0.01, steel(), 8).rotateZ(Math.PI / 2)); // root boss
+  armG.add(sphere(0.0115, brass(), 10).translateX(0.042));              // ball knob
+  handle.add(armG);
   handle.position.set(0, 0, 0.03);
+  anim(handle);
   bolt.add(handle);
-  g.add(bolt);
+  // anim() AFTER positioning: recorded at the origin, the fire hook's
+  // `baseP.z + draw` snapped the whole bolt 4.5 cm forward on every shot
+  bolt.position.set(0.026, 0.05, 0.045);
+  anim(bolt); g.add(bolt);
   // rangefinder drum on the camera-side flank: engraved brass, steps per shot
   const drum = anim(new THREE.Group());
   const drumBody = cyl(0.021, 0.021, 0.022, brass(), 14);
@@ -829,52 +853,79 @@ function buildSniper() {
   }
   drum.add(sphere(0.006, steel(), 6).translateX(-0.014));
   drum.position.set(-0.034, 0.04, 0.01); g.add(drum);
-  // brass telescope: objective bell, turret, glowing reticle eyepiece
+  // Brass telescope: objective bell, turret, glowing reticle eyepiece. Sized
+  // to a real 1-inch tube and seated low ON the receiver rail — it used to be
+  // fatter than the barrel and stilted 8 cm over the bore, which read as a
+  // ship's telescope resting on the gun rather than a mounted sight.
+  const SCOPE_Y = 0.086;
   const scopeG = new THREE.Group();
-  scopeG.add(tube(0.019, 0.3, brass(), 14, 0, 0, -0.03));
-  scopeG.add(barrel(0.026, 0.02, 0.06, brass(), 14, 0, 0, -0.2));  // objective bell
-  scopeG.add(mesh(new THREE.CircleGeometry(0.018, 14), M.glass(0x264a5a, 0x0a1820), 0, 0, -0.231));
-  const turret = anim(cyl(0.009, 0.009, 0.016, nickel(), 10, 0, 0.026, -0.04)); // elevation turret
+  scopeG.add(tube(0.0135, 0.26, brass(), 14, 0, 0, -0.03));
+  scopeG.add(barrel(0.019, 0.0145, 0.05, brass(), 14, 0, 0, -0.185)); // objective bell
+  scopeG.add(mesh(new THREE.CircleGeometry(0.0175, 14), M.glass(0x264a5a, 0x0a1820), 0, 0, -0.2105));
+  const turret = anim(cyl(0.008, 0.008, 0.014, nickel(), 10, 0, 0.02, -0.04)); // elevation turret
   scopeG.add(turret);
-  scopeG.add(barrel(0.017, 0.021, 0.045, blued(), 12, 0, 0, 0.12)); // eyepiece
-  const reticle = mesh(new THREE.CircleGeometry(0.0155, 12), M.glow(0x66d9a3, 0.9), 0, 0, 0.143);
+  scopeG.add(cyl(0.008, 0.008, 0.012, nickel(), 10, -0.019, 0, -0.04).rotateZ(Math.PI / 2)); // windage
+  scopeG.add(barrel(0.0125, 0.0165, 0.042, blued(), 12, 0, 0, 0.119)); // eyepiece
+  const reticle = mesh(new THREE.CircleGeometry(0.0115, 12), M.glow(0x66d9a3, 0.9), 0, 0, 0.141);
   reticle.rotation.y = Math.PI; // faces the shooter
   scopeG.add(reticle);
-  scopeG.position.set(0, 0.108, -0.03);
+  scopeG.position.set(0, SCOPE_Y, -0.03);
   g.add(scopeG);
-  for (const z of [-0.11, 0.05]) { // nickel ring mounts on posts
-    const mount = ring(0.021, 0.004, nickel(), 6, 14);
-    mount.position.set(0, 0.108, z); g.add(mount);
-    g.add(box(0.012, 0.03, 0.014, nickel(), 0, 0.075, z));
+  for (const z of [-0.1, 0.01]) { // split rings clamped to a base on the rail
+    const mount = ring(0.0155, 0.0038, nickel(), 6, 16);
+    mount.position.set(0, SCOPE_Y, z); g.add(mount);
+    g.add(box(0.022, 0.016, 0.018, nickel(), 0, SCOPE_Y - 0.014, z));   // base block
+    g.add(box(0.026, 0.005, 0.022, steel(), 0, SCOPE_Y - 0.021, z));    // rail clamp foot
+    for (const x of [-0.011, 0.011]) {                                  // clamp screws
+      g.add(sphere(0.0032, steel(), 6).translateX(x).translateY(SCOPE_Y - 0.008).translateZ(z));
+    }
   }
   // en-bloc clip: five brass noses proud of the receiver during a reload
-  const clip = anim(new THREE.Group());
+  const clip = new THREE.Group();
   clip.add(box(0.018, 0.042, 0.032, brass(), 0, 0, 0));
   for (let i = 0; i < 5; i++) clip.add(tube(0.0045, 0.03, copper(), 6, 0, 0.012, -0.011 + i * 0.0055));
-  clip.position.set(0, 0.085, -0.01);
+  // anim() AFTER positioning, as with the bolt: the reload offsets from baseP
+  clip.position.set(0, 0.082, 0.012);
+  anim(clip);
   clip.visible = false;
   g.add(clip);
-  // trigger + guard
-  const guard = ring(0.028, 0.0045, nickel(), 6, 16);
-  guard.rotation.x = Math.PI / 2; guard.position.set(0, -0.045, 0.04);
-  guard.scale.set(1, 1.6, 1); g.add(guard);
-  const trigger = anim(box(0.007, 0.024, 0.005, brass(), 0, -0.04, 0.035));
+  // trigger housing / floorplate: the strap a real rifle hangs its guard from,
+  // running receiver to grip so the grip cannot read as a floating block
+  g.add(box(0.044, 0.022, 0.185, blued(), 0, -0.025, 0.038));
+  g.add(box(0.048, 0.008, 0.05, steel(), 0, -0.036, -0.03)); // magazine floorplate
+  // trigger + guard — the guard loop stands in the YZ plane (a Y rotation), so
+  // it reads as a guard from the flank instead of lying flat like a saucer
+  const guard = ring(0.026, 0.0045, nickel(), 7, 18);
+  guard.rotation.y = Math.PI / 2; guard.position.set(0, -0.042, 0.05);
+  guard.scale.set(1, 0.95, 1); g.add(guard);
+  const trigger = anim(box(0.007, 0.024, 0.005, brass(), 0, -0.036, 0.042));
   g.add(trigger);
-  // full-length walnut furniture with brass fittings
-  g.add(box(0.042, 0.048, 0.34, walnut(), 0, -0.006, -0.24));     // fore-end
-  g.add(box(0.046, 0.052, 0.02, brass(), 0, -0.006, -0.4));       // fore cap
+  // Full-length walnut furniture with brass fittings. Every piece overlaps the
+  // one behind it — fore-end into receiver, receiver into wrist, wrist into
+  // butt, grip up into the wrist — so the rifle reads as one object. The old
+  // layout left 5 cm of open air between receiver and butt and hung the grip
+  // below the frame entirely.
+  g.add(box(0.042, 0.05, 0.5, walnut(), 0, -0.006, -0.355));       // fore-end
+  g.add(box(0.046, 0.054, 0.02, brass(), 0, -0.006, -0.596));      // fore cap
+  for (const z of [-0.545, -0.36]) {                               // barrel bands
+    g.add(box(0.05, 0.05, 0.016, brass(), 0, 0.008, z));
+  }
+  const wrist = box(0.046, 0.056, 0.115, walnut(), 0, 0.0, 0.135); // receiver → butt
+  wrist.rotation.x = 0.08; g.add(wrist);
   const grip = new THREE.Group();
-  grip.add(box(0.044, 0.13, 0.056, walnut(), 0, 0, 0));
-  grip.add(box(0.048, 0.036, 0.06, leather(), 0, -0.02, 0));      // leather wrap
-  grip.position.set(0, -0.075, 0.1); grip.rotation.x = -0.4;
+  grip.add(box(0.044, 0.125, 0.056, walnut(), 0, 0, 0));
+  grip.add(box(0.048, 0.036, 0.06, leather(), 0, -0.024, 0));      // leather wrap
+  grip.add(box(0.044, 0.012, 0.048, brassWornMat(), 0, -0.06, 0)); // grip cap
+  grip.position.set(0, -0.058, 0.134); grip.rotation.x = -0.32;
   g.add(grip);
-  const butt = box(0.048, 0.098, 0.26, walnut(), 0, -0.02, 0.26);
+  const butt = box(0.048, 0.098, 0.25, walnut(), 0, -0.022, 0.28);
   butt.rotation.x = 0.11; g.add(butt);
-  g.add(box(0.052, 0.105, 0.016, brass(), 0, -0.037, 0.385).rotateX(0.11)); // brass buttplate
-  g.add(box(0.038, 0.02, 0.11, leather(), 0, 0.043, 0.25).rotateX(0.11));   // cheek riser
-  for (const [y, z] of [[-0.035, -0.38], [-0.075, 0.3]]) { // sling loops
-    const l = ring(0.009, 0.003, steel(), 6, 10);
+  g.add(box(0.052, 0.105, 0.016, brass(), 0, -0.04, 0.4).rotateX(0.11));  // brass buttplate
+  g.add(box(0.038, 0.02, 0.11, leather(), 0, 0.042, 0.27).rotateX(0.11)); // cheek riser
+  for (const [y, z] of [[-0.036, -0.5], [-0.078, 0.33]]) {         // sling loops
+    const l = ring(0.009, 0.003, steel(), 6, 12);
     l.position.set(0, y, z); g.add(l);
+    g.add(cyl(0.0035, 0.0035, 0.012, steel(), 8, 0, y + 0.011, z));
   }
 
   const muzzle = new THREE.Object3D(); muzzle.position.set(0, 0.03, -0.735); g.add(muzzle);
