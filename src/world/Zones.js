@@ -24,18 +24,28 @@ export const ZONES = [
 // `gate: true` builds the portal-arch wall (the "door" the world opens) with
 // its archway aligned to the road via `portal` (0..1 along the segment);
 // others are solid border walls.
+//
+// Every run that reaches the edge of the map ENDS AT ±RIM, which is just
+// inside the world rampart's inner face (see Boundary.js). Anything short of
+// that leaves a walkable slot between the end of the district wall and the
+// edge of the world: the runs that used to stop at ±240 left an eight-metre
+// gap you could stroll through from Eastgate into Downtown or Southside
+// without earning either. The wall modules, heights and styling are untouched
+// — these are endpoint coordinates only, extended so the borders actually
+// close against the new world barrier.
+const RIM = 249;
 const SEGMENTS = [
   { zone: 1, x1: 45, z1: -45, x2: 45, z2: 45, gate: true },      // Main St East
   { zone: 2, x1: -45, z1: -45, x2: 45, z2: -45, gate: true },    // North Ave
   { zone: 3, x1: -45, z1: -45, x2: -45, z2: 45, gate: true },    // Park Rd West
   { zone: 4, x1: -45, z1: 45, x2: 45, z2: 45, gate: true },      // Foundry Rd South
-  { zone: 2, x1: 45, z1: -110, x2: 240, z2: -110 },
-  { zone: 4, x1: 45, z1: 110, x2: 240, z2: 110 },
+  { zone: 2, x1: 45, z1: -110, x2: RIM, z2: -110 },
+  { zone: 4, x1: 45, z1: 110, x2: RIM, z2: 110 },
   { zone: 3, x1: -140, z1: -140, x2: -140, z2: -45 },
-  { zone: 5, x1: -140, z1: -245, x2: -140, z2: -140, gate: true, portal: 0.667 }, // Ridge Rd
-  { zone: 5, x1: -245, z1: -140, x2: -140, z2: -140 },
-  { zone: 4, x1: -245, z1: 110, x2: -45, z2: 110 },
-  { zone: 3, x1: -140, z1: -45, x2: -45, z2: -45 },
+  { zone: 5, x1: -140, z1: -RIM, x2: -140, z2: -140, gate: true, portal: 0.679 }, // Ridge Rd (archway over z=-175)
+  { zone: 5, x1: -RIM, z1: -140, x2: -140, z2: -140 },
+  { zone: 4, x1: -RIM, z1: 110, x2: -45, z2: 110 },
+  { zone: 3, x1: -RIM, z1: -45, x2: -45, z2: -45 },
   { zone: 4, x1: -45, z1: 45, x2: -45, z2: 110 },
   { zone: 4, x1: 45, z1: 45, x2: 45, z2: 110 },
   { zone: 2, x1: 45, z1: -110, x2: 45, z2: -45 },

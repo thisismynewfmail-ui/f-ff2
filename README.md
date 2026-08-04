@@ -320,7 +320,12 @@ There is deliberately no command that touches the kill counter — the
   rumble and sink into the ground when a district opens; the world tells
   you, not a popup.
 - **Terrain:** a real heightfield — the chapel hill climbs 16 m, the park
-  drops into a ravine with a pond, steep slopes slow you down.
+  drops into a ravine, steep slopes slow you down. The **pond** is a real
+  basin: a terrain pad sunk into the ravine floor, with the water built as a
+  sheet clipped to it — a quad is emitted only where all four corners are
+  genuinely below the water line, so the shoreline follows the ground exactly
+  and can never float. Two sheets drift across each other at different scales
+  to give it movement.
 - **The world barrier (`src/world/Boundary.js`):** the map is ringed by a
   terrain-following **stone rampart** — battered plinth, buttresses, a
   crenellated parapet, octagonal corner bastions, and a **bricked-up
@@ -514,12 +519,17 @@ when not.
 `world.mjs` audits the built town for the structural mistakes that are
 invisible in a code review and obvious the moment you walk into them: buildings
 that hang over a slope or sink into one, footprints that overlap, anything
-parked in a doorway, neighbours sharing a wall texture, weathering that isn't
-actually spatial, unfurnished interiors, alleys too narrow to path down, spawn
-points on blocked ground, and gaps in the world barrier — including walking the
-player hard into the wall from eight directions to confirm it holds. It is what
-found the market stall parked in a doorway, the house standing on top of the
-filling station and the chapel's bell tower built over its own front door.
+parked in a doorway or standing inside a building, two vehicles on the same
+ground, neighbours sharing a wall texture, weathering that isn't actually
+spatial, unfurnished interiors, alleys too narrow to path down, spawn points on
+blocked ground, a pond floating over its own bed, and gaps in the world barrier
+— including walking the player hard into the wall from eight directions to
+confirm it holds. It also **floods the nav grid from the spawn** and asserts
+that no locked district is reachable on foot, which is the check that catches a
+border wall stopping short of the map edge. It is what found the market stall
+parked in a doorway, the house standing on top of the filling station, the
+chapel's bell tower built over its own front door, and the eight-metre slot you
+could walk through from Eastgate into Downtown without earning it.
 
 `smoke.mjs` drives the real game headless: boot without errors, movement, town
 structure, wave spawning, ammo consumption, an end-to-end gunfire kill, zone

@@ -250,6 +250,17 @@ export class Anomalies {
       }
     }
 
+    // Open water. Two sheets drift across each other at different scales and
+    // in different directions; where the two patterns cross you get a slow
+    // moiré that reads as a surface moving, which a single scrolling texture
+    // never does. Cheap enough to leave running everywhere.
+    for (const s of this.w.waterSurfaces ?? []) {
+      const map = s.mat.map;
+      if (!map) continue;
+      map.offset.x = (map.offset.x + s.u * dt) % 1;
+      map.offset.y = (map.offset.y + s.v * dt) % 1;
+    }
+
     for (const b of this.w.beacons ?? []) {
       b.mesh.visible = ((time * 0.5 + b.phase) % 1) < 0.15;
     }

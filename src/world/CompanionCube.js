@@ -50,8 +50,10 @@ export class CompanionCube {
     this.light.position.set(this.pos.x, this.pos.y + 1.1, this.pos.z);
     world.group.add(this.light);
 
+    // 'furniture', not 'prop': it lives inside the tower on purpose, and the
+    // placement audit treats a 'prop' inside a building as a mistake.
     this._colliderId = world.collision.addBoxCentered(
-      this.pos.x, this.baseY + CUBE_SIZE / 2, this.pos.z, 0.34, 0.34, 0.34, 'prop');
+      this.pos.x, this.baseY + CUBE_SIZE / 2, this.pos.z, 0.34, 0.34, 0.34, 'furniture');
 
     this._interactable = world.addInteractable({
       x: this.pos.x, z: this.pos.z, y: this.baseY, radius: 2.0,
@@ -91,7 +93,7 @@ export class CompanionCube {
     this.light.position.set(x, this.pos.y + 1.1, z);
     this.world.group.add(this.light);
     this._colliderId = this.world.collision.addBoxCentered(
-      x, this.baseY + CUBE_SIZE / 2, z, 0.34, 0.34, 0.34, 'prop');
+      x, this.baseY + CUBE_SIZE / 2, z, 0.34, 0.34, 0.34, 'furniture');
     Object.assign(this._interactable, { x, y: this.baseY, z });
     this.world.events.emit('subtitle', { text: 'The cube settles by your feet. It will wait.' });
     return true;

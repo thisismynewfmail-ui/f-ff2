@@ -1082,7 +1082,9 @@ export class PropKit {
     ladder.position.set(1.1, 0, 0.9);
     ladder.rotation.x = 0.12;
     g.add(ladder);
-    return { group: g, collide: [1.3, 0.12, 0.5] };
+    // No collider: everything here is overhead, and the wall it is bolted to
+    // already blocks the ground it stands against.
+    return { group: g, collide: null };
   }
 
   /**
@@ -1192,7 +1194,7 @@ export class PropKit {
     elbow.rotation.z = Math.PI / 2;
     elbow.position.set(0.45, 1.6, 0);
     g.add(elbow);
-    return { group: g, collide: [0.5, 0.4, 0.2] };
+    return { group: g, collide: null };   // flush to the wall behind it
   }
 
   /* ---- park furniture --------------------------------------------------

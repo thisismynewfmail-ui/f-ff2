@@ -16,6 +16,11 @@
  *      enough of them to feed a wave
  *   9. the world barrier rings the map with no gap, and the player cannot
  *      walk out through it
+ *  10. nothing solid stands inside a building or inside another vehicle
+ *  11. a locked district cannot be reached on foot — a flood fill from the
+ *      spawn over the nav grid must not get into one
+ *  12. the pond sits in its basin: never floating over the ground, never
+ *      flooding a building, and actually moving
  *
  * Usage: node tests/world.mjs
  * Requires playwright-core (any location via NODE_PATH) and the pre-installed
@@ -66,7 +71,7 @@ await page.goto('http://localhost:8141/index.html?test=1');
 await page.waitForFunction(() => window.__game !== undefined, null, { timeout: 40000 });
 check('boot without console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
 
-const r = await page.evaluate(() => {
+const r = await page.evaluate(async () => {
   const w = window.__game.world;
   const specs = w.buildingSpecs;
   const out = {};
@@ -159,7 +164,7 @@ const r = await page.evaluate(() => {
   const nav = w.nav;
   const open = (x, z) => !nav.isBlocked(nav.toCell(x), nav.toCell(z));
   out.alleyBlocked = [];
-  for (const ax of [-84.75, -70.25, -32.75, -18.25]) {
+  for (const ax of [-85.25, -70.75, -34.25, -19.75]) {
     for (let z = -116; z <= -103.3; z += 1.5) if (!open(ax, z)) out.alleyBlocked.push(`slot ${ax}@${z.toFixed(0)}`);
   }
   // x = -45 carries the Hollow Park border wall, which is meant to be there
@@ -204,7 +209,87 @@ const r = await page.evaluate(() => {
     }
   }
   out.barrierExists = !!w.barrier;
-  out.doorwayRejects = w.doorwayRejects.map((p) => `${p.x.toFixed(0)},${p.z.toFixed(0)}`);
+  out.doorwayRejects = w.doorwayRejects.map((p) => `${p.x.toFixed(0)},${p.z.toFixed(0)} ${p.why}`);
+
+  // --- 10. nothing solid stands inside a building, or inside another vehicle
+  // Placement refuses these (see World._overlapsSolid), but check the built
+  // world too: a prop registered by some other path would slip past that.
+  const props = w.collision.boxes.filter((b) => b.active && b.tag === 'prop');
+  out.propInBuilding = [];
+  for (const s of specs) {
+    for (const b of props) {
+      const ox = Math.min(b.maxX, s.x + s.w / 2) - Math.max(b.minX, s.x - s.w / 2);
+      const oz = Math.min(b.maxZ, s.z + s.d / 2) - Math.max(b.minZ, s.z - s.d / 2);
+      if (ox > 0.3 && oz > 0.3 && b.minY < s.y + s.h) {
+        out.propInBuilding.push(`${s.name}<-${((b.minX + b.maxX) / 2).toFixed(0)},${((b.minZ + b.maxZ) / 2).toFixed(0)}`);
+      }
+    }
+  }
+  const big = props.filter((b) => (b.maxX - b.minX) > 2.4 || (b.maxZ - b.minZ) > 2.4);
+  out.propOverlap = [];
+  for (let i = 0; i < big.length; i++) {
+    for (let j = i + 1; j < big.length; j++) {
+      const a = big[i], c = big[j];
+      const ox = Math.min(a.maxX, c.maxX) - Math.max(a.minX, c.minX);
+      const oz = Math.min(a.maxZ, c.maxZ) - Math.max(a.minZ, c.minZ);
+      if (ox > 0.2 && oz > 0.2) out.propOverlap.push(`${((a.minX + a.maxX) / 2).toFixed(0)},${((a.minZ + a.maxZ) / 2).toFixed(0)}`);
+    }
+  }
+
+  // --- 11. a locked district is genuinely unreachable
+  // The real question is not "does each wall end where it should" but "can I
+  // walk into a district I have not earned". Flood the nav grid from the
+  // player's spawn with only Old Town open and see where it gets to. A wall
+  // that stops eight metres short of the map edge shows up here as a whole
+  // district turning reachable.
+  const zones = (await import('/src/world/Zones.js')).ZONES;
+  const SIZE = 320;
+  const seen = new Uint8Array(SIZE * SIZE);
+  const q = [[nav.toCell(w.playerSpawn.x), nav.toCell(w.playerSpawn.z)]];
+  seen[q[0][1] * SIZE + q[0][0]] = 1;
+  const inRect = (x, z, r, pad) => x >= r.minX + pad && x <= r.maxX - pad && z >= r.minZ + pad && z <= r.maxZ - pad;
+  const trespass = new Set();
+  while (q.length) {
+    const [cx, cz] = q.pop();
+    const wx = nav.toWorld(cx), wz = nav.toWorld(cz);
+    // 4 m inside a locked rect and outside every open one = a real intrusion
+    if (!inRect(wx, wz, zones[0].rect, -2)) {
+      for (const zn of zones) {
+        if (zn.id === 0 || w.zones.isUnlocked(zn.id)) continue;
+        if (inRect(wx, wz, zn.rect, 4)) trespass.add(zn.name);
+      }
+    }
+    for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const nx = cx + dx, nz = cz + dz;
+      if (nx < 0 || nz < 0 || nx >= SIZE || nz >= SIZE) continue;
+      const k = nz * SIZE + nx;
+      if (seen[k] || nav.isBlocked(nx, nz)) continue;
+      seen[k] = 1;
+      q.push([nx, nz]);
+    }
+  }
+  out.trespass = [...trespass];
+
+  // --- 12. the pond is a lake, not a sheet of glass laid over a hillside
+  const pb = w.pondBasin;
+  out.pond = { minDepth: 1e9, maxDepth: -1e9, verts: 0, overBuilding: 0, animated: w.waterSurfaces.length };
+  const sheets = [];
+  w.group.traverse((o) => {
+    if (o.isMesh && w.waterSurfaces.some((s) => s.mat === o.material)) sheets.push(o);
+  });
+  for (const m of sheets) {
+    const p = m.geometry.attributes.position;
+    for (let i = 0; i < p.count; i++) {
+      const x = p.getX(i), z = p.getZ(i);
+      const depth = p.getY(i) - w.terrain.heightAt(x, z);
+      out.pond.minDepth = Math.min(out.pond.minDepth, depth);
+      out.pond.maxDepth = Math.max(out.pond.maxDepth, depth);
+      out.pond.verts++;
+      if (specs.some((s) => Math.abs(x - s.x) < s.w / 2 && Math.abs(z - s.z) < s.d / 2)) out.pond.overBuilding++;
+    }
+  }
+  out.pond.sheets = sheets.length;
+  out.pond.level = pb.level;
   return out;
 });
 
@@ -230,9 +315,18 @@ check('outdoor spawn points are on open ground', r.spawnsBlocked === 0, `${r.spa
 check('every district can feed a wave', r.spawnsPerZone.every((n) => n >= 10), r.spawnsPerZone.join('/'));
 check('the player spawns on open ground', r.playerSpawnOpen);
 check('the world barrier exists', r.barrierExists);
+check('no solid prop stands inside a building', r.propInBuilding.length === 0, r.propInBuilding.slice(0, 5).join(' '));
+check('no two vehicles occupy the same ground', r.propOverlap.length === 0, r.propOverlap.slice(0, 5).join(' '));
+check('locked districts are unreachable on foot', r.trespass.length === 0, r.trespass.join(', '));
+check('the pond never floats above its bed', r.pond.minDepth >= -0.01,
+  `lowest point ${r.pond.minDepth.toFixed(2)}m over the ground`);
+check('the pond has real depth', r.pond.maxDepth > 0.8, `${r.pond.maxDepth.toFixed(2)}m at the deepest`);
+check('the pond does not flood any building', r.pond.overBuilding === 0, `${r.pond.overBuilding} vertices`);
+check('the water surface is animated', r.pond.animated >= 2 && r.pond.sheets >= 2,
+  `${r.pond.sheets} sheets, ${r.pond.animated} drifting`);
 check('the world barrier has no gaps', r.barrierGaps.length === 0,
   `${r.barrierGaps.length}/${r.barrierSamples} probes escaped at ${r.barrierGaps.slice(0, 4).join(' ')}`);
-check('no prop had to be refused for blocking a doorway', r.doorwayRejects.length === 0,
+check('no prop had to be refused as badly placed', r.doorwayRejects.length === 0,
   r.doorwayRejects.join(' '));
 
 // The barrier is a wall, not a suggestion: walk hard into it and stay inside.

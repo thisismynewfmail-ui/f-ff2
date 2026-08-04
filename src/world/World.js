@@ -18,6 +18,10 @@ import { WorldBarrier } from './Boundary.js';
 const DOOR_NORMAL = { N: [0, -1], S: [0, 1], E: [1, 0], W: [-1, 0] };
 const DOOR_APPROACH = 3.4;
 const DOOR_LANE_HALF = 1.6;
+// How much two solid footprints may overlap before it reads as a mistake.
+// Small enough to catch a stall clipping a wall, loose enough that props
+// deliberately tucked against something aren't refused.
+const PROP_CLEARANCE = 0.12;
 
 /** Which material-set family a building's function draws from. */
 const FAMILY_FOR_USE = {
@@ -72,13 +76,15 @@ export class World {
     this.playerSpawn = { x: 0, z: 20 };
     this.game = null;            // set by attach()
     // dynamic-prop registries, animated by Anomalies each frame
-    this.doorwayRejects = [];    // props refused for standing in a doorway
+    this.doorwayRejects = [];    // props refused for standing somewhere solid
+    this._solids = [];           // footprints of placed solid props
     this.beacons = [];           // {mesh, phase} — tower aviation lights
     this.windmillRotors = [];
     this.playgroundSwings = [];
     this.spinners = [];          // {node, speed} — carousel decks
     this.flags = [];             // {strips[], phase} — rippling cloth
     this.ropeSwings = [];        // pivots that keep an arc nobody started
+    this.waterSurfaces = [];     // {mat, u, v} — sheets whose UVs drift
     this.alarmCars = [];         // {x, y, z, lights[]} — shootable car alarms
     this.phoneBoothPos = null;
   }
@@ -90,7 +96,12 @@ export class World {
   }
 
   build() {
-    this._planBuildings();          // registers terrain pads
+    // Terrain features first, buildings second: pads are applied in the order
+    // they were registered, so whichever is added LAST wins inside its own
+    // footprint. Registering the pond basin first is what stops it undercutting
+    // the boathouse standing on its bank.
+    this._planTerrain();            // pond basin
+    this._planBuildings();          // building pads, which override it locally
     this.group.add(this.terrain.buildMesh(this.texLib));
     this._roads();
     this._constructBuildings();
@@ -297,6 +308,24 @@ export class World {
     deconflictResolved(this.buildingSpecs, bake);
   }
 
+  /**
+   * Terrain features that are not buildings. Everything here has to be
+   * registered BEFORE Terrain.buildMesh runs, or the ground mesh is displaced
+   * without it and the feature ends up floating over its own hole.
+   */
+  _planTerrain() {
+    // The pond basin: a shallow bowl sunk into the ravine floor, with a long
+    // blend so the banks shelve into it instead of stepping down.
+    const x = -150, z = 85;
+    const floorY = this.terrain.baseHeight(x, z) - 1.7;
+    const hx = 13, hz = 11, blend = 12;
+    this.terrain.addPad(x, z, hx, hz, floorY, blend);
+    // rx/rz bound the water itself. Without them the sheet follows the pad's
+    // blend wherever the ground happens to stay low, and the lake creeps
+    // twenty-five metres out to lap at the boathouse.
+    this.pondBasin = { x, z, hx, hz, blend, floorY, level: floorY + 1.25, rx: hx + 6.0, rz: hz + 5.5 };
+  }
+
   _planBuildings() {
     const S = (o) => this._spec(o);
     // --- Old Town (zone 0): the kept-up civic heart around the plaza.
@@ -387,12 +416,15 @@ export class World {
     // buildings is swallowed whole and nothing can path down it. Each gap is
     // 6.5 m, which always leaves two clear cells — narrow enough to be an
     // alley, wide enough to be a route. See _alleys().
+    // Frontages, left to right, with a 6.5 m slot between each pair:
+    //   infill0 [-96.5,-88.5] | laundromat [-82,-74] | pharmacy [-67.5,-56.5]
+    //   recordShop [-46.5,-37.5] | barbers [-31,-23] | infill1 [-16.5,-8.5]
     const strip = [
-      [-63.5, -110, 11, 9, 4.8, 'N', 'pharmacy', 'pharmacy', 'stuccoPinkStrip'],
-      [-77.5, -110, 8, 9, 5.2, 'N', 'laundromat', 'laundromat', 'glazedTileShop'],
-      [-41, -110, 10, 9, 5.0, 'N', 'recordShop', 'recordShop', 'paintedBrickShop'],
-      [-25.5, -110, 8, 9, 4.6, 'N', 'barbers', 'barbers', 'timberFramed'],
-      [13, -110, 10, 9, 5.4, 'N', 'hardware', 'hardware', 'brownBrickTenement'],
+      [-62, -110, 11, 9, 4.8, 'N', 'pharmacy', 'pharmacy', 'stuccoPinkStrip'],
+      [-78, -110, 8, 9, 5.2, 'N', 'laundromat', 'laundromat', 'glazedTileShop'],
+      [-42, -110, 9, 9, 5.0, 'N', 'recordShop', 'recordShop', 'paintedBrickShop'],
+      [-27, -110, 8, 9, 4.6, 'N', 'barbers', 'barbers', 'timberFramed'],
+      [14, -110, 10, 9, 5.4, 'N', 'hardware', 'hardware', 'brownBrickTenement'],
     ];
     for (const [bx, bz, w, d, h, door, name, use, mat] of strip) {
       S({ x: bx, z: bz, w, d, h, mat, roof: 'flat', floor: 'floorTile', door, name, use,
@@ -409,7 +441,7 @@ export class World {
     // at x=-100/-50/0 and z=-70/-120/-170/-220) so the grid reads dense.
     // Varied heights + materials so no adjacent pair matches.
     const infill = [
-      [-92, -110, 8, 9, 8], [-11, -110, 8, 9, 7],
+      [-92.5, -110, 8, 9, 8], [-12.5, -110, 8, 9, 7],
       [-60, -158, 8, 8, 9],
       [-134, -110, 8, 8, 12], [34, -128, 8, 8, 9],
       [-132, -160, 8, 8, 8], [-10, -180, 8, 8, 10],
@@ -536,7 +568,7 @@ export class World {
     this._road([[10, -170], [60, -168], [120, -164], [168, -184]], 'road', 5);
     // Park Rd + trails
     this._road([[-45, 0], [-80, 6], [-118, 16]], 'road', 6);
-    this._road([[-118, 16], [-140, 40], [-148, 70], [-150, 92]], 'gravel', 3.5, 'dirt');
+    this._road([[-118, 16], [-140, 40], [-147, 66]], 'gravel', 3.5, 'dirt');
     this._road([[-118, 16], [-160, 4], [-205, 18]], 'gravel', 3.5, 'dirt');
     // Foundry Rd South + service loop + factory spur (truck access)
     this._road([[0, 45], [0, 90], [0, 130], [0, 160]], 'roadLine', 7);
@@ -592,13 +624,53 @@ export class World {
   _prop(maker, x, z, opts = {}) {
     const p = maker;
     const collide = opts.collide === undefined ? p.collide : opts.collide;
-    if (collide && !opts.lift && this._inDoorway(x, z, Math.max(collide[0], collide[2]))) {
-      this.doorwayRejects.push({ x, z });
-      return null;
+    if (collide && !opts.lift) {
+      const hx = collide[0], hz = collide[2];
+      if (this._inDoorway(x, z, Math.max(hx, hz))) {
+        this.doorwayRejects.push({ x, z, why: 'doorway' });
+        return null;
+      }
+      // Nothing solid may stand inside a building or inside another solid
+      // prop. A market stall half-buried in a shop wall and two cars sharing
+      // the same parking bay are the same mistake, and neither is visible in
+      // the plan — the coordinates look reasonable right up until you walk
+      // round the corner and see a canopy growing out of the brickwork.
+      const clash = this._overlapsSolid(x, z, hx, hz);
+      if (clash) {
+        this.doorwayRejects.push({ x, z, why: clash });
+        return null;
+      }
+      this._solids.push({ minX: x - hx, maxX: x + hx, minZ: z - hz, maxZ: z + hz });
     }
     this.props.place(p.group, x, z, { collide: p.collide, ...opts });
     this.group.add(p.group);
     return p.group;
+  }
+
+  /**
+   * What a solid prop footprint at (x, z) would be standing inside, or null.
+   *
+   * Buildings are tested against their real footprint; other props only
+   * against ones big enough for the overlap to read (a hydrant clipping a
+   * kerbstone is nobody's problem, two vehicles in the same bay is).
+   */
+  _overlapsSolid(x, z, hx, hz) {
+    const minX = x - hx, maxX = x + hx, minZ = z - hz, maxZ = z + hz;
+    for (const s of this.buildingSpecs) {
+      const ox = Math.min(maxX, s.x + s.w / 2) - Math.max(minX, s.x - s.w / 2);
+      const oz = Math.min(maxZ, s.z + s.d / 2) - Math.max(minZ, s.z - s.d / 2);
+      if (ox > PROP_CLEARANCE && oz > PROP_CLEARANCE) return 'in ' + s.name;
+    }
+    if (Math.max(hx, hz) < 1.2) return null;   // small props may share space
+    for (const o of this._solids) {
+      if (Math.max(o.maxX - o.minX, o.maxZ - o.minZ) < 2.4) continue;
+      const ox = Math.min(maxX, o.maxX) - Math.max(minX, o.minX);
+      const oz = Math.min(maxZ, o.maxZ) - Math.max(minZ, o.minZ);
+      if (ox > PROP_CLEARANCE && oz > PROP_CLEARANCE) {
+        return `into prop@${((o.minX + o.maxX) / 2).toFixed(0)},${((o.minZ + o.maxZ) / 2).toFixed(0)}`;
+      }
+    }
+    return null;
   }
 
   /**
@@ -655,7 +727,7 @@ export class World {
   _oldTown() {
     const P = this.props;
     this._prop(P.well(), 0, 6);
-    for (const [x, z] of [[-14, -6], [14, -6], [-14, 14], [14, 10]]) this._prop(P.lamppost(), x, z);
+    for (const [x, z] of [[-14, -6], [14, -6], [-12.2, 15], [14, 10]]) this._prop(P.lamppost(), x, z);
     // The lamp at the alley mouth casts a shadow the wrong way (secret #9
     // registers the trigger; this is the visual).
     this.wrongShadowLamp = this._prop(P.lamppost(), 22, -4);
@@ -709,7 +781,7 @@ export class World {
     this._prop(P.signPost(0x39586b), 5, 5);
     this._prop(P.mailbox(), 24, 22);
     // market morning that never ended: stalls still stocked around the plaza
-    this._prop(P.marketStall(0x7a3b30), -11, -11, { yaw: 0.2 });
+    this._prop(P.marketStall(0x7a3b30), -9.5, -12, { yaw: 0.2 });
     this._prop(P.marketStall(0x39586b), 11, -11, { yaw: -0.15 });
     this._prop(P.marketStall(0x4a5a38), -7.5, 16.5, { yaw: 2.6 });
     this._prop(P.crateStack(2), -14.5, -8.5, { yaw: 0.5 });
@@ -805,7 +877,7 @@ export class World {
     }
     this._prop(P.signPost(0x39586b), -47.5, -128);
     for (const [x, z] of [[-88, -95, 0], [-38, -145, 0], [-88, -195, 0], [10, -170, 0]]) this._prop(P.busStop(), x, z);
-    for (const [x, z] of [[-63, -108], [-37, -132], [-110, -132], [-63, -182], [-12, -108], [-110, -182]]) this._prop(P.dumpster(), x, z, { yaw: rng() });
+    for (const [x, z] of [[-64, -97], [-37, -132], [-110, -132], [-63, -182], [-20, -100], [-110, -182]]) this._prop(P.dumpster(), x, z, { yaw: rng() });
     for (const [x, z] of [[-95, -75], [-45, -75], [-95, -165], [-45, -165], [5, -125], [5, -215]]) this._prop(P.lamppost(), x, z);
     // graffiti where the maintenance gave out
     this._wallDecal('graffiti', 'office', 'S', -3.5);
@@ -817,7 +889,7 @@ export class World {
     // lane, it is the heaviest cover downtown and a thing you give directions
     // by. Vans and pickups break up the parked sedans elsewhere in the grid.
     this._prop(P.bus(0x2f6a52), -62, -168.4, { yaw: 0.34 });
-    this._prop(P.van(0x6b6f60, true), -92, -196, { yaw: 1.58 });
+    this._prop(P.van(0x6b6f60, true), -93, -200, { yaw: 1.58 });
     this._prop(P.van(0x7a5b3a), 19.5, -118, { yaw: 1.55 });
     // pocket park north of the z=-170 road — a breath between the blocks
     this._prop(P.bench(), 31, -160, { yaw: 2.4 });
@@ -846,7 +918,7 @@ export class World {
     // Farms NE
     this._prop(P.pickup(0x694f28, true), 130, -168, { yaw: 0.2 });
     this._prop(P.pickup(0x4c5548), 128, -155, { yaw: 1.5 });
-    this._prop(P.pickup(0x6b3a32, true), 162, -185, { yaw: -0.3 });
+    this._prop(P.pickup(0x6b3a32, true), 156, -180, { yaw: -0.3 });
     for (const [x1, z1, x2, z2] of [[105, -150, 105, -175], [105, -175, 140, -178]]) this.props.fenceRun(x1, z1, x2, z2, this.group);
     // Working farmland fills the east flats: two fields still holding their
     // crop rows, an orchard planted in ranks, and the windmill idling at the
@@ -900,11 +972,12 @@ export class World {
     this._road([[-96, -103.3], [-70, -103.3], [-47.5, -103.3]], 'concrete', 4.0, 'concrete');
     this._road([[-42.5, -103.3], [-30, -103.3], [-18, -103.3]], 'concrete', 4.0, 'concrete');
     // the four slots down to the street, each in the middle of a 6.5 m gap
+    // [slot centre, the shop whose flank faces it, that flank's x]
     const slots = [
-      [-84.75, 'laundromat', -77.5, 8],
-      [-70.25, 'pharmacy', -63.5, 11],
-      [-32.75, 'barbers', -25.5, 8],
-      [-18.25, null, 0, 0],
+      [-85.25, 'laundromat', -82.0],
+      [-70.75, 'pharmacy', -67.5],
+      [-34.25, 'barbers', -31.0],
+      [-19.75, null, 0],
     ];
     for (const [ax] of slots) this._road([[ax, -117], [ax, -103.3]], 'concrete', 3.6, 'concrete');
 
@@ -919,14 +992,13 @@ export class World {
     // local avoidance, which is what makes threading a bin-strewn alley feel
     // like threading a bin-strewn alley.
     let di = 0;
-    for (const [ax, wallName, wallX, wallW] of slots) {
+    for (const [ax, wallName, face] of slots) {
       this._prop(P.dumpster(), ax + 0.35, -114.6, { yaw: 1.55, nav: false });
       this._prop(P.trashCan(), ax - 1.1, -110.8, { nav: false });
       this._prop(P.crateStack(2), ax + 0.7, -107.4, { yaw: 0.6, nav: false });
       if (!wallName) continue;
-      const face = wallX - wallW / 2 - 0.35;   // the alley-facing wall
-      this._prop(P.wallPipes(6), face, -111.6, { yaw: -Math.PI / 2, nav: false });
-      this._prop(P.fireEscape(2), face + 0.1, -108.4, { yaw: -Math.PI / 2, nav: false });
+      this._prop(P.wallPipes(6), face - 0.35, -111.6, { yaw: -Math.PI / 2, nav: false });
+      this._prop(P.fireEscape(2), face - 0.25, -108.4, { yaw: -Math.PI / 2, nav: false });
       this._wallDecal('graffiti', wallName, 'W', -1.6 + di, 3.0, 1.5);
       this._decal('oilStain', ax + 0.5, -112.2, 1.8);
       di += 1.2;
@@ -970,15 +1042,8 @@ export class World {
   _park() {
     const P = this.props;
     const rng = mulberry32(44);
-    // Pond in the ravine
-    const pond = new THREE.Mesh(
-      new THREE.CircleGeometry(16, 24),
-      new THREE.MeshLambertMaterial({ map: this.texLib.tiled('water', 6, 6), transparent: true, opacity: 0.92 })
-    );
-    pond.rotation.x = -Math.PI / 2;
-    pond.position.set(-150, this.terrain.heightAt(-150, 85) + 0.45, 85);
-    this.group.add(pond);
-    this.addSurface(-166, 69, -134, 101, 'water');
+    this._pond();
+    const pb = this.pondBasin;
     // Bandstand
     const band = new THREE.Group();
     const deck = new THREE.Mesh(new THREE.CylinderGeometry(4, 4.2, 0.5, 10), this.kit.mat('floorWood'));
@@ -1023,8 +1088,14 @@ export class World {
     this._prop(P.drinkingFountain(), -108, 18);
     for (const [x, z] of [[-104, 26], [-96, 14]]) this._prop(P.trashCan(), x, z);
 
-    // the jetty out over the pond, and the footbridge across the ravine lip
-    this._prop(P.jetty(6), -138, 78, { yaw: -0.9 });
+    // The jetty runs out from the shore over open water: its foot is set on
+    // the measured bank and it is aimed at the middle of the pond.
+    {
+      const a = -1.414;                    // where the lakeside trail arrives
+      const r = this._shoreRadius(a) - 0.6;
+      const jx = pb.x + Math.cos(a) * r, jz = pb.z + Math.sin(a) * r;
+      this._prop(P.jetty(6), jx, jz, { yaw: Math.atan2(pb.x - jx, pb.z - jz), nav: false });
+    }
     this._prop(P.footbridge(9), -124, 58, { yaw: Math.PI / 2 });
     // Rocks along the ravine lip
     for (const [x, z, s] of [[-172, 62, 1.6], [-125, 75, 1.3], [-166, 105, 1.8], [-134, 104, 1.2]]) {
@@ -1033,7 +1104,10 @@ export class World {
       this._prop({ group: g, collide: [s * 0.8, s * 0.7, s * 0.8] }, x, z, { yaw: rng() * 3 });
     }
     // A rowboat hauled up on the pond's north shore, oars long gone.
-    this._prop(P.rowboat(), -136, 66, { yaw: 0.7 });
+    {
+      const a = -1.9, r = this._shoreRadius(a) + 1.3;
+      this._prop(P.rowboat(), pb.x + Math.cos(a) * r, pb.z + Math.sin(a) * r, { yaw: 0.7 });
+    }
     // Dense woods — including the ring that hides the campsite (secret #8)
     for (let i = 0; i < 60; i++) {
       const x = -240 + rng() * 190, z = -130 + rng() * 230;
@@ -1049,16 +1123,18 @@ export class World {
     this._prop(P.tent(), -202, -42, { yaw: 0.6 });
     this._prop(P.campfire(), -197, -38);
     this._prop(P.crateStack(2), -204, -36);
-    // reeds along the pond margin — the only thing in the park that has any
-    // business moving, and it moves less than the carousel does
+    // Reeds and scrub along the pond margin, set from the MEASURED shoreline
+    // rather than a guessed radius — the bank is not a circle, and reeds
+    // standing in open water were how the old disc gave itself away.
     const reeds = [];
-    for (let a = 0; a < Math.PI * 2; a += 0.16) {
-      const r = 16.6 + Math.sin(a * 3.7) * 1.1;
-      reeds.push([-150 + Math.cos(a) * r, 85 + Math.sin(a) * r]);
+    for (let a = 0; a < Math.PI * 2; a += 0.13) {
+      const r = this._shoreRadius(a) + 0.3 + Math.sin(a * 3.7) * 0.5;
+      reeds.push([pb.x + Math.cos(a) * r, pb.z + Math.sin(a) * r]);
     }
     this.veg.tuftField(this.group, reeds);
-    for (let a = 0.1; a < Math.PI * 2; a += 0.9) {
-      this.veg.bush(this.group, -150 + Math.cos(a) * 18.5, 85 + Math.sin(a) * 18.5, 0.9);
+    for (let a = 0.1; a < Math.PI * 2; a += 0.85) {
+      const r = this._shoreRadius(a) + 2.4;
+      this.veg.bush(this.group, pb.x + Math.cos(a) * r, pb.z + Math.sin(a) * r, 0.9);
     }
 
     this._sprinkleTufts(-140, 20, 100, 120, 110);
@@ -1253,8 +1329,8 @@ export class World {
 
     // alarmed civilian cars: shoot one and the horde goes to it, not you
     const lotCar = P.parkedCar(0x555c46);
-    this._prop(lotCar, -42, -137.5, { yaw: 0.1 });
-    this._registerAlarmCar(lotCar, -42, -137.5);
+    this._prop(lotCar, -42, -133.5, { yaw: 0.1 });
+    this._registerAlarmCar(lotCar, -42, -133.5);
     const plazaCar = P.parkedCar(0x6b3a32);
     this._prop(plazaCar, 20, 6.5, { yaw: 0.05 });
     this._registerAlarmCar(plazaCar, 20, 6.5);
@@ -1372,6 +1448,116 @@ export class World {
       pts.push([x, z]);
     }
     if (pts.length) this.veg.tuftField(this.group, pts);
+  }
+
+  /**
+   * The pond in the ravine.
+   *
+   * It used to be a flat disc dropped at the terrain height of its centre.
+   * Water is flat and the ravine floor is not, so the disc cut straight
+   * through the slope: five metres in the air on the high side, buried on the
+   * low side, and dead still. A lake has to be a *basin* first.
+   *
+   * So the basin is a terrain pad (registered in _planTerrain, before the
+   * ground mesh is built) and the water is a grid clipped to it: a quad is
+   * emitted only where all four of its corners are genuinely below the water
+   * line. The shoreline that falls out of that follows the real ground
+   * exactly and can never float, and because the clip is done per cell the
+   * edge is pixel-ragged in a way that suits the rest of the art.
+   */
+  _pond() {
+    const b = this.pondBasin;
+    const bed = this._clippedSheet(b, { drape: true, tex: 'dirt', tiles: 0.35, lift: 0.03 });
+    if (bed) this.group.add(bed);
+    const water = this._clippedSheet(b, {
+      tex: 'water', tiles: 0.16,
+      mat: { transparent: true, opacity: 0.88 },
+    });
+    if (water) {
+      this.group.add(water);
+      this.waterSurfaces.push({ mat: water.material, u: 0.011, v: 0.006 });
+    }
+    // A second sheet a hand's width above, scrolling the other way at a
+    // different scale. Two slow drifts crossing each other is what reads as
+    // moving water; one on its own just looks like a sliding texture.
+    const sheen = this._clippedSheet(b, {
+      tex: 'water', tiles: 0.075, lift: 0.05,
+      mat: { transparent: true, opacity: 0.3, depthWrite: false },
+    });
+    if (sheen) {
+      sheen.renderOrder = 3;
+      this.group.add(sheen);
+      this.waterSurfaces.push({ mat: sheen.material, u: -0.007, v: 0.013 });
+    }
+    this.addSurface(b.x - b.hx - 4, b.z - b.hz - 4, b.x + b.hx + 4, b.z + b.hz + 4, 'water');
+  }
+
+  /**
+   * A horizontal (or terrain-draped) sheet covering only the cells where the
+   * ground lies below `basin.level`. Returns null if nothing qualifies.
+   */
+  _clippedSheet(basin, { drape = false, tex, tiles, lift = 0, mat = {} } = {}) {
+    const R = Math.max(basin.rx, basin.rz) + 2;
+    const step = 0.9;
+    const n = Math.ceil((R * 2) / step);
+    const h = (x, z) => this.terrain.heightAt(x, z);
+    const pos = [], uv = [], idx = [];
+    let base = 0;
+    for (let j = 0; j < n; j++) {
+      for (let i = 0; i < n; i++) {
+        const x0 = basin.x - R + i * step, z0 = basin.z - R + j * step;
+        const x1 = x0 + step, z1 = z0 + step;
+        if (!this._inBasin((x0 + x1) / 2, (z0 + z1) / 2)) continue;   // outside the bowl
+        const c = [h(x0, z0), h(x1, z0), h(x1, z1), h(x0, z1)];
+        if (Math.max(...c) >= basin.level - 0.02) continue;   // above the water line
+        const ys = drape ? c.map((v) => v + lift) : [0, 0, 0, 0].map(() => basin.level + lift);
+        pos.push(x0, ys[0], z0, x1, ys[1], z0, x1, ys[2], z1, x0, ys[3], z1);
+        uv.push(x0 * tiles, z0 * tiles, x1 * tiles, z0 * tiles, x1 * tiles, z1 * tiles, x0 * tiles, z1 * tiles);
+        idx.push(base, base + 2, base + 1, base, base + 3, base + 2);
+        base += 4;
+      }
+    }
+    if (!base) return null;
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+    geo.setIndex(idx);
+    geo.computeVertexNormals();
+    return new THREE.Mesh(geo, new THREE.MeshLambertMaterial({
+      map: this.texLib.tiled(tex, 1, 1), ...mat,
+    }));
+  }
+
+  /**
+   * How far the water reaches on a given bearing from the basin centre —
+   * used to stand reeds, boats and jetties on the actual shore instead of
+   * guessing a radius and finding half of them afloat.
+   */
+  _shoreRadius(angle, from = 4) {
+    const b = this.pondBasin;
+    const dx = Math.cos(angle), dz = Math.sin(angle);
+    const to = Math.max(b.rx, b.rz) + 1;
+    for (let r = from; r <= to; r += 0.35) {
+      const x = b.x + dx * r, z = b.z + dz * r;
+      if (!this._inBasin(x, z) || this.terrain.heightAt(x, z) >= b.level) return r;
+    }
+    return to;
+  }
+
+  /**
+   * Inside the pond's bounding ellipse, and clear of every building — the
+   * limit of the water sheet. The building test is not fussiness: the
+   * boathouse sits on its own pad at its own grade, so without it the lake
+   * runs straight through the floor of the one structure on its bank.
+   */
+  _inBasin(x, z) {
+    const b = this.pondBasin;
+    const dx = (x - b.x) / b.rx, dz = (z - b.z) / b.rz;
+    if (dx * dx + dz * dz > 1) return false;
+    for (const s of this.buildingSpecs) {
+      if (Math.abs(x - s.x) < s.w / 2 + 1.2 && Math.abs(z - s.z) < s.d / 2 + 1.2) return false;
+    }
+    return true;
   }
 
   /**
