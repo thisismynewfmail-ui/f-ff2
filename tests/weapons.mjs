@@ -164,6 +164,43 @@ for (const r of present) {
 }
 
 /* ------------------------------------------------------------------ */
+/* bore alignment: barrels must actually point down the weapon's axis   */
+/* ------------------------------------------------------------------ */
+// The barrel() helper lays a cylinder along -Z by consuming rotation.x. Adding
+// a rotation.z on top to spin a low-segment tube about its own axis does NOT
+// do that: under three's XYZ Euler order the .z is applied FIRST, yawing the
+// whole tube off the bore. The sniper's octagonal barrel shipped 22.5 degrees
+// sideways that way, poking out through its own concentric barrel collars.
+// Measure the real world-space axis of every long tube instead of trusting it.
+const bores = await page.evaluate(() => {
+  const out = [];
+  for (const cfg of window.__game.weapons.weapons.map((w) => w.config)) {
+    const rig = window.__game.viewModel.rigs[cfg.id];
+    if (!rig) continue;
+    rig.group.updateMatrixWorld(true);
+    const inv = rig.group.matrixWorld.clone().invert();
+    let worst = 0, worstLen = 0;
+    rig.group.traverse((o) => {
+      if (!o.isMesh || o.geometry?.type !== 'CylinderGeometry') return;
+      const h = o.geometry.parameters?.height ?? 0;
+      if (h < 0.08) return;                       // real barrels, not washers
+      if (Math.abs(o.rotation.x + Math.PI / 2) > 1e-6) return;  // laid by barrel()
+      // the cylinder's long axis is its local +Y — the matrix's second column
+      const e = inv.clone().multiply(o.matrixWorld).elements;
+      const len = Math.hypot(e[4], e[5], e[6]);
+      const dev = Math.acos(Math.min(1, Math.abs(e[6] / len))) * 180 / Math.PI;
+      if (dev > worst) { worst = dev; worstLen = h; }
+    });
+    out.push({ id: cfg.id, worst: +worst.toFixed(2), len: +worstLen.toFixed(3) });
+  }
+  return out;
+});
+for (const b of bores) {
+  check(`${b.id}: every barrel runs true down the bore axis`,
+    b.worst < 10, `worst tube off-axis by ${b.worst}°${b.len ? ` (${b.len}m tube)` : ''}`);
+}
+
+/* ------------------------------------------------------------------ */
 /* animation behaviour, sampled off the real rigs                       */
 /* ------------------------------------------------------------------ */
 const anim = await page.evaluate(() => {
@@ -348,6 +385,59 @@ check('every fire + alt-fire sound has its own synth branch',
 check('supporting cues exist (empty click, reload, equip)',
   audio.hasDry && audio.hasReload && audio.hasEquip,
   `dry=${audio.hasDry} reload=${audio.hasReload} equip=${audio.hasEquip}`);
+
+/* ------------------------------------------------------------------ */
+/* audio: loudness normalization, measured by rendering each shot       */
+/* ------------------------------------------------------------------ */
+// The spec wants no weapon riding louder or quieter than the rest. That is a
+// measurement, not an opinion: render each weapon's real firing recipe through
+// a copy of the live bus (same compressor settings) and compare peak levels.
+const levels = await page.evaluate(async () => {
+  const am = window.__game.audio;
+  const SR = 44100;
+  const render = async (play) => {
+    const oac = new OfflineAudioContext(2, SR * 1.2, SR);
+    const saved = { ctx: am.ctx, master: am.master, buf: am._noiseBuf };
+    am.ctx = oac;
+    am.master = oac.createGain();
+    am.master.gain.value = 0.5;
+    const comp = oac.createDynamicsCompressor();      // mirrors unlock()
+    comp.threshold.value = -16; comp.knee.value = 12; comp.ratio.value = 5;
+    comp.attack.value = 0.002; comp.release.value = 0.12;
+    am.master.connect(comp); comp.connect(oac.destination);
+    am._noiseBuf = oac.createBuffer(1, SR * 1.5, SR);
+    const d = am._noiseBuf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    play(am);
+    const out = await oac.startRendering();
+    am.ctx = saved.ctx; am.master = saved.master; am._noiseBuf = saved.buf;
+    let peak = 0, sum = 0, n = 0;
+    for (let c = 0; c < out.numberOfChannels; c++) {
+      const ch = out.getChannelData(c);
+      for (let i = 0; i < ch.length; i++) { const v = Math.abs(ch[i]); if (v > peak) peak = v; sum += ch[i] * ch[i]; n++; }
+    }
+    return { peak, rms: Math.sqrt(sum / n) };
+  };
+  const out = [];
+  for (const cfg of window.__game.weapons.weapons.map((w) => w.config)) {
+    // the bat's swing is carried by whoosh()/thud(), not a gunshot branch
+    const play = cfg.melee
+      ? (a) => { a.whoosh(); a.thud(); }
+      : (a) => a.gunshot(cfg.sound);
+    out.push({ id: cfg.id, ...(await render(play)) });
+  }
+  return out;
+});
+
+const dbfs = (v) => 20 * Math.log10(Math.max(1e-6, v));
+const peaks = levels.map((l) => dbfs(l.peak));
+const spread = Math.max(...peaks) - Math.min(...peaks);
+check('no weapon is louder or quieter than the rest (peak within 6 dB)',
+  spread <= 6,
+  levels.map((l, i) => `${l.id} ${peaks[i].toFixed(1)}dB`).join('  ') + ` — spread ${spread.toFixed(1)}dB`);
+check('every weapon actually makes a sound',
+  levels.every((l) => l.rms > 0.001),
+  levels.map((l) => `${l.id} rms ${l.rms.toFixed(4)}`).join('  '));
 
 /* ------------------------------------------------------------------ */
 /* HUD weapon menu                                                      */

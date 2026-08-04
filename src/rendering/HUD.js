@@ -666,9 +666,10 @@ export class HUD {
    * ARMS grid (small) and the fly-in ARMORY. Layered two-tone art: dark
    * gunsteel + walnut furniture + the caller's brass tone (highlights and
    * shadows derived from it), matching the real 3D models in
-   * WeaponModels.js — the Regent Autoloader, the Crane Coachgun's twin
-   * hammers, the Foundry Gun's flank pan drum, the Meridian Long Rifle's
-   * brass telescope and the Ironshod Slugger's banded, studded barrel.
+   * WeaponModels.js — the Mainspring's coil-wrapped barrel and caution
+   * banding, the Crane Coachgun's twin hammers, the Foundry Gun's flank pan
+   * drum, the Meridian Long Rifle's brass telescope and the Ironshod
+   * Slugger's banded, studded barrel.
    */
   _drawGlyph(canvas, id, color = '#d8b552') {
     const ctx = canvas.getContext('2d');
@@ -699,21 +700,38 @@ export class HUD {
       ctx.beginPath(); ctx.arc(x, y, 4.2, Math.PI * 0.05, Math.PI * 0.95); ctx.stroke();
     };
     switch (id) {
-      case 'pistol': // Regent Autoloader: brass slide, steel frame, walnut grip
-        rect(6, 9, 44, 7, brass);
-        rect(6, 9, 44, 1.4, brassHi);                                  // slide top light
-        rect(50, 11, 6, 4, steel);                                     // barrel bushing
-        rect(46, 6.6, 2, 2.4, brassSh);                                // front sight
-        rect(8, 6.6, 2.4, 2.4, steel);                                 // rear sight
-        for (let x = 9; x < 19; x += 2.5) rect(x, 10, 1.1, 5, dark);   // slide serrations
-        rect(30, 10.4, 9, 4.2, dark);                                  // ejection port
-        rect(8, 16, 38, 4, steel);                                     // frame rail
-        poly([[6, 9], [2, 5.6], [3.6, 11.5], [6, 12.5]], steel);       // hammer spur
-        guard(25, 21.5);
-        rect(24.4, 18, 1.4, 4.6, dark);                                // trigger
-        poly([[8, 20], [20, 20], [15, 33], [3, 33]], wood);            // grip
-        poly([[3, 30.6], [14.9, 30.6], [14.4, 33], [3, 33]], brassSh); // butt cap
-        dot(11, 25, 1.1, brassHi);                                     // grip screw
+      case 'pistol': // Mainspring: coil-wrapped barrel, caution band, live stack
+        rect(11, 10.4, 31, 9, steel);                                  // receiver tube
+        rect(11, 10.4, 31, 1.5, steelHi);                              //   top light
+        rect(11, 17.9, 31, 1.5, steelSh);                              //   bottom shadow
+        rect(15, 8, 15, 2.6, brass);                                   // caution banding
+        for (let x = 15.4; x < 30; x += 3.2) {                         //   diagonal stripes
+          poly([[x, 8], [x + 1.5, 8], [x - 0.3, 10.6], [x - 1.8, 10.6]], dark);
+        }
+        rect(31.4, 8.6, 9, 1.8, steelSh);                              // cooling slots
+        for (let x = 32; x < 40; x += 2) rect(x, 8.9, 1, 1.2, dark);
+        rect(29.6, 11.6, 3.4, 3.4, dark);                              // ejection port
+        rect(7.4, 11.4, 4, 7, steelSh);                                // tail housing
+        rect(4.6, 13.6, 3, 2.6, steelHi);                              // guide-rod boss
+        rect(14, 6.6, 2.6, 1.6, steel);                                // rear notch
+        rect(42, 13.2, 13, 2.8, steelHi);                              // exposed barrel
+        for (let x = 43; x < 53.5; x += 2.1) {                         // coil mainspring
+          rect(x, 11, 1.3, 7.2, steelSh);
+          rect(x, 11, 1.3, 1.4, steelHi);
+        }
+        rect(55, 11.6, 5.4, 6, dark);                                  // compensator
+        for (let x = 55.6; x < 60; x += 1.6) rect(x, 10.8, 0.9, 1.2, steelSh);
+        rect(53.4, 10.6, 1.6, 8, steelSh);                             // spring abutment
+        poly([[23, 19.4], [32, 19.4], [34.6, 31.4], [25.6, 31.4]], dark);  // magazine
+        for (let i = 0; i < 5; i++) {                                  // the round stack
+          rect(24.6 + i * 0.52, 20.8 + i * 2.1, 6.8, 1.5, brass);
+          rect(24.6 + i * 0.52, 20.8 + i * 2.1, 6.8, 0.5, brassHi);
+        }
+        poly([[25.6, 29.6], [34.6, 29.6], [34.9, 31.4], [25.9, 31.4]], brassSh); // floorplate
+        guard(19, 22.6);
+        rect(18.4, 19.4, 1.4, 3.4, dark);                              // trigger
+        poly([[11, 19.4], [20, 19.4], [17.4, 30.4], [8.4, 30.4]], steelSh); // grip
+        for (let i = 0; i < 4; i++) rect(10.2 - i * 0.6, 21.4 + i * 2.2, 8.4, 1, dark);
         break;
       case 'shotgun': // Crane Coachgun: over-under bores, twin hammers, walnut stock
         rect(24, 10.5, 33, 4.4, steel);                                // upper bore

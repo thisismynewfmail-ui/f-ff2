@@ -20,7 +20,7 @@ export const WEAPON_CONFIGS = [
   {
     id: 'pistol',
     name: 'PISTOL',
-    flavor: 'REGENT AUTOLOADER',
+    flavor: 'MAINSPRING AUTO',
     fireMode: 'SEMI',
     tacticalReload: 0.72, // quick-tap when the mag isn't empty
     slot: 1,
