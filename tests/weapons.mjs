@@ -164,6 +164,43 @@ for (const r of present) {
 }
 
 /* ------------------------------------------------------------------ */
+/* bore alignment: barrels must actually point down the weapon's axis   */
+/* ------------------------------------------------------------------ */
+// The barrel() helper lays a cylinder along -Z by consuming rotation.x. Adding
+// a rotation.z on top to spin a low-segment tube about its own axis does NOT
+// do that: under three's XYZ Euler order the .z is applied FIRST, yawing the
+// whole tube off the bore. The sniper's octagonal barrel shipped 22.5 degrees
+// sideways that way, poking out through its own concentric barrel collars.
+// Measure the real world-space axis of every long tube instead of trusting it.
+const bores = await page.evaluate(() => {
+  const out = [];
+  for (const cfg of window.__game.weapons.weapons.map((w) => w.config)) {
+    const rig = window.__game.viewModel.rigs[cfg.id];
+    if (!rig) continue;
+    rig.group.updateMatrixWorld(true);
+    const inv = rig.group.matrixWorld.clone().invert();
+    let worst = 0, worstLen = 0;
+    rig.group.traverse((o) => {
+      if (!o.isMesh || o.geometry?.type !== 'CylinderGeometry') return;
+      const h = o.geometry.parameters?.height ?? 0;
+      if (h < 0.08) return;                       // real barrels, not washers
+      if (Math.abs(o.rotation.x + Math.PI / 2) > 1e-6) return;  // laid by barrel()
+      // the cylinder's long axis is its local +Y — the matrix's second column
+      const e = inv.clone().multiply(o.matrixWorld).elements;
+      const len = Math.hypot(e[4], e[5], e[6]);
+      const dev = Math.acos(Math.min(1, Math.abs(e[6] / len))) * 180 / Math.PI;
+      if (dev > worst) { worst = dev; worstLen = h; }
+    });
+    out.push({ id: cfg.id, worst: +worst.toFixed(2), len: +worstLen.toFixed(3) });
+  }
+  return out;
+});
+for (const b of bores) {
+  check(`${b.id}: every barrel runs true down the bore axis`,
+    b.worst < 10, `worst tube off-axis by ${b.worst}°${b.len ? ` (${b.len}m tube)` : ''}`);
+}
+
+/* ------------------------------------------------------------------ */
 /* animation behaviour, sampled off the real rigs                       */
 /* ------------------------------------------------------------------ */
 const anim = await page.evaluate(() => {

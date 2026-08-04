@@ -71,7 +71,15 @@ function box(w, h, d, mat, x, y, z) { return mesh(new THREE.BoxGeometry(w, h, d)
 function cyl(rt, rb, h, mat, seg = 14, x = 0, y = 0, z = 0) {
   return mesh(new THREE.CylinderGeometry(rt, rb, h, seg), mat, x, y, z);
 }
-/** Cylinder laid along the Z axis (barrels, tubes). rt = muzzle end. */
+/**
+ * Cylinder laid along the Z axis (barrels, tubes). rt = muzzle end.
+ *
+ * NOTE: this consumes rotation.x. To spin a low-segment tube about its own
+ * long axis (putting a flat on top of an octagonal barrel, say) set
+ * rotation.y — under three's default XYZ Euler order that is applied while
+ * the cylinder still stands on its native Y axis. Setting rotation.z instead
+ * is applied BEFORE the .x here and yaws the whole tube off-axis.
+ */
 function barrel(rt, rb, len, mat, seg = 16, x = 0, y = 0, z = 0) {
   const m = cyl(rt, rb, len, mat, seg, x, y, z);
   m.rotation.x = -Math.PI / 2; // cylinder top (rt) faces -Z
@@ -789,9 +797,12 @@ function buildRifle() {
 function buildSniper() {
   const g = new THREE.Group();
 
-  // slim octagonal blued barrel — a precision instrument, not a pipe
+  // Slim octagonal blued barrel — a precision instrument, not a pipe. The
+  // half-facet spin that puts a flat on top MUST go on rotation.y: tube()
+  // has already set rotation.x, and with three's XYZ Euler order a .z here is
+  // applied first, which yaws the whole barrel 22.5 degrees off the bore.
   const oct = tube(0.0145, 0.62, blued(), 8, 0, 0.03, -0.42);
-  oct.rotation.z = Math.PI / 8;
+  oct.rotation.y = Math.PI / 8;
   g.add(oct);
   g.add(barrel(0.017, 0.0145, 0.035, nickel(), 8, 0, 0.03, -0.715)); // muzzle crown
   g.add(box(0.007, 0.016, 0.005, nickel(), 0, 0.055, -0.69));        // blade sight
