@@ -320,7 +320,39 @@ There is deliberately no command that touches the kill counter — the
   rumble and sink into the ground when a district opens; the world tells
   you, not a popup.
 - **Terrain:** a real heightfield — the chapel hill climbs 16 m, the park
-  drops into a ravine with a pond, steep slopes slow you down.
+  drops into a ravine, steep slopes slow you down. Roads, plazas and ground
+  decals are **draped**: the waypoints are a road's shape, not its resolution,
+  so every centreline is resampled at a metre and subdivided across its width,
+  and it samples `meshHeightAt` — the *rendered* ground — rather than the
+  analytic height function the ground mesh only approximates. The **pond** is a real
+  basin: a terrain pad sunk into the ravine floor, with the water built as a
+  sheet clipped to it — a quad is emitted only where all four corners are
+  genuinely below the water line, so the shoreline follows the ground exactly
+  and can never float. Its level is taken from the ground that *surrounds* the
+  basin rather than from its own floor, which is the property that stops the
+  surface reading as standing proud of the bank it meets. Two sheets drift
+  across each other at different scales to give it movement.
+- **The world barrier (`src/world/Boundary.js`):** the map is ringed by a
+  terrain-following **stone rampart** — battered plinth, buttresses, a
+  crenellated parapet, octagonal corner bastions, and a **bricked-up
+  gatehouse** wherever a road runs out at it. This is *not* a district
+  barrier: it never sinks and never opens, and it is deliberately the
+  opposite of the white-marble district walls in every register (dark
+  granite, mossed to the string course) because it reads as geography
+  rather than as architecture.
+- **Facade material sets (`src/world/Materials.js`):** no building is given a
+  bare wall texture. It is given a **set** — wall, roof, door, window,
+  foundation and trim chosen together, the way a real building's materials
+  were. Brick gets a stone plinth and a stone belt course; clapboard gets
+  painted timber trim and rubble footings; a curtain-walled tower gets steel
+  channel and poured concrete. Twenty-two sets, and two passes guarantee **no
+  two neighbours share one** — the second runs on the *resolved* wall texture,
+  because weathering collapses distinct sets onto shared worn twins.
+- **Spatial weathering:** every set names a weathered twin of its wall and
+  roof — moss to the sill line, paint flaking off grey timber, render blown
+  off the brick, water staining under every joint — and they swap in as a
+  squared distance falloff bites toward the map rim. The commercial core reads
+  kept-up and the outskirts read abandoned with nothing hand-placed.
 - **The city:** every district is filled with purpose. Downtown carries a
   real skyline — seven solid high-rises (up to 34 m) with rooftop water
   tanks, masts and blinking aviation beacons, plus the **Meridian Tower**,
@@ -331,9 +363,27 @@ There is deliberately no command that touches the kill counter — the
   crop-row fields, an orchard planted in ranks, and a windmill that turns
   without wind. Old Town keeps a market morning that never ended, and North
   Ave holds an abandoned checkpoint.
+  The **z=-120 street wall** carries five enterable shops and a firehouse,
+  with four **service alleys** between them feeding a lane behind the row —
+  the flanking routes that make the grid worth learning. **Founders Square**
+  breaks up the block grid with a bronze landmark visible from three streets,
+  and the industrial water tower is painted so it can do the same job from the
+  other end of town.
   Intact **parked cars are functional props**: shoot one and its alarm
   blinks and chirps — and every zombie in earshot converges on it instead
-  of you.
+  of you. Cars, vans, pickups and buses are all built by one coachbuilder
+  (`PropKit._vehicle`) — sills, wheel arches, raked screens, bumpers, grilles
+  and lamps — and merged down to a handful of draw calls each.
+  The **firehouse siren** and the **record-shop turntable** send the same
+  noise signal a car alarm does: start one and leave down the alley behind it,
+  and the block clears itself.
+- **Hollow Park** is the one place in town that still moves: a **carousel**
+  that turns (push it and it runs faster), a **flag** that ripples, a **rope
+  swing** that keeps its arc, reeds along the pond margin, a jetty and a
+  footbridge. Nothing is driving any of it. Its spawn points sit deliberately
+  **behind cover** — each one gets a screen of undergrowth planted between it
+  and the open ground you would approach from, so the first you know of a
+  thing is the movement, not the spawn.
 - **Wrongness (cosmic-horror layer, `src/world/Anomalies.js`):** the town
   whispers rather than screams. Shadows with no owners cast against the
   sun. A cottage whose interior is walled almost a metre inside its
@@ -446,7 +496,9 @@ and fast.
 node tests/ai.mjs                     # no browser needed
 
 npm install playwright-core           # anywhere; NODE_PATH it if needed
+node tests/world.mjs
 node tests/npc-behavior.mjs
+node tests/weapons.mjs
 node tests/smoke.mjs [--screens]
 ```
 
@@ -469,6 +521,24 @@ zombie type's own sight range with hysteresis and returns to ordinary behaviour
 afterwards, the Exploder still fuses and the Spitter still kites and aims, and
 `cullBlindSeconds` culls a permanently blind zombie when set and leaves it alone
 when not.
+
+`world.mjs` audits the built town for the structural mistakes that are
+invisible in a code review and obvious the moment you walk into them: buildings
+that hang over a slope or sink into one, footprints that overlap, anything
+parked in a doorway or standing inside a building, two vehicles on the same
+ground, neighbours sharing a wall texture, weathering that isn't actually
+spatial, unfurnished interiors, alleys too narrow to path down, spawn points on
+blocked ground, roads floating over or cutting into the ground (sampled inside
+each triangle, since the vertices sit on the terrain by construction and only
+the middle of a long span misbehaves), a pond floating over its own bed, and
+gaps in the world barrier
+— including walking the player hard into the wall from eight directions to
+confirm it holds. It also **floods the nav grid from the spawn** and asserts
+that no locked district is reachable on foot, which is the check that catches a
+border wall stopping short of the map edge. It is what found the market stall
+parked in a doorway, the house standing on top of the filling station, the
+chapel's bell tower built over its own front door, and the eight-metre slot you
+could walk through from Eastgate into Downtown without earning it.
 
 `smoke.mjs` drives the real game headless: boot without errors, movement, town
 structure, wave spawning, ammo consumption, an end-to-end gunfire kill, zone

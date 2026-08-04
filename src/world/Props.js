@@ -52,22 +52,204 @@ export class PropKit {
     return group;
   }
 
-  // Untextured-by-design props use flat colors (geometry ready for future
-  // texturing per the spec).
-  wreckedCar(paint = 0x5a3b34) {
+  /* ---- vehicles -------------------------------------------------------
+   * Every car in town is built by one coachbuilder. `_vehicle` lays out a
+   * real body — sills, wheel arches, a bonnet and boot at different heights
+   * from the cabin, a raked screen, bumpers, grille, lamps and mirrors — and
+   * the variants differ in proportion rather than in colour, so a pickup
+   * reads as a pickup and a van reads as a van at fifty metres. Each finished
+   * body is merged down to one mesh per material, which is what makes it
+   * affordable to have this much geometry parked all over the map.       */
+
+  /**
+   * @param {object} o
+   *  paint    body colour
+   *  kind     'sedan' | 'pickup' | 'van' | 'bus' | 'cruiser'
+   *  wrecked  strip the glass, drop a wheel, crush the roof, burn the paint
+   *  lit      build working headlamps and return them (car alarms)
+   */
+  _vehicle({ paint = 0x39465e, kind = 'sedan', wrecked = false, lit = false } = {}) {
     const g = new THREE.Group();
-    const body = this.box(4.2, 0.9, 1.9, this.colorMat(paint));
-    body.position.y = 0.65;
-    const cabin = this.box(2.2, 0.7, 1.7, this.colorMat(0x22262b));
-    cabin.position.set(-0.2, 1.4, 0);
-    g.add(body, cabin);
-    for (const [wx, wz] of [[-1.4, 1], [1.4, 1], [-1.4, -1], [1.4, -1]]) {
-      const wheel = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.32, 0.25, 8), this.colorMat(0x14161a));
-      wheel.rotation.x = Math.PI / 2;
-      wheel.position.set(wx, 0.3, wz * 0.95);
-      g.add(wheel);
+    const P = { sedan: [4.2, 1.9], pickup: [4.8, 2.0], van: [5.0, 2.1], bus: [8.4, 2.4], cruiser: [4.4, 1.95] }[kind];
+    const [L, W] = P;
+    const hl = L / 2, hw = W / 2;
+    const body = this.colorMat(wrecked ? mixHex(paint, 0x2a2622, 0.45) : paint);
+    const dark = this.colorMat(0x1c1f23);
+    const tyre = this.colorMat(0x14161a);
+    const chrome = this.colorMat(0x9aa0a4);
+    const glass = wrecked ? this.colorMat(0x0e1114) : this.mat('window');
+
+    // --- lower body: sill, main tub, wheel arches
+    const sill = this.box(L - 0.3, 0.22, W - 0.06, dark);
+    sill.position.y = 0.42;
+    const tub = this.box(L - 0.1, 0.52, W, body);
+    tub.position.y = 0.76;
+    g.add(sill, tub);
+    const axleF = hl - (kind === 'bus' ? 2.6 : 0.95);
+    const axleR = -hl + (kind === 'bus' ? 1.9 : 0.95);
+    for (const ax of [axleF, axleR]) {
+      for (const s of [-1, 1]) {
+        const arch = this.box(1.0, 0.34, 0.16, body);
+        arch.position.set(ax, 0.72, s * (hw - 0.03));
+        g.add(arch);
+      }
     }
-    return { group: g, collide: [2.2, 1.0, 1.1] };
+
+    // --- upper body: bonnet, cabin, boot / load bed
+    const cabLen = { sedan: 2.0, pickup: 1.7, van: 3.2, bus: 6.6, cruiser: 2.0 }[kind];
+    const cabX = { sedan: -0.15, pickup: 0.25, van: -0.4, bus: -0.2, cruiser: -0.15 }[kind];
+    const cabTop = { sedan: 1.66, pickup: 1.72, van: 2.02, bus: 2.5, cruiser: 1.7 }[kind];
+    const bonnet = this.box(hl - cabX - cabLen / 2, 0.22, W - 0.22, body);
+    bonnet.position.set((hl + cabX + cabLen / 2) / 2, 1.11, 0);
+    g.add(bonnet);
+    if (kind === 'pickup') {              // open load bed with sides
+      const bed = this.box(1.9, 0.1, W - 0.3, dark);
+      bed.position.set(-hl + 1.05, 1.06, 0);
+      g.add(bed);
+      for (const s of [-1, 1]) {
+        const side = this.box(1.9, 0.45, 0.12, body);
+        side.position.set(-hl + 1.05, 1.26, s * (hw - 0.16));
+        g.add(side);
+      }
+      const tail = this.box(0.12, 0.45, W - 0.3, body);
+      tail.position.set(-hl + 0.14, 1.26, 0);
+      g.add(tail);
+    } else if (kind === 'sedan' || kind === 'cruiser') {
+      const boot = this.box(-hl - (cabX - cabLen / 2), 0.22, W - 0.22, body);
+      boot.position.set((-hl + cabX - cabLen / 2) / 2, 1.11, 0);
+      g.add(boot);
+    }
+    // cabin shell: pillars + roof, glass filling the gaps
+    const cabH = cabTop - 1.2;
+    for (const s of [-1, 1]) {            // side glass
+      const pane = this.box(cabLen - 0.24, cabH - 0.14, 0.05, glass);
+      pane.position.set(cabX, 1.2 + cabH / 2, s * (hw - 0.12));
+      g.add(pane);
+    }
+    const screen = this.box(0.12, cabH + 0.12, W - 0.3, glass);
+    screen.position.set(cabX + cabLen / 2 - 0.06, 1.2 + cabH / 2, 0);
+    screen.rotation.z = kind === 'van' || kind === 'bus' ? 0.08 : 0.28;   // rake
+    const rear = this.box(0.12, cabH + 0.06, W - 0.34, glass);
+    rear.position.set(cabX - cabLen / 2 + 0.06, 1.2 + cabH / 2, 0);
+    rear.rotation.z = kind === 'van' || kind === 'bus' ? -0.05 : -0.3;
+    g.add(screen, rear);
+    for (const [px, pz] of [[cabLen / 2 - 0.1, hw - 0.1], [cabLen / 2 - 0.1, -hw + 0.1],
+      [-cabLen / 2 + 0.1, hw - 0.1], [-cabLen / 2 + 0.1, -hw + 0.1]]) {
+      const pillar = this.box(0.16, cabH, 0.16, body);
+      pillar.position.set(cabX + px, 1.2 + cabH / 2, pz);
+      g.add(pillar);
+    }
+    if (kind === 'bus' || kind === 'van') {  // a centre pillar between the bays
+      const mid = this.box(0.14, cabH, W - 0.1, body);
+      mid.position.set(cabX, 1.2 + cabH / 2, 0);
+      g.add(mid);
+    }
+    const roof = this.box(cabLen + 0.12, 0.14, W - 0.14, body);
+    roof.position.set(cabX, cabTop, 0);
+    if (wrecked) { roof.rotation.z = 0.09; roof.position.y -= 0.16; }   // stoved in
+    g.add(roof);
+
+    // --- ends: bumpers, grille, lamps, plate, mirrors
+    if (!wrecked || kind === 'bus') {
+      for (const s of [1, -1]) {
+        const bump = this.box(0.3, 0.3, W - 0.04, chrome);
+        bump.position.set(s * (hl - 0.02), 0.66, 0);
+        g.add(bump);
+      }
+    } else {                                  // front bumper hanging off
+      const bump = this.box(0.3, 0.3, W - 0.04, chrome);
+      bump.position.set(-hl + 0.02, 0.6, 0);
+      g.add(bump);
+      const loose = this.box(0.28, 0.26, W * 0.55, chrome);
+      loose.position.set(hl - 0.1, 0.38, 0.3);
+      loose.rotation.z = 0.4;
+      g.add(loose);
+    }
+    const grille = this.box(0.12, 0.3, W * 0.62, dark);
+    grille.position.set(hl + 0.02, 0.94, 0);
+    g.add(grille);
+    const plate = this.box(0.05, 0.16, 0.5, this.colorMat(0xc8c4b4));
+    plate.position.set(hl + 0.08, 0.62, 0);
+    g.add(plate);
+    const lights = [];
+    for (const s of [-1, 1]) {
+      if (lit) {
+        const lamp = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.2, 0.34),
+          new THREE.MeshBasicMaterial({ color: 0xffc861 }));
+        lamp.position.set(hl + 0.03, 0.98, s * (hw - 0.32));
+        lamp.visible = false;              // dark until the alarm trips
+        lights.push(lamp);                 // added after the merge
+      } else {
+        const lamp = this.box(0.09, 0.2, 0.34, wrecked ? dark : this.colorMat(0xd8d4c0));
+        lamp.position.set(hl + 0.03, 0.98, s * (hw - 0.32));
+        g.add(lamp);
+      }
+      const tail = this.box(0.08, 0.16, 0.28, this.colorMat(wrecked ? 0x3a1a18 : 0x8c2a22));
+      tail.position.set(-hl - 0.02, 0.96, s * (hw - 0.3));
+      g.add(tail);
+      const mirror = this.box(0.1, 0.12, 0.2, body);
+      mirror.position.set(cabX + cabLen / 2 + 0.08, 1.42, s * (hw + 0.06));
+      g.add(mirror);
+    }
+
+    // --- wheels. A wreck has lost one and sits on the drum.
+    let drop = wrecked ? 1 : -1;
+    for (const ax of [axleF, axleR]) {
+      for (const s of [-1, 1]) {
+        const missing = wrecked && ax === axleF && s === 1;
+        const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.13, 0.3, 8), chrome);
+        hub.rotation.x = Math.PI / 2;
+        hub.position.set(ax, missing ? 0.2 : 0.36, s * (hw - 0.13));
+        g.add(hub);
+        if (missing) { drop = 1; continue; }
+        const wheel = new THREE.Mesh(new THREE.CylinderGeometry(0.36, 0.36, 0.28, 10), tyre);
+        wheel.rotation.x = Math.PI / 2;
+        wheel.position.set(ax, 0.36, s * (hw - 0.13));
+        g.add(wheel);
+      }
+    }
+    if (wrecked) g.rotation.z = 0.03 * drop;   // settled onto the flat corner
+
+    if (kind === 'cruiser') {                  // light bar and door flashes
+      const bar = this.box(1.1, 0.16, 0.9, dark);
+      bar.position.set(cabX + 0.1, cabTop + 0.14, 0);
+      g.add(bar);
+      for (const [ox, c] of [[-0.32, 0xb03028], [0.32, 0x2a58b0]]) {
+        const dome = this.box(0.4, 0.12, 0.34, this.colorMat(c));
+        dome.position.set(cabX + 0.1 + ox, cabTop + 0.2, 0);
+        g.add(dome);
+      }
+      for (const s of [-1, 1]) {
+        const flash = this.box(1.5, 0.36, 0.04, this.colorMat(0xdcdcd4));
+        flash.position.set(cabX, 0.82, s * (hw + 0.02));
+        g.add(flash);
+      }
+    }
+
+    mergeStatic(g);
+    for (const l of lights) g.add(l);        // animated, so kept out of the merge
+    return { group: g, collide: [hl, 1.0, hw], lights, kind };
+  }
+
+  wreckedCar(paint = 0x5a3b34, kind = 'sedan') {
+    return this._vehicle({ paint, kind, wrecked: true });
+  }
+
+  /** Delivery van / box truck — taller cover than a car, blocks a lane. */
+  van(paint = 0x6b6f60, wrecked = false) {
+    return this._vehicle({ paint, kind: 'van', wrecked });
+  }
+
+  /** Pickup with an open bed. */
+  pickup(paint = 0x694f28, wrecked = false) {
+    return this._vehicle({ paint, kind: 'pickup', wrecked });
+  }
+
+  /** City bus abandoned across a street — the biggest piece of hard cover. */
+  bus(paint = 0x2f6a52) {
+    const v = this._vehicle({ paint, kind: 'bus', wrecked: true });
+    v.collide = [4.2, 1.4, 1.2];
+    return v;
   }
 
   lamppost() {
@@ -539,11 +721,19 @@ export class PropKit {
         g.add(brace);
       }
     }
-    const tank = new THREE.Mesh(new THREE.CylinderGeometry(3, 3, 4.5, 10), this.mat('wallMetal'));
+    // Painted, not galvanised: a water tower is the classic town landmark, and
+    // it can only do that job if you can pick it out of the skyline from the
+    // far side of the map. The band round its waist is what makes it read as
+    // a tower rather than as another grey drum.
+    const tank = new THREE.Mesh(new THREE.CylinderGeometry(3, 3, 4.5, 10), this.colorMat(0x2f8fa0));
     tank.position.y = 11.2;
-    const cap = new THREE.Mesh(new THREE.ConeGeometry(3.3, 1.4, 10), this.mat('roofMetal'));
+    const band = new THREE.Mesh(new THREE.CylinderGeometry(3.06, 3.06, 1.5, 10), this.colorMat(0xe4e0d2));
+    band.position.y = 11.2;
+    const stripe = new THREE.Mesh(new THREE.CylinderGeometry(3.09, 3.09, 0.3, 10), this.colorMat(0xb0392e));
+    stripe.position.y = 12.4;
+    const cap = new THREE.Mesh(new THREE.ConeGeometry(3.3, 1.4, 10), this.colorMat(0xb0392e));
     cap.position.y = 14.2;
-    g.add(tank, cap);
+    g.add(tank, band, stripe, cap);
     return { group: g, collide: [2.2, 7.2, 2.2] };
   }
 
@@ -744,29 +934,8 @@ export class PropKit {
    * real (normally dark) so its alarm can blink them; shooting it sets the
    * alarm off, and the noise pulls the horde. Returns the light meshes.
    */
-  parkedCar(paint = 0x39465e) {
-    const g = new THREE.Group();
-    const body = this.box(4.2, 0.9, 1.9, this.colorMat(paint));
-    body.position.y = 0.65;
-    const cabin = this.box(2.2, 0.7, 1.7, 'window');
-    cabin.position.set(-0.2, 1.4, 0);
-    g.add(body, cabin);
-    for (const [wx, wz] of [[-1.4, 1], [1.4, 1], [-1.4, -1], [1.4, -1]]) {
-      const wheel = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.32, 0.25, 8), this.colorMat(0x14161a));
-      wheel.rotation.x = Math.PI / 2;
-      wheel.position.set(wx, 0.3, wz * 0.95);
-      g.add(wheel);
-    }
-    const lights = [];
-    for (const sz of [-0.6, 0.6]) {
-      const lamp = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.16, 0.3),
-        new THREE.MeshBasicMaterial({ color: 0xffc861 }));
-      lamp.position.set(2.12, 0.75, sz);
-      lamp.visible = false; // dark until the alarm trips
-      g.add(lamp);
-      lights.push(lamp);
-    }
-    return { group: g, collide: [2.2, 1.0, 1.1], lights };
+  parkedCar(paint = 0x39465e, kind = 'sedan') {
+    return this._vehicle({ paint, kind, lit: true });
   }
 
   /** Concrete jersey barrier — abandoned checkpoint furniture. */
@@ -843,6 +1012,385 @@ export class PropKit {
     return { group: g, collide: [0.95, 0.5, 0.85] };
   }
 
+  /* ---- urban street furniture ---------------------------------------- */
+
+  /**
+   * Zig-zag fire escape bolted to an alley wall: landings, ladders between
+   * them, and the counterweighted bottom flight still hanging down. Purely
+   * scenic above the first landing — but it is what makes an alley read as an
+   * alley the instant you turn into one.
+   */
+  fireEscape(floors = 3, storey = 2.8) {
+    const g = new THREE.Group();
+    const steel = this.mat('metalRust');
+    for (let f = 0; f < floors; f++) {
+      const y = 2.6 + f * storey;
+      const deck = this.box(2.6, 0.08, 1.15, 'metalRust');
+      deck.position.set(0, y, 0.55);
+      g.add(deck);
+      for (const sx of [-1.25, 1.25]) {   // stringers back to the wall
+        const rail = this.box(0.06, 0.95, 0.06, 'metalRust');
+        rail.position.set(sx, y + 0.5, 1.05);
+        g.add(rail);
+      }
+      const front = this.box(2.6, 0.06, 0.06, 'metalRust');
+      front.position.set(0, y + 0.95, 1.1);
+      const mid = this.box(2.6, 0.06, 0.06, 'metalRust');
+      mid.position.set(0, y + 0.5, 1.1);
+      g.add(front, mid);
+      for (const sz of [0.1, 1.05]) {     // balusters
+        for (let i = -2; i <= 2; i++) {
+          const bar = this.box(0.04, 0.95, 0.04, 'metalRust');
+          bar.position.set(i * 0.6, y + 0.5, sz);
+          g.add(bar);
+        }
+      }
+      // the flight up to the next landing, alternating sides
+      if (f < floors - 1) {
+        const side = f % 2 ? -1 : 1;
+        const flight = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.08, storey * 1.15), steel);
+        flight.position.set(side * 0.85, y + storey / 2, 0.55);
+        flight.rotation.x = -Math.atan2(storey, storey * 1.05);
+        g.add(flight);
+        for (let s = 0; s < 7; s++) {
+          const step = this.box(0.9, 0.05, 0.16, 'metalRust');
+          const t = (s + 0.5) / 7;
+          step.position.set(side * 0.85, y + 0.1 + t * storey, 0.05 + t * 1.0);
+          g.add(step);
+        }
+      }
+      // brackets carrying the landing back into the wall
+      for (const sx of [-1.1, 1.1]) {
+        const brace = this.box(0.08, 0.08, 1.1, 'metalRust');
+        brace.position.set(sx, y - 0.35, 0.5);
+        brace.rotation.x = -0.5;
+        g.add(brace);
+      }
+    }
+    // drop ladder, lowered years ago and never raised
+    const ladder = new THREE.Group();
+    for (const sx of [-0.28, 0.28]) {
+      const rail = this.box(0.05, 2.6, 0.05, 'metalRust');
+      rail.position.set(sx, 1.3, 0);
+      ladder.add(rail);
+    }
+    for (let r = 0; r < 7; r++) {
+      const rung = this.box(0.6, 0.04, 0.04, 'metalRust');
+      rung.position.set(0, 0.2 + r * 0.36, 0);
+      ladder.add(rung);
+    }
+    ladder.position.set(1.1, 0, 0.9);
+    ladder.rotation.x = 0.12;
+    g.add(ladder);
+    // No collider: everything here is overhead, and the wall it is bolted to
+    // already blocks the ground it stands against.
+    return { group: g, collide: null };
+  }
+
+  /**
+   * The founder on his plinth: the downtown square's wayfinding landmark.
+   * Weathered bronze, one arm raised — and, since nothing in this town is
+   * quite right, he is looking at the ground rather than the horizon.
+   */
+  statue() {
+    const g = new THREE.Group();
+    const step = this.box(3.2, 0.35, 3.2, 'wallStone');
+    step.position.y = 0.17;
+    const plinth = this.box(2.0, 2.2, 2.0, 'marbleWhite');
+    plinth.position.y = 1.45;
+    const cap = this.box(2.25, 0.22, 2.25, 'trimStone');
+    cap.position.y = 2.66;
+    const plaque = this.box(1.1, 0.6, 0.05, 'goldMetal');
+    plaque.position.set(0, 1.5, 1.02);
+    g.add(step, plinth, cap, plaque);
+    const bronze = this.colorMat(0x4d6151);
+    const legs = this.box(0.62, 1.1, 0.44, bronze);
+    legs.position.y = 3.32;
+    const coat = this.box(0.78, 1.0, 0.5, bronze);
+    coat.position.y = 4.32;
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.24, 8, 6), bronze);
+    head.position.set(0, 5.0, 0.1);
+    const armUp = this.box(0.18, 0.95, 0.18, bronze);
+    armUp.position.set(0.5, 4.75, 0);
+    armUp.rotation.z = -0.5;
+    const armDown = this.box(0.18, 0.85, 0.18, bronze);
+    armDown.position.set(-0.48, 4.2, 0.06);
+    armDown.rotation.z = 0.2;
+    g.add(legs, coat, head, armUp, armDown);
+    return { group: g, collide: [1.2, 1.4, 1.2] };
+  }
+
+  /** Street planter: a concrete tub with something still alive in it. */
+  planter(veg) {
+    const g = new THREE.Group();
+    const tub = this.box(1.3, 0.6, 1.3, 'wallConcrete');
+    tub.position.y = 0.3;
+    const soil = this.box(1.1, 0.06, 1.1, 'dirt');
+    soil.position.y = 0.6;
+    g.add(tub, soil);
+    if (veg) { veg.position.y = 0.62; g.add(veg); }
+    return { group: g, collide: [0.68, 0.35, 0.68] };
+  }
+
+  /** Wire litter bin, overflowing, at every corner it should be at. */
+  trashCan() {
+    const g = new THREE.Group();
+    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.24, 0.85, 8), this.mat('metalRust'));
+    body.position.y = 0.43;
+    const rim = new THREE.Mesh(new THREE.TorusGeometry(0.28, 0.035, 5, 10), this.mat('metalRust'));
+    rim.rotation.x = Math.PI / 2;
+    rim.position.y = 0.86;
+    const sack = this.box(0.42, 0.3, 0.42, this.colorMat(0x2a2c2a));
+    sack.position.y = 0.96;
+    g.add(body, rim, sack);
+    return { group: g, collide: [0.3, 0.45, 0.3] };
+  }
+
+  /** Corner newsstand: a kiosk with the last edition still racked. */
+  newsstand() {
+    const g = new THREE.Group();
+    const body = this.box(2.2, 2.1, 1.2, 'wallMetal');
+    body.position.y = 1.05;
+    const shutter = this.box(1.8, 1.0, 0.06, 'doorGarage');
+    shutter.position.set(0, 1.45, 0.62);
+    const counter = this.box(2.3, 0.1, 0.55, 'wallWood');
+    counter.position.set(0, 0.92, 0.82);
+    const roof = this.box(2.6, 0.12, 1.7, 'roofMetal');
+    roof.position.set(0, 2.2, 0.16);
+    g.add(body, shutter, counter, roof);
+    for (let i = 0; i < 4; i++) {   // papers gone soft in the weather
+      const stack = this.box(0.38, 0.07, 0.44, this.colorMat(0xb8b2a0));
+      stack.position.set(-0.75 + i * 0.5, 0.99, 0.82);
+      g.add(stack);
+    }
+    return { group: g, collide: [1.2, 1.05, 0.85] };
+  }
+
+  /** Cast bollard guarding a kerb line. */
+  bollard() {
+    const g = new THREE.Group();
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.14, 0.9, 8), this.mat('metalRust'));
+    post.position.y = 0.45;
+    const cap = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 5), this.mat('metalRust'));
+    cap.position.y = 0.92;
+    g.add(post, cap);
+    return { group: g, collide: [0.16, 0.5, 0.16] };
+  }
+
+  /** Alley service pipework climbing a wall, with a dripping elbow. */
+  wallPipes(h = 6) {
+    const g = new THREE.Group();
+    for (const [sx, r] of [[-0.35, 0.09], [0, 0.13], [0.32, 0.07]]) {
+      const pipe = new THREE.Mesh(new THREE.CylinderGeometry(r, r, h, 6), this.mat('metalRust'));
+      pipe.position.set(sx, h / 2, 0);
+      g.add(pipe);
+      for (let y = 1.2; y < h; y += 2.2) {
+        const clamp = this.box(r * 3, 0.12, 0.2, 'metalRust');
+        clamp.position.set(sx, y, 0.08);
+        g.add(clamp);
+      }
+    }
+    const elbow = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.13, 0.9, 6), this.mat('metalRust'));
+    elbow.rotation.z = Math.PI / 2;
+    elbow.position.set(0.45, 1.6, 0);
+    g.add(elbow);
+    return { group: g, collide: null };   // flush to the wall behind it
+  }
+
+  /* ---- park furniture --------------------------------------------------
+   * The park's job is to be the one place in town that still moves. These
+   * are the moving parts: a carousel that turns, a flag that ripples, a rope
+   * swing that swings. All of them hand their animated node back to the
+   * caller, which registers it for the per-frame pass in Anomalies.        */
+
+  /**
+   * Children's carousel — a roundabout with painted horses on poles. Returns
+   * `deck`, the group that turns. Nobody is pushing it.
+   */
+  carousel() {
+    const g = new THREE.Group();
+    const base = new THREE.Mesh(new THREE.CylinderGeometry(3.2, 3.5, 0.4, 12), this.mat('wallConcrete'));
+    base.position.y = 0.2;
+    g.add(base);
+    const deck = new THREE.Group();
+    deck.position.y = 0.4;
+    const floor = new THREE.Mesh(new THREE.CylinderGeometry(3.0, 3.0, 0.18, 12), this.mat('floorWood'));
+    floor.position.y = 0.09;
+    deck.add(floor);
+    const column = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.34, 3.0, 8), this.mat('metalRust'));
+    column.position.y = 1.6;
+    deck.add(column);
+    const canopy = new THREE.Mesh(new THREE.ConeGeometry(3.3, 1.2, 12), this.colorMat(0x8a3a34));
+    canopy.position.y = 3.5;
+    deck.add(canopy);
+    const finial = new THREE.Mesh(new THREE.SphereGeometry(0.2, 8, 6), this.mat('goldMetal'));
+    finial.position.y = 4.2;
+    deck.add(finial);
+    const horseCols = [0xc8c2b0, 0x8a6a4a, 0x6a7a8a, 0xb08a5a];
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * Math.PI * 2;
+      const px = Math.cos(a) * 2.2, pz = Math.sin(a) * 2.2;
+      const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 2.9, 6), this.mat('goldMetal'));
+      pole.position.set(px, 1.6, pz);
+      deck.add(pole);
+      if (i % 2) continue;                 // half the horses are long gone
+      const horse = new THREE.Group();
+      const barrel = this.box(1.0, 0.42, 0.3, this.colorMat(horseCols[i % 4]));
+      barrel.position.y = 1.1;
+      const neck = this.box(0.3, 0.5, 0.26, this.colorMat(horseCols[i % 4]));
+      neck.position.set(0.42, 1.42, 0);
+      neck.rotation.z = -0.35;
+      const head = this.box(0.42, 0.22, 0.22, this.colorMat(horseCols[i % 4]));
+      head.position.set(0.66, 1.68, 0);
+      horse.add(barrel, neck, head);
+      for (const [lx, lz] of [[-0.3, 0.12], [-0.3, -0.12], [0.3, 0.12], [0.3, -0.12]]) {
+        const leg = this.box(0.12, 0.55, 0.12, this.colorMat(horseCols[i % 4]));
+        leg.position.set(lx, 0.66, lz);
+        horse.add(leg);
+      }
+      horse.position.set(px, 0, pz);
+      horse.rotation.y = -a + Math.PI / 2;
+      deck.add(horse);
+    }
+    g.add(deck);
+    return { group: g, collide: [3.3, 1.6, 3.3], deck };
+  }
+
+  /**
+   * Flagpole. The flag is a chain of short strips whose yaw is driven with a
+   * travelling phase, which is the cheapest convincing ripple there is.
+   * Returns `strips` for the animator.
+   */
+  flagpole(h = 7, color = 0x8a2a24) {
+    const g = new THREE.Group();
+    const base = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.5, 0.35, 8), this.mat('wallConcrete'));
+    base.position.y = 0.17;
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.09, h, 6), this.colorMat(0xb4b8ba));
+    pole.position.y = h / 2;
+    const ball = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 6), this.mat('goldMetal'));
+    ball.position.y = h + 0.1;
+    g.add(base, pole, ball);
+    const strips = [];
+    const mat = new THREE.MeshLambertMaterial({ color, side: THREE.DoubleSide });
+    let parent = g;
+    for (let i = 0; i < 5; i++) {
+      const seg = new THREE.Group();
+      seg.position.x = i === 0 ? 0.09 : 0.46;
+      if (i === 0) seg.position.y = h - 1.4;
+      // The cloth lies in the pole's XY plane so its width runs along the
+      // chain: each segment then yaws about the pole's axis and the wave
+      // travels out along the flag instead of flapping it edge-on.
+      const cloth = new THREE.Mesh(new THREE.PlaneGeometry(0.46, 1.3), mat);
+      cloth.position.set(0.23, 0, 0);
+      seg.add(cloth);
+      parent.add(seg);
+      strips.push(seg);
+      parent = seg;
+    }
+    return { group: g, collide: [0.5, 0.4, 0.5], strips };
+  }
+
+  /** Rope swing on a bough. Returns the pivot so it can be given a push. */
+  ropeSwing() {
+    const g = new THREE.Group();
+    const bough = this.box(2.6, 0.16, 0.16, 'bark');
+    bough.position.y = 3.4;
+    g.add(bough);
+    const pivot = new THREE.Group();
+    pivot.position.set(0.3, 3.4, 0);
+    for (const s of [-0.16, 0.16]) {
+      const rope = this.box(0.035, 2.2, 0.035, this.colorMat(0x8a7a58));
+      rope.position.set(s, -1.1, 0);
+      pivot.add(rope);
+    }
+    const seat = this.box(0.5, 0.07, 0.24, 'wallWood');
+    seat.position.y = -2.2;
+    pivot.add(seat);
+    g.add(pivot);
+    return { group: g, collide: null, pivot };
+  }
+
+  /** Timber jetty running out over the water. */
+  jetty(len = 5) {
+    const g = new THREE.Group();
+    const deck = this.box(1.5, 0.12, len, 'floorWood');
+    deck.position.set(0, 0.6, len / 2 - 0.4);
+    g.add(deck);
+    for (let t = 0.4; t < len; t += 1.5) {
+      for (const s of [-0.6, 0.6]) {
+        const pile = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 1.5, 6), this.mat('bark'));
+        pile.position.set(s, 0.0, t);
+        g.add(pile);
+        const post = this.box(0.08, 0.85, 0.08, 'wallWood');
+        post.position.set(s, 1.05, t);
+        g.add(post);
+      }
+    }
+    for (const s of [-0.6, 0.6]) {
+      const rail = this.box(0.06, 0.06, len - 0.6, 'wallWood');
+      rail.position.set(s, 1.45, len / 2 - 0.4);
+      g.add(rail);
+    }
+    return { group: g, collide: [0.85, 0.35, len / 2] };
+  }
+
+  /** Park noticeboard under a little pitched hood. */
+  noticeBoard() {
+    const g = new THREE.Group();
+    for (const s of [-0.85, 0.85]) {
+      const post = this.box(0.12, 2.0, 0.12, 'wallWood');
+      post.position.set(s, 1.0, 0);
+      g.add(post);
+    }
+    const board = this.box(1.9, 1.2, 0.08, 'wallWood');
+    board.position.set(0, 1.5, 0);
+    const face = new THREE.Mesh(new THREE.PlaneGeometry(1.7, 1.0), this.mat('posterNotice', { transparent: true }));
+    face.position.set(0, 1.5, 0.05);
+    const hood = this.box(2.1, 0.1, 0.4, 'roofShingle');
+    hood.position.set(0, 2.2, 0.1);
+    hood.rotation.x = 0.24;
+    g.add(board, face, hood);
+    return { group: g, collide: [1.0, 1.0, 0.2] };
+  }
+
+  /** Cast drinking fountain. Dry, obviously. */
+  drinkingFountain() {
+    const g = new THREE.Group();
+    const column = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.22, 0.95, 8), this.mat('wallStone'));
+    column.position.y = 0.48;
+    const bowl = new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.2, 0.14, 10), this.mat('wallStone'));
+    bowl.position.y = 1.0;
+    const spout = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.16, 5), this.colorMat(0x8a8a80));
+    spout.position.set(0, 1.08, -0.14);
+    spout.rotation.x = 0.8;
+    g.add(column, bowl, spout);
+    return { group: g, collide: [0.28, 0.55, 0.28] };
+  }
+
+  /** Plank footbridge with handrails, spanning a dip. */
+  footbridge(len = 8) {
+    const g = new THREE.Group();
+    const deck = this.box(len, 0.16, 1.8, 'floorWood');
+    deck.position.y = 0.5;
+    g.add(deck);
+    for (const s of [-0.85, 0.85]) {
+      const rail = this.box(len, 0.08, 0.08, 'wallWood');
+      rail.position.set(0, 1.5, s);
+      g.add(rail);
+      for (let t = -len / 2 + 0.4; t <= len / 2; t += 1.6) {
+        const post = this.box(0.1, 1.0, 0.1, 'wallWood');
+        post.position.set(t, 1.0, s);
+        g.add(post);
+      }
+    }
+    for (let t = -len / 2 + 0.5; t < len / 2; t += 1.0) {
+      const beam = this.box(0.14, 0.5, 1.9, 'bark');
+      beam.position.set(t, 0.2, 0);
+      g.add(beam);
+    }
+    return { group: g, collide: [len / 2, 0.35, 0.95] };
+  }
+
   /** Fence run between two points; registers thin collider. */
   fenceRun(x1, z1, x2, z2, parent) {
     const len = Math.hypot(x2 - x1, z2 - z1);
@@ -867,6 +1415,15 @@ export class PropKit {
       Math.max(x1, x2) + pad, this.terrain.heightAt(mx, mz) + 1.1, Math.max(z1, z2) + pad, 'fence');
     return g;
   }
+}
+
+/** Blend two packed 0xRRGGBB colours; used to soot a wreck's paint down. */
+function mixHex(a, b, t) {
+  const ar = (a >> 16) & 255, ag = (a >> 8) & 255, ab = a & 255;
+  const br = (b >> 16) & 255, bg = (b >> 8) & 255, bb = b & 255;
+  return (Math.round(ar + (br - ar) * t) << 16)
+    | (Math.round(ag + (bg - ag) * t) << 8)
+    | Math.round(ab + (bb - ab) * t);
 }
 
 function seeded(seed) {

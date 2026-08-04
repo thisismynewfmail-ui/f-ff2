@@ -65,14 +65,7 @@ export class Anomalies {
     // a tree's shadow on the open Eastgate field — the nearest tree is far away
     this.w._decal('shadowDecal', 121, 28, 4.2, 2.1, 0x1c2026);
     // a long figure-thin shadow across the industrial yard, pointing at the sun
-    const mat = new THREE.MeshLambertMaterial({
-      map: this.w.texLib.get('shadowDecal'), transparent: true, depthWrite: false, color: 0x14161c,
-    });
-    const q = new THREE.Mesh(new THREE.PlaneGeometry(1.1, 5.2), mat);
-    q.rotation.set(-Math.PI / 2, 0, 0.9);
-    q.position.set(18, this.w.terrain.heightAt(18, 173) + 0.09, 173);
-    q.renderOrder = 2;
-    this.w.group.add(q);
+    this.w._decal('shadowDecal', 18, 173, 1.1, 0.9, 0x14161c, 5.2);
   }
 
   /** One grave on the ridge stands open. The dirt is piled on the downhill
@@ -80,10 +73,8 @@ export class Anomalies {
   _openGrave() {
     const x = -207, z = -188;
     const y = this.w.terrain.heightAt(x, z);
-    const pit = new THREE.Mesh(new THREE.PlaneGeometry(1.3, 2.3),
-      new THREE.MeshLambertMaterial({ color: 0x08080a }));
-    pit.rotation.set(-Math.PI / 2, 0, 0.06);
-    pit.position.set(x, y + 0.07, z);
+    const pit = this.w.terrain.makeDecal(x, z, 1.3, 2.3, 0.06,
+      new THREE.MeshLambertMaterial({ color: 0x08080a }), 0.07);
     pit.renderOrder = 2;
     this.w.group.add(pit);
     const mound = this.w.kit.box(1.1, 0.5, 1.9, 'dirt');
@@ -223,6 +214,43 @@ export class Anomalies {
     }
 
     for (const r of this.w.windmillRotors ?? []) r.rotation.z += dt * 0.8;
+
+    // The park's moving parts. Distance-culled against the camera, because
+    // there is no reason to ripple a flag on the far side of the map — but
+    // note that nothing here is driven by wind, weight or a hand. It simply
+    // keeps going.
+    if (camPos) {
+      const near = (o, r) => {
+        const p = o.parent ? o.parent.position : o.position;
+        const dx = p.x - camPos.x, dz = p.z - camPos.z;
+        return dx * dx + dz * dz < r * r;
+      };
+      for (const s of this.w.spinners ?? []) {
+        if (near(s.node, 130)) s.node.rotation.y += dt * s.speed;
+      }
+      for (const f of this.w.flags ?? []) {
+        if (!f.strips.length || !near(f.strips[0], 150)) continue;
+        // a travelling phase down the chain reads as a wave running out of
+        // the cloth; each segment inherits the one before it
+        for (let i = 0; i < f.strips.length; i++) {
+          f.strips[i].rotation.y = Math.sin(time * 2.1 - i * 0.8) * (0.12 + i * 0.05);
+        }
+      }
+      for (const p of this.w.ropeSwings ?? []) {
+        if (near(p, 110)) p.rotation.x = Math.sin(time * 0.82) * 0.26 * (0.6 + 0.4 * Math.sin(time * 0.041));
+      }
+    }
+
+    // Open water. Two sheets drift across each other at different scales and
+    // in different directions; where the two patterns cross you get a slow
+    // moiré that reads as a surface moving, which a single scrolling texture
+    // never does. Cheap enough to leave running everywhere.
+    for (const s of this.w.waterSurfaces ?? []) {
+      const map = s.mat.map;
+      if (!map) continue;
+      map.offset.x = (map.offset.x + s.u * dt) % 1;
+      map.offset.y = (map.offset.y + s.v * dt) % 1;
+    }
 
     for (const b of this.w.beacons ?? []) {
       b.mesh.visible = ((time * 0.5 + b.phase) % 1) < 0.15;

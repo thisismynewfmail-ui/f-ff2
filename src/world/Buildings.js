@@ -18,7 +18,9 @@ import * as THREE from '../../lib/three.module.js';
  *                                     the door side
  *   awning: true                      canvas awnings over door/shopfront
  *   derelict: 0..1                    drives broken + boarded window mix
- *   foundation: false                 suppress the concrete skirt
+ *   foundation: false                 suppress the footing plinth
+ *   foundationTex/trimTex/windowTex   from the building's material set
+ *                                     (src/world/Materials.js)
  *   partitions: [{axis:'x'|'z', at, from, to, gapAt, gapW, tex}]
  *                                     interior walls with door gaps (local
  *                                     coordinates), colliding like real walls
@@ -27,6 +29,19 @@ const WALL_T = 0.32;
 const DOOR_W = 1.5;
 const DOOR_H = 2.3;
 const TEXEL = 0.5; // uv units per metre
+// Footing plinth: proud of the wall face, buried deep enough that a building
+// still meets the ground where its pad blends into sloping terrain.
+//
+// Every band that wraps a facade — this, the water table, the belt courses,
+// the window sills — reaches inward only as far as the MIDDLE of the wall it
+// sits on. Past that it emerges through the interior floor plate and lays a
+// knee-high concrete kerb around the inside of the room, which is what a
+// deeper plinth was doing. Outward projection is what makes a footing read;
+// inward projection just puts a step in the lounge.
+const PLINTH_OUT = 0.09;   // how far it stands proud of the wall
+const PLINTH_TOP = 0.26;   // visible height above grade
+const PLINTH_DEEP = 1.1;   // depth below grade
+const STOREY = 2.7;        // window-row pitch; belt courses land between rows
 
 export class BuildingKit {
   constructor(texLib, collision, nav) {
@@ -73,12 +88,18 @@ export class BuildingKit {
     const windowBatch = new Map(); // texture -> quad list, merged per building
 
     // ---- foundation ---------------------------------------------------
-    // A concrete skirt, half-buried, reads as a real footing and doubles as
-    // an interior baseboard. One mesh; no collider (it hugs the wall line).
+    // A footing plinth in the building's own foundation material, standing
+    // proud of the wall and buried a metre deep, so the building visibly
+    // MEETS the ground instead of being set down on it. Built as a ring of
+    // four bands (a solid box would push a step up through the floor plate
+    // inside); the ring's inner face is flush with the wall's inner face, so
+    // it never eats into the room. No collider — it hugs the wall line.
+    const foundTex = spec.foundationTex || 'concrete';
     if (spec.foundation !== false) {
-      const skirt = this.box(w + 0.26, 0.5, d + 0.26, 'concrete');
-      skirt.position.y = -0.07;
-      group.add(skirt);
+      const ph = PLINTH_TOP + PLINTH_DEEP;
+      this._facadeBand(group, spec, w, d, PLINTH_TOP - ph / 2, ph, PLINTH_OUT, foundTex);
+      // water table: the trim course capping the plinth
+      this._trimBand(group, spec, w, d, PLINTH_TOP + 0.06, 0.12, PLINTH_OUT + 0.05);
     }
 
     // ---- walls ------------------------------------------------------
@@ -97,7 +118,7 @@ export class BuildingKit {
       this._collideLocalBox(spec, rot, 0, 0, w / 2, h, d / 2);
       // Solid facades still read as inhabited blocks: give them windows.
       if (spec.windows !== false) {
-        for (const side of sides) this._windows(windowBatch, side, spec, h, rand, derelict, null);
+        for (const side of sides) this._windows(group, windowBatch, side, spec, h, rand, derelict, null);
       }
     } else {
       for (const side of sides) {
@@ -129,7 +150,7 @@ export class BuildingKit {
         }
         // window quads on the outer face
         if (spec.windows !== false) {
-          this._windows(windowBatch, side, spec, h, rand, derelict, hasDoor ? (spec.doorOffset ?? 0) * side.len * 0.5 : null);
+          this._windows(group, windowBatch, side, spec, h, rand, derelict, hasDoor ? (spec.doorOffset ?? 0) * side.len * 0.5 : null);
         }
       }
 
@@ -156,6 +177,18 @@ export class BuildingKit {
     }
 
     this._flushWindows(group, windowBatch);
+
+    // ---- trim -------------------------------------------------------
+    // A belt course between storeys and a cornice under the eaves. These are
+    // what give a tall wall a horizontal beat: without them a nine-metre
+    // facade reads as one flat slab no matter how good its texture is.
+    if (spec.trim !== false) {
+      for (let y = STOREY + 0.55; y < h - 1.0; y += STOREY) {
+        this._trimBand(group, spec, w, d, y, 0.22, 0.1);
+      }
+      const corniceY = h - (roofKindOf(spec) === 'flat' ? 0.34 : 0.24);
+      this._trimBand(group, spec, w, d, corniceY, 0.34, 0.2);
+    }
 
     // ---- roof -------------------------------------------------------
     const roofKind = spec.roof || 'gable';
@@ -220,6 +253,53 @@ export class BuildingKit {
     return portals;
   }
 
+  /**
+   * A horizontal band wrapped round all four facades at height `y`: water
+   * table, belt course or cornice depending on where it is called from.
+   * Four boxes rather than one, so no band ever crosses the interior.
+   */
+  _trimBand(group, spec, w, d, y, thick, out) {
+    this._facadeBand(group, spec, w, d, y, thick, out, spec.trimTex || 'trimStone');
+  }
+
+  /**
+   * A band wrapped round all four facades at height `y`: the footing plinth,
+   * the water table above it, a belt course between storeys, or the cornice.
+   *
+   * Two rules, both learned the hard way. The band reaches inward only as far
+   * as the middle of the wall it sits on — level with the wall's inner face it
+   * z-fights and paints the bottom of the interior wall in foundation
+   * concrete, and past it, it juts into the room as a kerb. And any band low
+   * enough to cross a doorway is broken either side of the opening, because a
+   * water table running across a threshold is a lip you appear to step over.
+   */
+  _facadeBand(group, spec, w, d, y, thick, out, tex) {
+    const band = WALL_T / 2 + out;             // wall mid-plane to outside
+    const off = (out - WALL_T / 2) / 2;        // ...centred on that span
+    const low = y - thick / 2 < DOOR_H;        // does it cross the door head?
+    const sides = [
+      { id: 'S', bx: 0, bz: d / 2 + off, along: 'x', len: w },
+      { id: 'N', bx: 0, bz: -d / 2 - off, along: 'x', len: w },
+      { id: 'E', bx: w / 2 + off, bz: 0, along: 'z', len: d },
+      { id: 'W', bx: -w / 2 - off, bz: 0, along: 'z', len: d },
+    ];
+    for (const s of sides) {
+      const L = s.len + out * 2;
+      const gap = low && spec.door === s.id ? DOOR_W / 2 + 0.14 : 0;
+      const at = gap ? (spec.doorOffset ?? 0) * s.len * 0.5 : 0;
+      const runs = gap
+        ? [[-L / 2, at - gap], [at + gap, L / 2]]
+        : [[-L / 2, L / 2]];
+      for (const [a, b] of runs) {
+        if (b - a < 0.05) continue;
+        const mid = (a + b) / 2, len = b - a;
+        const seg = s.along === 'x' ? this.box(len, thick, band, tex) : this.box(band, thick, len, tex);
+        seg.position.set(s.along === 'x' ? mid : s.bx, y, s.along === 'x' ? s.bz : mid);
+        group.add(seg);
+      }
+    }
+  }
+
   _wallSegment(group, spec, rot, side, from, to, yBase, height, tex, lift = 0) {
     const len = to - from;
     if (len <= 0.05 || height <= 0.05) return;
@@ -242,15 +322,21 @@ export class BuildingKit {
    * multi-storey; the derelict factor mixes in broken and boarded panes.
    * A shopfront door side swaps its ground row for wide display windows.
    * Quads are batched per texture and merged into one mesh per building.
+   *
+   * Intact glass comes from the building's material set (`spec.windowTex`):
+   * curtains behind a house's sashes, dark grid glass in an office, leaded
+   * lights in a church. Every opening also gets a real sill and lintel in the
+   * trim material — a hole in a wall does not read as a window without them.
    */
-  _windows(batch, side, spec, h, rand, derelict, doorOff) {
+  _windows(group, batch, side, spec, h, rand, derelict, doorOff) {
     const usable = side.len - 2.4;
     const count = Math.max(0, Math.floor(usable / 3.6));
     if (!count) return;
     const out = Math.sign(side.cx + side.cz) * (WALL_T / 2 + 0.03);
     const shopSide = !!spec.shopfront && spec.door === side.id;
+    const glass = spec.windowTex || 'window';
     const rows = [];
-    for (let yRow = Math.min(h - 1.1, 1.9); yRow <= h - 1.3; yRow += 2.7) rows.push(yRow);
+    for (let yRow = Math.min(h - 1.1, 1.9); yRow <= h - 1.3; yRow += STOREY) rows.push(yRow);
     if (!rows.length) rows.push(Math.min(h - 1.1, 1.9));
     for (let ri = 0; ri < rows.length; ri++) {
       if (shopSide && ri === 0) continue;
@@ -259,8 +345,9 @@ export class BuildingKit {
         const at = t * usable;
         if (ri === 0 && doorOff !== null && Math.abs(at - doorOff) < DOOR_W * 0.5 + 0.9) continue;
         const r = rand();
-        const tex = r < derelict * 0.45 ? 'windowBroken' : r < derelict * 0.8 ? 'windowBoarded' : 'window';
+        const tex = r < derelict * 0.45 ? 'windowBroken' : r < derelict * 0.8 ? 'windowBoarded' : glass;
         this._pushQuad(batch, tex, side, at, rows[ri], out, 1.2, 1.3);
+        this._surround(group, spec, side, at, rows[ri], 1.2, 1.3);
       }
     }
     if (shopSide) {
@@ -269,8 +356,28 @@ export class BuildingKit {
         const at = doorAt + sgn * (DOOR_W / 2 + 2.0);
         if (Math.abs(at) + 1.7 > side.len / 2 - 0.4) continue;
         const tex = rand() < derelict * 0.5 ? 'windowBoarded' : 'windowShop';
-        this._pushQuad(batch, tex, side, at, 1.35, out, tex === 'windowShop' ? 3.0 : 1.4, 1.5);
+        const qw = tex === 'windowShop' ? 3.0 : 1.4;
+        this._pushQuad(batch, tex, side, at, 1.35, out, qw, 1.5);
+        this._surround(group, spec, side, at, 1.35, qw, 1.5);
       }
+    }
+  }
+
+  /** Sill under an opening and lintel over it, in the building's trim. */
+  _surround(group, spec, side, at, yMid, qw, qh) {
+    if (spec.trim === false) return;
+    const tex = spec.trimTex || 'trimStone';
+    const out = Math.sign(side.cx + side.cz);
+    const proud = WALL_T / 2 + 0.1;
+    for (const [dy, th, over] of [[-qh / 2 - 0.06, 0.12, 0.34], [qh / 2 + 0.06, 0.12, 0.24]]) {
+      const len = qw + over;
+      const seg = side.axis === 'x'
+        ? this.box(len, th, WALL_T * 0.5 + 0.1, tex)
+        : this.box(WALL_T * 0.5 + 0.1, th, len, tex);
+      const lx = side.axis === 'x' ? at : side.cx + out * (proud - (WALL_T * 0.5 + 0.1) / 2);
+      const lz = side.axis === 'x' ? side.cz + out * (proud - (WALL_T * 0.5 + 0.1) / 2) : at;
+      seg.position.set(lx, yMid + dy, lz);
+      group.add(seg);
     }
   }
 
@@ -395,6 +502,8 @@ export class BuildingKit {
     this.nav.blockBox(cx - ex, cz - ez, cx + ex, cz + ez);
   }
 }
+
+function roofKindOf(spec) { return spec.roof || 'gable'; }
 
 /** Rotate a local direction into world space (same 90° steps as local2world). */
 export function localDir2world(rot, dx, dz) {
