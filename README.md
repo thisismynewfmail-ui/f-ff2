@@ -324,8 +324,10 @@ There is deliberately no command that touches the kill counter — the
   basin: a terrain pad sunk into the ravine floor, with the water built as a
   sheet clipped to it — a quad is emitted only where all four corners are
   genuinely below the water line, so the shoreline follows the ground exactly
-  and can never float. Two sheets drift across each other at different scales
-  to give it movement.
+  and can never float. Its level is taken from the ground that *surrounds* the
+  basin rather than from its own floor, which is the property that stops the
+  surface reading as standing proud of the bank it meets. Two sheets drift
+  across each other at different scales to give it movement.
 - **The world barrier (`src/world/Boundary.js`):** the map is ringed by a
   terrain-following **stone rampart** — battered plinth, buttresses, a
   crenellated parapet, octagonal corner bastions, and a **bricked-up

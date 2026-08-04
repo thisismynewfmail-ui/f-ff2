@@ -31,8 +31,15 @@ const DOOR_H = 2.3;
 const TEXEL = 0.5; // uv units per metre
 // Footing plinth: proud of the wall face, buried deep enough that a building
 // still meets the ground where its pad blends into sloping terrain.
-const PLINTH_OUT = 0.15;   // how far it stands proud of the wall
-const PLINTH_TOP = 0.42;   // visible height above grade
+//
+// Every band that wraps a facade — this, the water table, the belt courses,
+// the window sills — reaches inward only as far as the MIDDLE of the wall it
+// sits on. Past that it emerges through the interior floor plate and lays a
+// knee-high concrete kerb around the inside of the room, which is what a
+// deeper plinth was doing. Outward projection is what makes a footing read;
+// inward projection just puts a step in the lounge.
+const PLINTH_OUT = 0.09;   // how far it stands proud of the wall
+const PLINTH_TOP = 0.26;   // visible height above grade
 const PLINTH_DEEP = 1.1;   // depth below grade
 const STOREY = 2.7;        // window-row pitch; belt courses land between rows
 
@@ -90,20 +97,9 @@ export class BuildingKit {
     const foundTex = spec.foundationTex || 'concrete';
     if (spec.foundation !== false) {
       const ph = PLINTH_TOP + PLINTH_DEEP;
-      const py = PLINTH_TOP - ph / 2;
-      const band = WALL_T + PLINTH_OUT;
-      for (const [bx, bz, bw, bd] of [
-        [0, d / 2 + PLINTH_OUT - band / 2, w + PLINTH_OUT * 2, band],
-        [0, -d / 2 - PLINTH_OUT + band / 2, w + PLINTH_OUT * 2, band],
-        [w / 2 + PLINTH_OUT - band / 2, 0, band, d + PLINTH_OUT * 2],
-        [-w / 2 - PLINTH_OUT + band / 2, 0, band, d + PLINTH_OUT * 2],
-      ]) {
-        const seg = this.box(bw, ph, bd, foundTex);
-        seg.position.set(bx, py, bz);
-        group.add(seg);
-      }
+      this._facadeBand(group, spec, w, d, PLINTH_TOP - ph / 2, ph, PLINTH_OUT, foundTex);
       // water table: the trim course capping the plinth
-      this._trimBand(group, spec, w, d, PLINTH_TOP + 0.09, 0.18, PLINTH_OUT + 0.06);
+      this._trimBand(group, spec, w, d, PLINTH_TOP + 0.06, 0.12, PLINTH_OUT + 0.05);
     }
 
     // ---- walls ------------------------------------------------------
@@ -263,17 +259,44 @@ export class BuildingKit {
    * Four boxes rather than one, so no band ever crosses the interior.
    */
   _trimBand(group, spec, w, d, y, thick, out) {
-    const tex = spec.trimTex || 'trimStone';
-    const band = WALL_T * 0.6 + out;
-    for (const [bx, bz, bw, bd] of [
-      [0, d / 2 + out - band / 2, w + out * 2, band],
-      [0, -d / 2 - out + band / 2, w + out * 2, band],
-      [w / 2 + out - band / 2, 0, band, d + out * 2],
-      [-w / 2 - out + band / 2, 0, band, d + out * 2],
-    ]) {
-      const seg = this.box(bw, thick, bd, tex);
-      seg.position.set(bx, y, bz);
-      group.add(seg);
+    this._facadeBand(group, spec, w, d, y, thick, out, spec.trimTex || 'trimStone');
+  }
+
+  /**
+   * A band wrapped round all four facades at height `y`: the footing plinth,
+   * the water table above it, a belt course between storeys, or the cornice.
+   *
+   * Two rules, both learned the hard way. The band reaches inward only as far
+   * as the middle of the wall it sits on — level with the wall's inner face it
+   * z-fights and paints the bottom of the interior wall in foundation
+   * concrete, and past it, it juts into the room as a kerb. And any band low
+   * enough to cross a doorway is broken either side of the opening, because a
+   * water table running across a threshold is a lip you appear to step over.
+   */
+  _facadeBand(group, spec, w, d, y, thick, out, tex) {
+    const band = WALL_T / 2 + out;             // wall mid-plane to outside
+    const off = (out - WALL_T / 2) / 2;        // ...centred on that span
+    const low = y - thick / 2 < DOOR_H;        // does it cross the door head?
+    const sides = [
+      { id: 'S', bx: 0, bz: d / 2 + off, along: 'x', len: w },
+      { id: 'N', bx: 0, bz: -d / 2 - off, along: 'x', len: w },
+      { id: 'E', bx: w / 2 + off, bz: 0, along: 'z', len: d },
+      { id: 'W', bx: -w / 2 - off, bz: 0, along: 'z', len: d },
+    ];
+    for (const s of sides) {
+      const L = s.len + out * 2;
+      const gap = low && spec.door === s.id ? DOOR_W / 2 + 0.14 : 0;
+      const at = gap ? (spec.doorOffset ?? 0) * s.len * 0.5 : 0;
+      const runs = gap
+        ? [[-L / 2, at - gap], [at + gap, L / 2]]
+        : [[-L / 2, L / 2]];
+      for (const [a, b] of runs) {
+        if (b - a < 0.05) continue;
+        const mid = (a + b) / 2, len = b - a;
+        const seg = s.along === 'x' ? this.box(len, thick, band, tex) : this.box(band, thick, len, tex);
+        seg.position.set(s.along === 'x' ? mid : s.bx, y, s.along === 'x' ? s.bz : mid);
+        group.add(seg);
+      }
     }
   }
 

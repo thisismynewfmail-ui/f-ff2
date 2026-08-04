@@ -19,8 +19,10 @@
  *  10. nothing solid stands inside a building or inside another vehicle
  *  11. a locked district cannot be reached on foot — a flood fill from the
  *      spawn over the nav grid must not get into one
- *  12. the pond sits in its basin: never floating over the ground, never
- *      flooding a building, and actually moving
+ *  12. no facade band (plinth, water table, belt course) juts into a room or
+ *      z-fights the inside of the wall it wraps
+ *  13. the pond sits in its basin: never floating over the ground, no dry
+ *      bank below the waterline, never flooding a building, and moving
  *
  * Usage: node tests/world.mjs
  * Requires playwright-core (any location via NODE_PATH) and the pre-installed
@@ -80,7 +82,7 @@ const r = await page.evaluate(async () => {
   // Sample the terrain at each footprint corner and mid-edge: the pad should
   // hold the ground within the footing's visible height everywhere the
   // building touches it.
-  const PLINTH_TOP = 0.42, PLINTH_DEEP = 1.1;
+  const PLINTH_TOP = 0.26, PLINTH_DEEP = 1.1;   // see Buildings.js
   out.floating = [];
   out.sunken = [];
   for (const s of specs) {
@@ -270,6 +272,43 @@ const r = await page.evaluate(async () => {
   }
   out.trespass = [...trespass];
 
+  // --- 12a. no facade band shows through the inside of a wall
+  //
+  // The plinth and the trim courses wrap the OUTSIDE of a wall. Two ways they
+  // go wrong, and both were happening: a band whose inner face sits in front
+  // of the wall's inner face juts into the room as a kerb, and a band whose
+  // inner face is exactly coplanar with it z-fights and paints the bottom of
+  // the interior wall in foundation concrete.
+  //
+  // Vertex tests cannot see either, because the offending surface is in the
+  // middle of a box's face rather than at its corners. So ask the question the
+  // player asks: standing in the room and looking at a wall, is the first
+  // thing you meet the wall — or its footing?
+  const THREE = await import('/lib/three.module.js');
+  const ray = new THREE.Raycaster();
+  out.innerKerb = [];
+  for (const s of specs) {
+    if (s.solid) continue;
+    const built = w.built.get(s.name);
+    if (!built) continue;
+    const bands = [w.kit.mat(s.foundationTex), w.kit.mat(s.trimTex)];
+    for (const [ox, oz] of [[0, 0], [-s.w / 4, 0], [s.w / 4, 0], [0, -s.d / 4], [0, s.d / 4]]) {
+      for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        ray.set(new THREE.Vector3(s.x + ox, s.y + 0.3, s.z + oz), new THREE.Vector3(dx, 0, dz));
+        ray.far = 60;
+        const hits = ray.intersectObject(built.group, true);
+        if (!hits.length) continue;
+        // coplanar surfaces come back in arbitrary order, so treat anything
+        // within a few centimetres of the first hit as "what you see"
+        const near = hits.filter((h) => h.distance <= hits[0].distance + 0.03);
+        if (near.some((h) => bands.includes(h.object.material))) {
+          out.innerKerb.push(`${s.name} ${dx ? 'x' : 'z'}${dx + dz > 0 ? '+' : '-'}`);
+        }
+      }
+    }
+  }
+  out.innerKerb = [...new Set(out.innerKerb)];
+
   // --- 12. the pond is a lake, not a sheet of glass laid over a hillside
   const pb = w.pondBasin;
   out.pond = { minDepth: 1e9, maxDepth: -1e9, verts: 0, overBuilding: 0, animated: w.waterSurfaces.length };
@@ -290,6 +329,18 @@ const r = await page.evaluate(async () => {
   }
   out.pond.sheets = sheets.length;
   out.pond.level = pb.level;
+  // The artefact the eye actually picks up is DRY ground lying below the water
+  // surface: it makes the lake look like it is standing on a plinth. Walk out
+  // past the shoreline on many bearings and take the worst case.
+  out.pond.dryBelow = -99;
+  for (let k = 0; k < 36; k++) {
+    const a = (k / 36) * Math.PI * 2;
+    const sr = w._shoreRadius(a);
+    for (let rr = sr; rr <= sr + 12; rr += 0.4) {
+      const x = pb.x + Math.cos(a) * rr, z = pb.z + Math.sin(a) * rr;
+      out.pond.dryBelow = Math.max(out.pond.dryBelow, pb.level - w.terrain.heightAt(x, z));
+    }
+  }
   return out;
 });
 
@@ -318,6 +369,9 @@ check('the world barrier exists', r.barrierExists);
 check('no solid prop stands inside a building', r.propInBuilding.length === 0, r.propInBuilding.slice(0, 5).join(' '));
 check('no two vehicles occupy the same ground', r.propOverlap.length === 0, r.propOverlap.slice(0, 5).join(' '));
 check('locked districts are unreachable on foot', r.trespass.length === 0, r.trespass.join(', '));
+check('no facade band shows through an interior wall', r.innerKerb.length === 0, r.innerKerb.slice(0, 5).join(', '));
+check('no dry ground sits below the waterline', r.pond.dryBelow <= 0.05,
+  `${r.pond.dryBelow.toFixed(2)}m of bank under the surface`);
 check('the pond never floats above its bed', r.pond.minDepth >= -0.01,
   `lowest point ${r.pond.minDepth.toFixed(2)}m over the ground`);
 check('the pond has real depth', r.pond.maxDepth > 0.8, `${r.pond.maxDepth.toFixed(2)}m at the deepest`);

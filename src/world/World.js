@@ -314,16 +314,35 @@ export class World {
    * without it and the feature ends up floating over its own hole.
    */
   _planTerrain() {
-    // The pond basin: a shallow bowl sunk into the ravine floor, with a long
-    // blend so the banks shelve into it instead of stepping down.
+    // The pond basin.
+    //
+    // The water level is taken from the ground that SURROUNDS the pond, not
+    // from the pond's own floor: sample the natural terrain on a ring and set
+    // the surface just below the lowest point of it. That is the property that
+    // makes a lake look like a lake — there is then nowhere outside the water
+    // where dry ground sits below the waterline, so the surface never reads as
+    // standing proud of the bank it meets.
+    //
+    // Deriving the level the other way round (floor + depth) is what made the
+    // water look too high: it put the surface above the shallowest part of the
+    // surround, and clipping the sheet to an ellipse to stop it spreading just
+    // moved the problem to a hard edge with low grass beyond it.
     const x = -150, z = 85;
-    const floorY = this.terrain.baseHeight(x, z) - 1.7;
-    const hx = 13, hz = 11, blend = 12;
+    let ringMin = Infinity;
+    for (let k = 0; k < 32; k++) {
+      const a = (k / 32) * Math.PI * 2;
+      ringMin = Math.min(ringMin, this.terrain.baseHeight(x + Math.cos(a) * 18, z + Math.sin(a) * 18));
+    }
+    const level = ringMin - 0.12;
+    const floorY = level - 1.3;
+    // A short blend keeps the bank defined: with a long one the ground creeps
+    // toward its natural height so slowly that the shoreline ends up twenty
+    // metres further out than the bowl.
+    const hx = 13, hz = 11, blend = 6;
     this.terrain.addPad(x, z, hx, hz, floorY, blend);
-    // rx/rz bound the water itself. Without them the sheet follows the pad's
-    // blend wherever the ground happens to stay low, and the lake creeps
-    // twenty-five metres out to lap at the boathouse.
-    this.pondBasin = { x, z, hx, hz, blend, floorY, level: floorY + 1.25, rx: hx + 6.0, rz: hz + 5.5 };
+    // rx/rz are a backstop only — with the level set from the surround, the
+    // terrain clip decides the shoreline in every normal direction.
+    this.pondBasin = { x, z, hx, hz, blend, floorY, level, rx: 24, rz: 22 };
   }
 
   _planBuildings() {
