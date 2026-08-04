@@ -6,12 +6,13 @@ import { canonXform } from './Interiors.js';
  * The Companion Cube — a findable Easter egg hidden in the Meridian Tower's
  * maintenance room, waiting under a faint pink glow.
  *
- * Built to the classic reference: pale corner blocks with clipped tips over a
- * grey recessed core, pale rails down every edge, magenta lines lying in the
- * grooves between them, and a pressure plate carrying a pink heart on all six
- * faces. Interact to take it; it stows in the satchel — and clicking it there
- * sets it back down on the ground just ahead of you (see dropAt, wired
- * through the 'inventory:drop' event), where it can be picked up again.
+ * Built to the classic reference as a machined shell: chamfered pale corner
+ * blocks and edge rails standing proud of a recessed grey body, a magenta
+ * seam lying in the notch between every rail and corner, and a steel
+ * pressure plate carrying a pink heart on all six faces. Interact to take
+ * it; it stows in the satchel — and clicking it there sets it back down on
+ * the ground just ahead of you (see dropAt, wired through the
+ * 'inventory:drop' event), where it can be picked up again.
  *
  * Seating: the assembled mesh is measured rather than assumed. Its rest
  * offset comes from the bounding box, so however the frame is built, the
@@ -117,80 +118,88 @@ export class CompanionCube {
 /**
  * Assemble the cube to the reference art and collapse it to a few meshes.
  *
- * The silhouette the reference gives you is not a cube with decals on it. It
- * is a frame: eight pale chamfered corner blocks, twelve pale rails running
- * the edges between them, and a dark recessed core showing through the gaps —
- * with a magenta line lying in every groove where the rails meet the corners.
- * Each of the six faces then carries a grey pressure plate, four tabs
- * bracing it out to the edge rails, and a pink heart in the middle.
+ * The reference is not a cube with decals on it, and it is not a cube with
+ * detail sitting flush on its faces either — it is a machined shell. A dark
+ * body is recessed on all six sides, and a pale frame stands PROUD of it:
+ * eight corner blocks with their outer tips clipped off, and twelve rails
+ * running the edges between them. The gap where a rail stops short of a
+ * corner block is a real notch cut through the frame, and a magenta line
+ * lies in every one of them. Each face then carries a steel pressure plate
+ * sunk into the recess, four tabs bracing it out to the rails, and a pink
+ * heart in the middle.
  *
- * Building it that way rather than as painted-on detail is what makes it read
- * from any angle at PS1 resolution: the highlights are geometry, so they
- * survive being eight pixels across.
+ * The relief is the whole point. Every highlight and shadow on this thing is
+ * geometry standing at a different depth, which is what lets it read from any
+ * angle at PS1 resolution — a painted-on version goes flat the moment the
+ * face turns away from the light.
+ *
+ * Nothing pokes out past the cube's own faces: the frame defines the
+ * silhouette, so the collision box and the 0.68 side agree with what you see.
  */
 function buildCubeMesh() {
   const g = new THREE.Group();
-  const S = 0.68; // cube side
-  const pale = new THREE.MeshLambertMaterial({ color: 0xdcded6 });   // corner blocks + rails
-  const grey = new THREE.MeshLambertMaterial({ color: 0x8e9498 });   // plates, tabs, chamfers
-  const dark = new THREE.MeshLambertMaterial({ color: 0x4c5256 });   // recessed core
-  const pink = new THREE.MeshLambertMaterial({ color: 0xc85c8e });   // seam lines
-  // Unlit, so the heart plates read clearly in the windowless room — as if
-  // the cube carries its own faint light. It does.
-  const heartMat = new THREE.MeshBasicMaterial({ map: heartTexture() });
-  const cy = S / 2; // cube rests on the floor
+  const S = CUBE_SIZE;      // cube side
+  const h = S / 2;          // half side: where the outer surfaces sit
+  const P = S * 0.055;      // how far the pale frame stands proud of the body
+  const C = S * 0.285;      // corner block: a cube of this side
+  const B = C * 0.15;       // chamfer machined off each corner block's outer edges
+  const T = S * 0.165;      // edge rail cross-section
+  const G = S * 0.021;      // notch between a corner block and an edge rail
+  const cy = S / 2;         // the cube rests on the floor, so centre it a half-side up
 
-  const core = new THREE.Mesh(new THREE.BoxGeometry(S * 0.9, S * 0.9, S * 0.9), dark);
+  const pale = new THREE.MeshLambertMaterial({ color: 0xf2f0e7 });  // corner blocks + rails
+  const body = new THREE.MeshLambertMaterial({ color: 0x868d92 });  // the recessed body
+  const steel = new THREE.MeshLambertMaterial({ color: 0x9aa1a6 }); // pressure plates + tabs
+  const seam = new THREE.MeshLambertMaterial({ color: 0xa8447a });  // the magenta groove lines
+  // A trace of emissive keeps the hearts legible in the windowless room the
+  // cube waits in — as if it carries its own faint light. It does. It still
+  // shades with the world, so it never blows out into a flat white sticker.
+  const heartMat = new THREE.MeshLambertMaterial({ map: heartTexture(), emissive: 0x1a1d20 });
+
+  // --- the recessed body every other part is bolted to
+  const core = new THREE.Mesh(new THREE.BoxGeometry(S - 2 * P, S - 2 * P, S - 2 * P), body);
   core.position.y = cy;
   g.add(core);
 
-  // --- eight chamfered corner blocks. The outer corner is clipped by a small
-  // 45°-rotated cap sunk INTO the block, so each corner reads bevelled
-  // without breaking the silhouette.
-  const cs = S * 0.34;
+  // --- eight corner blocks, chamfered down every edge that shows
   for (const sx of [-1, 1]) for (const sy of [-1, 1]) for (const sz of [-1, 1]) {
-    const block = new THREE.Mesh(new THREE.BoxGeometry(cs, cs, cs), pale);
-    block.position.set(sx * (S - cs) / 2, cy + sy * (S - cs) / 2, sz * (S - cs) / 2);
+    const block = new THREE.Mesh(clippedCornerGeometry(C, B, sx, sy, sz), pale);
+    block.position.set(sx * (h - C / 2), cy + sy * (h - C / 2), sz * (h - C / 2));
     g.add(block);
-    // the clipped corner tip, flush with the block's outer faces rather than
-    // rotated out past them — a 45° cap would poke a grey wing out of every
-    // corner and wreck the silhouette at any distance
-    const tip = cs * 0.46;
-    const cap = new THREE.Mesh(new THREE.BoxGeometry(tip, tip, tip), grey);
-    cap.position.set(sx * (S - tip) / 2, cy + sy * (S - tip) / 2, sz * (S - tip) / 2);
-    g.add(cap);
   }
 
-  // --- twelve edge rails between the corner blocks, set very slightly in from
-  // the corner blocks' faces so a groove reads along every edge.
-  const rl = S - 2 * cs;          // clear span between two corner blocks
-  const rt = S * 0.3;             // rail cross-section
-  const off = S / 2 - rt / 2 - 0.004;
+  // --- twelve edge rails, flush with the corner blocks but only a third as
+  // thick, so face-on they read as a bar down each side rather than a border.
+  // Chamfered to the same width, so the frame is machined out of one piece.
+  //
+  // Each rail stops short of the corner blocks, and the notch left over is
+  // filled by the magenta seam — cut to the identical profile, so the line
+  // lies IN the frame and wraps the cube edge instead of sitting on top of it.
+  const rl = S - 2 * C - 2 * G;   // clear span, leaving a notch at either end
+  const ro = h - T / 2;           // rail centre: its outer faces land on the surface
+  const so = h - C;               // along the edge: where the corner block ends
   for (const su of [-1, 1]) for (const sv of [-1, 1]) {
-    const ex = new THREE.Mesh(new THREE.BoxGeometry(rl, rt, rt), pale);
-    ex.position.set(0, cy + su * off, sv * off);
-    const ey = new THREE.Mesh(new THREE.BoxGeometry(rt, rl, rt), pale);
-    ey.position.set(su * off, cy, sv * off);
-    const ez = new THREE.Mesh(new THREE.BoxGeometry(rt, rt, rl), pale);
-    ez.position.set(su * off, cy + sv * off, 0);
-    g.add(ex, ey, ez);
+    for (let axis = 0; axis < 3; axis++) {
+      // (u, v) are the two axes across the bar, taken in cyclic order after it
+      const at = (w, u, v) => [[w, u, v], [v, w, u], [u, v, w]][axis];
+      const rail = new THREE.Mesh(beveledBarGeometry(rl, T, B, axis, su, sv), pale);
+      rail.position.set(...at(0, su * ro, sv * ro));
+      rail.position.y += cy;
+      g.add(rail);
+      for (const sw of [-1, 1]) {
+        const line = new THREE.Mesh(beveledBarGeometry(G, T, B, axis, su, sv), seam);
+        line.position.set(...at(sw * (so - G / 2), su * ro, sv * ro));
+        line.position.y += cy;
+        g.add(line);
+      }
+    }
   }
 
-  // --- the magenta line lying in each edge groove, just proud of the rails
-  const et = S * 0.045, eo = S * 0.5 + 0.002;
-  for (const su of [-1, 1]) for (const sv of [-1, 1]) {
-    const ex = new THREE.Mesh(new THREE.BoxGeometry(rl + et, et, et), pink);
-    ex.position.set(0, cy + su * eo, sv * eo);
-    const ey = new THREE.Mesh(new THREE.BoxGeometry(et, rl + et, et), pink);
-    ey.position.set(su * eo, cy, sv * eo);
-    const ez = new THREE.Mesh(new THREE.BoxGeometry(et, et, rl + et), pink);
-    ez.position.set(su * eo, cy + sv * eo, 0);
-    g.add(ex, ey, ez);
-  }
-
-  // --- face plates on ALL SIX faces: grey pressure plate, heart, four tabs
-  // bracing out to the edge rails. The reference carries a heart on every
-  // face, including the one it is standing on.
+  // --- the pressure plate on ALL SIX faces: a steel disc seated in the
+  // recess with four tabs bracing it out to the rails, and the heart on top.
+  // The reference carries one on every face, including the one it stands on.
+  const pr = S * 0.28;            // plate radius, kept just clear of the corner blocks
+  const seat = h - P;             // the recessed surface the plate sits in
   const faces = [
     { n: [0, 1, 0], rotC: [0, 0, 0], rotH: [-Math.PI / 2, 0, 0] },
     { n: [0, -1, 0], rotC: [0, 0, Math.PI], rotH: [Math.PI / 2, 0, 0] },
@@ -201,24 +210,30 @@ function buildCubeMesh() {
   ];
   for (const f of faces) {
     const [nx, ny, nz] = f.n;
-    const plate = new THREE.Mesh(new THREE.CylinderGeometry(S * 0.275, S * 0.29, 0.055, 16), grey);
-    plate.position.set(nx * S * 0.48, cy + ny * S * 0.48, nz * S * 0.48);
+    // The plate stands almost out of the recess but stays under the frame,
+    // so the pale blocks always shoulder above it.
+    const top = h - P * 0.2, deep = P * 1.1;
+    const at = (d) => [nx * d, cy + ny * d, nz * d];
+
+    const plate = new THREE.Mesh(new THREE.CylinderGeometry(pr, pr * 1.06, deep, 20), steel);
+    plate.position.set(...at(top - deep / 2));
     plate.rotation.set(...f.rotC);
     g.add(plate);
-    // the disc has to clear the plate's OUTER face: the plate is centred at
-    // 0.48S and is 0.055 thick, so anything below 0.53S is buried inside it
-    const disc = new THREE.Mesh(new THREE.CircleGeometry(S * 0.225, 16), heartMat);
-    disc.position.set(nx * S * 0.534, cy + ny * S * 0.534, nz * S * 0.534);
+
+    // the heart disc, a hair clear of the plate's outer face
+    const disc = new THREE.Mesh(new THREE.CircleGeometry(pr * 0.97, 24), heartMat);
+    disc.position.set(...at(top + 0.0015));
     disc.rotation.set(...f.rotH);
     g.add(disc);
-    // four tabs from the plate out to the edge midpoints (the face cross)
+
+    // four tabs bridging the plate out to the edge rails (the face cross)
     const holder = new THREE.Group();
-    holder.position.copy(plate.position);
+    holder.position.set(...at(seat));
     holder.rotation.set(...f.rotC);
     for (let t = 0; t < 4; t++) {
       const a = t * Math.PI / 2;
-      const tab = new THREE.Mesh(new THREE.BoxGeometry(S * 0.15, 0.04, S * 0.22), grey);
-      tab.position.set(Math.cos(a) * S * 0.36, -0.008, Math.sin(a) * S * 0.36);
+      const tab = new THREE.Mesh(new THREE.BoxGeometry(S * 0.16, P * 0.75, S * 0.135), steel);
+      tab.position.set(Math.cos(a) * S * 0.33, P * 0.375, Math.sin(a) * S * 0.33);
       tab.rotation.y = -a;
       holder.add(tab);
     }
@@ -229,28 +244,119 @@ function buildCubeMesh() {
   return g;
 }
 
-/** Draw the heart plate: pale disc, turned edge, saturated pink heart. */
+/**
+ * One frame bar: a length of pale rail running along a cube edge, chamfered
+ * `r` wide down the three corners of its cross-section that show. The fourth
+ * points into the body and is left square — nothing ever sees it.
+ *
+ * `axis` picks the direction the bar runs (0 = x, 1 = y, 2 = z) and (su, sv)
+ * which quadrant of the other two axes — taken in cyclic order after it — its
+ * outer corner faces. Same construction as the corner blocks: written for one
+ * quadrant and mirrored, re-ordering the triangles when the mirror is odd so
+ * back-face culling does not turn the bar inside out.
+ */
+function beveledBarGeometry(len, t, r, axis, su, sv) {
+  const a = t / 2, l = len / 2;
+  // the cross-section, counter-clockwise, with its outer corner at (+a, +a)
+  const sec = [[-a, -a], [a - r, -a], [a, -a + r], [a, a - r], [a - r, a], [-a + r, a], [-a, a - r]]
+    .map(([u, v]) => [su * u, sv * v]);
+  const put = (w, [u, v]) => [[w, u, v], [v, w, u], [u, v, w]][axis];
+  const tris = [];
+  const fan = (pts) => { for (let i = 1; i < pts.length - 1; i++) tris.push(pts[0], pts[i], pts[i + 1]); };
+
+  fan(sec.map((p) => put(l, p)));                        // the two ends, which
+  fan(sec.slice().reverse().map((p) => put(-l, p)));     // butt onto neighbours
+  for (let i = 0; i < sec.length; i++) {                 // and the faces between
+    const p = sec[i], q = sec[(i + 1) % sec.length];
+    fan([put(-l, p), put(-l, q), put(l, q), put(l, p)]);
+  }
+  return bakeFlat(tris, su * sv < 0);
+}
+
+/**
+ * One corner block: a cube of side `c` machined down by a chamfer `b` wide —
+ * the three outer edges bevelled and the tip they meet at clipped by a facet
+ * across all three. That is what the reference's corners actually are, and
+ * it is why they catch a different shade from every direction instead of
+ * reading as a plain box with a slice off the end.
+ *
+ * Built in the +++ octant with the tip pointing at (+,+,+), then mirrored into
+ * whichever corner (sx, sy, sz) names. Mirroring an odd number of axes reverses
+ * triangle winding, which would turn the block inside out under back-face
+ * culling, so the triangles are re-ordered whenever that happens.
+ *
+ * Only the x/y pairing is written out; the other two are the same points cycled
+ * through the axes. A cyclic axis swap is a rotation, so the winding survives it.
+ */
+function clippedCornerGeometry(c, b, sx, sy, sz) {
+  const p = c - b;          // where an edge bevel meets the outer face beside it
+  const q = c - 1.4 * b;    // where the tip facet cuts across an edge bevel
+  const tris = [];
+  const fan = (pts) => { for (let i = 1; i < pts.length - 1; i++) tris.push(pts[0], pts[i], pts[i + 1]); };
+  const spin = (pts, n) => { let o = pts; for (let i = 0; i < n; i++) o = o.map(([x, y, z]) => [z, x, y]); return o; };
+
+  fan([[0, 0, 0], [0, 0, c], [0, c, c], [0, c, 0]]);  // the three inner faces,
+  fan([[0, 0, 0], [c, 0, 0], [c, 0, c], [0, 0, c]]);  // buried in the body and
+  fan([[0, 0, 0], [0, c, 0], [c, c, 0], [c, 0, 0]]);  // never seen
+  for (let i = 0; i < 3; i++) {
+    // an outer face — a square that two edge bevels and the tip facet trim
+    fan(spin([[c, 0, 0], [c, p, 0], [c, p, q], [c, q, p], [c, 0, p]], i));
+    // the bevel down the edge this face shares with the next one round
+    fan(spin([[c, p, 0], [p, c, 0], [p, c, q], [c, p, q]], i));
+  }
+  fan([[c, p, q], [p, c, q], [q, c, p], [q, p, c], [p, q, c], [c, q, p]]); // the tip
+
+  const m = tris.map(([x, y, z]) => [(x - c / 2) * sx, (y - c / 2) * sy, (z - c / 2) * sz]);
+  return bakeFlat(m, sx * sy * sz < 0);
+}
+
+/**
+ * Turn a flat list of triangle corners into geometry, reversing the winding
+ * first when the caller mirrored an odd number of axes to get there.
+ *
+ * Normals are left to computeVertexNormals: the list is non-indexed, so it
+ * derives one flat normal per triangle — exactly the hard-edged shading these
+ * machined facets want, and no vertex is shared across a chamfer.
+ */
+function bakeFlat(tris, flipped) {
+  if (flipped) for (let i = 0; i < tris.length; i += 3) { const t = tris[i]; tris[i] = tris[i + 1]; tris[i + 1] = t; }
+  const pos = new Float32Array(tris.length * 3);
+  for (let i = 0; i < tris.length; i++) pos.set(tris[i], i * 3);
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  geo.computeVertexNormals();
+  return geo;
+}
+
+/**
+ * Draw the pressure plate: a steel rim turned down to a lighter shoulder, a
+ * pale disc inset in it, and the pink heart printed on that. The heart is
+ * deliberately small against the disc — the reference reads as a badge with
+ * room around it, not a heart crammed to the rim.
+ */
 function heartTexture() {
-  const c = document.createElement('canvas');
-  c.width = c.height = 128;
+  const R = 128, c = document.createElement('canvas');
+  c.width = c.height = R * 2;
   const ctx = c.getContext('2d');
-  ctx.fillStyle = '#eceadf';
+  const ring = (r, fill) => { ctx.fillStyle = fill; ctx.beginPath(); ctx.arc(R, R, r, 0, Math.PI * 2); ctx.fill(); };
+  ring(R, '#5f666b');            // the rim's shadowed outer edge
+  ring(R * 0.95, '#98a0a5');     // the machined face of the rim
+  ring(R * 0.72, '#c8cbc5');     // the step down into the disc
+  ring(R * 0.68, '#ece9df');     // the pale disc the heart is printed on
+
+  const hw = R * 0.43, hh = R * 0.39, cx = R, cyc = R + R * 0.03;
   ctx.beginPath();
-  ctx.arc(64, 64, 63, 0, Math.PI * 2);
+  ctx.moveTo(cx, cyc + hh * 0.98);
+  ctx.bezierCurveTo(cx - hw * 1.06, cyc + hh * 0.10, cx - hw * 1.00, cyc - hh * 0.78, cx - hw * 0.42, cyc - hh * 0.78);
+  ctx.bezierCurveTo(cx - hw * 0.13, cyc - hh * 0.78, cx, cyc - hh * 0.42, cx, cyc - hh * 0.20);
+  ctx.bezierCurveTo(cx, cyc - hh * 0.42, cx + hw * 0.13, cyc - hh * 0.78, cx + hw * 0.42, cyc - hh * 0.78);
+  ctx.bezierCurveTo(cx + hw * 1.00, cyc - hh * 0.78, cx + hw * 1.06, cyc + hh * 0.10, cx, cyc + hh * 0.98);
+  ctx.fillStyle = '#f7a8cb';
   ctx.fill();
-  ctx.strokeStyle = '#7d8286'; // the plate's turned edge
-  ctx.lineWidth = 7;
-  ctx.beginPath();
-  ctx.arc(64, 64, 58, 0, Math.PI * 2);
+  ctx.strokeStyle = '#e79cbb'; // a printed edge, so the heart holds its shape
+  ctx.lineWidth = R * 0.03;
   ctx.stroke();
-  ctx.fillStyle = '#e97cad';
-  ctx.beginPath();
-  ctx.moveTo(64, 103);
-  ctx.bezierCurveTo(22, 74, 15, 45, 36, 31);
-  ctx.bezierCurveTo(52, 21, 64, 38, 64, 49);
-  ctx.bezierCurveTo(64, 38, 76, 21, 92, 31);
-  ctx.bezierCurveTo(113, 45, 106, 74, 64, 103);
-  ctx.fill();
+
   const t = new THREE.CanvasTexture(c);
   t.magFilter = THREE.NearestFilter;
   t.minFilter = THREE.NearestFilter;
