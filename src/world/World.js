@@ -11,6 +11,27 @@ import { Secrets } from './Secrets.js';
 import { Anomalies } from './Anomalies.js';
 import { CompanionCube } from './CompanionCube.js';
 import { Scarecrow } from './Scarecrow.js';
+import { deconflict, deconflictResolved, resolve } from './Materials.js';
+import { WorldBarrier } from './Boundary.js';
+
+/** Outward normal of each door side, and the lane kept clear in front of it. */
+const DOOR_NORMAL = { N: [0, -1], S: [0, 1], E: [1, 0], W: [-1, 0] };
+const DOOR_APPROACH = 3.4;
+const DOOR_LANE_HALF = 1.6;
+
+/** Which material-set family a building's function draws from. */
+const FAMILY_FOR_USE = {
+  house: 'house', hollow: 'house', apartment: 'block',
+  tavern: 'shop', store: 'shop', bakery: 'shop', postOffice: 'shop', gasShop: 'shop',
+  diner: 'shop', pawnShop: 'shop', boutique: 'shop', arcade: 'shop', barbers: 'shop',
+  laundromat: 'shop', hardware: 'shop', pharmacy: 'shop', recordShop: 'shop',
+  library: 'civic', townhall: 'civic', clinic: 'civic', school: 'civic',
+  office: 'civic', towerLobby: 'tower', museum: 'civic', firehouse: 'civic',
+  church: 'church',
+  warehouse: 'industrial', warehouseMezz: 'industrial', factory: 'industrial',
+  machineShop: 'industrial', substation: 'industrial',
+  barn: 'farm', boathouse: 'farm',
+};
 
 /**
  * Assembles the whole town: terrain, six districts of buildings, streets,
@@ -51,6 +72,7 @@ export class World {
     this.playerSpawn = { x: 0, z: 20 };
     this.game = null;            // set by attach()
     // dynamic-prop registries, animated by Anomalies each frame
+    this.doorwayRejects = [];    // props refused for standing in a doorway
     this.beacons = [];           // {mesh, phase} — tower aviation lights
     this.windmillRotors = [];
     this.playgroundSwings = [];
@@ -77,6 +99,11 @@ export class World {
     this._industrial();
     this._ridge();
     this._highrise();
+    // The edge of the world. Never sinks, never opens — see Boundary.js.
+    this.barrier = new WorldBarrier({
+      texLib: this.texLib, collision: this.collision, nav: this.nav,
+      terrain: this.terrain, group: this.group,
+    }).build();
     this.nav.bake();
     this._spawnGrid();
     this.secrets = new Secrets(this);
@@ -206,6 +233,8 @@ export class World {
   _spec(spec) {
     spec.y = this.terrain.padAtGrade(spec.x, spec.z, spec.w / 2 + 1, spec.d / 2 + 1);
     spec.derelict ??= this._derelictFor(spec.x, spec.z, spec.zone);
+    spec.weather ??= this._weatherFor(spec.x, spec.z, spec.zone);
+    spec.family ??= FAMILY_FOR_USE[spec.use] ?? (spec.solid ? 'block' : 'house');
     this.buildingSpecs.push(spec);
     return spec;
   }
@@ -223,29 +252,71 @@ export class World {
     return Math.min(0.85, v);
   }
 
+  /**
+   * Spatial weathering, 0..1. This is the value that decides whether a
+   * building wears its clean texture or its weathered twin (moss to the sill
+   * line, paint off the boards, render blown off the brick).
+   *
+   * The commercial core is swept and intact; condition falls away with
+   * distance, and it falls away SLOWLY at first — the curve is squared — so
+   * the change reads as a gradient across the town rather than a ring of
+   * decay drawn around the plaza. Districts that were lost before the rest
+   * carry a floor of their own on top of that.
+   */
+  _weatherFor(x, z, zone) {
+    let v = Math.min(1, Math.hypot(x, z) / 235);
+    v = v * v * 0.95;
+    if (zone === 0) v *= 0.22;              // the square is still being kept
+    else if (zone === 2) v = Math.max(v, 0.36); // downtown emptied first
+    else if (zone === 4) v = Math.max(v, 0.68); // the yards rusted long before
+    else if (zone === 5) v = Math.max(v, 0.72); // nobody has climbed the ridge in years
+    return Math.min(1, v);
+  }
+
+  /**
+   * Give every building a coherent material set, then guarantee no two
+   * neighbours share one, then bake the set (plus this building's weathering)
+   * down to the concrete wall/roof/door/window/foundation/trim textures the
+   * BuildingKit consumes. Anything a spec states outright survives untouched.
+   */
+  _assignMaterials() {
+    // What the plan stated outright is honoured to the end; everything else
+    // is the set's to decide. Captured before the first bake, because baking
+    // writes the resolved textures onto the spec itself.
+    const stated = new Map(this.buildingSpecs.map((s) => [s, {
+      wall: s.wall, roofTex: s.roofTex, doorTex: s.doorTex, windowTex: s.windowTex,
+      foundationTex: s.foundationTex, trimTex: s.trimTex, chimneyTex: s.chimneyTex,
+    }]));
+    const bake = (s, setName) => resolve(setName, s.weather, stated.get(s));
+    deconflict(this.buildingSpecs, 32);
+    for (const s of this.buildingSpecs) Object.assign(s, bake(s, s.mat));
+    deconflictResolved(this.buildingSpecs, bake);
+  }
+
   _planBuildings() {
     const S = (o) => this._spec(o);
     // --- Old Town (zone 0): the kept-up civic heart around the plaza.
     // Commercial fronts face the square; the two cottages face the plaza too.
-    S({ x: -18, z: -14, w: 12, d: 9, h: 4.6, wall: 'brickRed', roof: 'gable', door: 'S', chimney: true, shopfront: true, awning: true, name: 'tavern', use: 'tavern', zone: 0 });
-    S({ x: 15, z: -17, w: 10, d: 8, h: 4.2, wall: 'sidingBlue', roof: 'flat', roofTex: 'roofMetal', door: 'S', doorTex: 'doorShop', shopfront: true, awning: true, name: 'store', use: 'store', zone: 0 });
-    S({ x: -17, z: 13, w: 8, d: 7, h: 3.8, wall: 'wallPlaster', roof: 'gable', door: 'E', chimney: true, partitions: housePartitions(8, 7, 'E'), name: 'npcHouse', use: 'house', zone: 0 });
-    S({ x: 14, z: 15, w: 5, d: 5, h: 14, wall: 'brickGray', roof: 'flat', solid: true, name: 'clocktower', zone: 0 });
-    S({ x: -32, z: 26, w: 7, d: 6, h: 3.8, wall: 'stuccoTan', roof: 'gable', roofTex: 'roofSlate', door: 'E', shopfront: true, awning: true, name: 'bakery', use: 'bakery', zone: 0 });
-    S({ x: 28, z: 26, w: 8, d: 6, h: 4.0, wall: 'brickTan', roof: 'flat', door: 'W', doorTex: 'doorShop', name: 'postOffice', use: 'postOffice', zone: 0 });
-    S({ x: 34, z: -30, w: 7, d: 6, h: 3.6, wall: 'sidingGreen', roof: 'gable', door: 'W', chimney: true, partitions: housePartitions(7, 6, 'W'), name: 'cottage', use: 'house', zone: 0 });
+    S({ x: -18, z: -14, w: 12, d: 9, h: 4.6, mat: 'redbrickWalkup', roof: 'gable', door: 'S', chimney: true, shopfront: true, awning: true, name: 'tavern', use: 'tavern', zone: 0 });
+    S({ x: 15, z: -17, w: 10, d: 8, h: 4.2, mat: 'paintedBrickShop', roof: 'flat', door: 'S', shopfront: true, awning: true, name: 'store', use: 'store', zone: 0 });
+    S({ x: -17, z: 13, w: 8, d: 7, h: 3.8, mat: 'plasterTownhouse', roof: 'gable', door: 'E', chimney: true, partitions: housePartitions(8, 7, 'E'), name: 'npcHouse', use: 'house', zone: 0 });
+    S({ x: 14, z: 15, w: 5, d: 5, h: 14, mat: 'greyBrickCivic', family: 'civic', roof: 'flat', solid: true, name: 'clocktower', zone: 0 });
+    S({ x: -32, z: 26, w: 7, d: 6, h: 3.8, mat: 'stuccoTanVilla', roof: 'gable', door: 'E', shopfront: true, awning: true, name: 'bakery', use: 'bakery', zone: 0 });
+    S({ x: 28, z: 26, w: 8, d: 6, h: 4.0, mat: 'tanBrickDeco', roof: 'flat', door: 'W', name: 'postOffice', use: 'postOffice', zone: 0 });
+    S({ x: 34, z: -30, w: 7, d: 6, h: 3.6, mat: 'clapboardGreen', roof: 'gable', door: 'W', chimney: true, partitions: housePartitions(7, 6, 'W'), name: 'cottage', use: 'house', zone: 0 });
 
     // --- Eastgate Residential (zone 1): neighbourhoods along shared streets.
-    // Doors face the road each row fronts; material families alternate so no
-    // two neighbours match; density thins toward the map edge.
-    const houseStyles = [
-      ['brickRed', 'roofShingle'], ['sidingBlue', 'roofShingle'], ['stuccoTan', 'roofSlate'], ['brickGray', 'roofMetal'],
-      ['sidingGreen', 'roofShingle'], ['wallWood', 'roofMetal'], ['brickTan', 'roofSlate'], ['wallPlaster', 'roofShingle'],
+    // Doors face the road each row fronts; material sets rotate so no two
+    // neighbours match; density thins toward the map edge.
+    const houseSets = [
+      'redbrickWalkup', 'clapboardBlue', 'stuccoTanVilla', 'plasterTownhouse',
+      'clapboardGreen', 'weatheredPlank', 'clapboardCream', 'timberFramed',
+      'boardBattenRed', 'brownBrickTenement',
     ];
     const houses = [
       // Main St row (fronting the z≈0 road)
       [70, -14, 'S', 0], [92, -16, 'S', 1], [116, -15, 'S', 2], [142, -18, 'S', 3],
-      [70, 16, 'N', 2], [95, 18, 'N', 3], [120, 60, 'W', 1, true], [145, 16, 'N', 0],
+      [72, 24, 'N', 2], [95, 18, 'N', 3], [120, 60, 'W', 1, true], [145, 16, 'N', 0],
       // north loop (x=100/x=168 ring)
       [92, -48, 'E', 1], [92, -74, 'E', 0], [128, -78, 'S', 2], [162, -48, 'W', 3],
       // south loop
@@ -261,80 +332,104 @@ export class World {
     ];
     let hi = 0;
     for (const [hx, hz, door, style, solid] of houses) {
-      const [wall, roofTex] = houseStyles[style];
       const w = 9 + (hi % 3), d = 7 + ((hi + 1) % 2) * 2;
-      S({ x: hx, z: hz, w, d, h: 3.8 + (hi % 2) * 0.5, wall, roofTex, roof: 'gable', door, chimney: true,
+      S({ x: hx, z: hz, w, d, h: 3.8 + (hi % 2) * 0.5, mat: houseSets[(style + hi) % houseSets.length],
+          roof: 'gable', door, chimney: true,
           solid: !!solid, partitions: solid ? undefined : housePartitions(w, d, door), name: 'house' + hi, use: 'house', zone: 1 });
       hi++;
     }
-    S({ x: 150, z: -70, w: 10, d: 16, h: 6, wall: 'wallStone', roof: 'gable', roofTex: 'roofSlate', door: 'S', name: 'church', use: 'church', zone: 1 });
-    S({ x: 105, z: 30, w: 9, d: 7, h: 4, wall: 'brickRed', roof: 'flat', door: 'N', doorTex: 'doorShop', shopfront: true, awning: true, name: 'cornerShop', use: 'store', zone: 1 });
-    S({ x: 70, z: 13, w: 7, d: 6, h: 3.6, wall: 'wallConcrete', roof: 'shed', roofTex: 'roofMetal', floor: 'floorTile', door: 'W', doorTex: 'doorShop', name: 'gasEast', use: 'gasShop', zone: 1 });
+    S({ x: 150, z: -70, w: 10, d: 16, h: 6, mat: 'coursedStone', roof: 'gable', door: 'S', name: 'church', use: 'church', zone: 1 });
+    S({ x: 105, z: 30, w: 9, d: 7, h: 4, mat: 'glazedTileShop', roof: 'flat', door: 'N', shopfront: true, awning: true, name: 'cornerShop', use: 'store', zone: 1 });
+    S({ x: 70, z: 13, w: 7, d: 6, h: 3.6, mat: 'officeConcrete', roof: 'shed', roofTex: 'roofMetal', floor: 'floorTile', door: 'W', doorTex: 'doorShop', name: 'gasEast', use: 'gasShop', zone: 1 });
     // The hollow cottage: an ordinary house from the street. Its interior
     // (see Interiors._hollow) is walled almost a metre inside its exterior.
-    S({ x: 82, z: 96, w: 8, d: 7, h: 3.9, wall: 'wallPlaster', roof: 'gable', roofTex: 'roofSlate', door: 'S', chimney: true, name: 'hollowCottage', use: 'hollow', zone: 1 });
+    S({ x: 82, z: 96, w: 8, d: 7, h: 3.9, mat: 'plasterTownhouse', roof: 'gable', door: 'S', chimney: true, name: 'hollowCottage', use: 'hollow', zone: 1 });
 
     // --- Downtown (zone 2): blocks between streets x=-100,-50,0 / z=-70,-120,-170,-220
     const blocks = [
-      [-75, -95, 16, 12, 8, 'wallStone', 'S', 'library', false, 'library'],
-      [-25, -92, 14, 11, 7, 'wallConcrete', 'S', 'office', false, 'office'],
-      [-122, -95, 12, 10, 9, 'brickGray', 'E', 'apartmentA', true],
-      [-75, -145, 13, 10, 8, 'wallPlaster', 'N', 'diner', false, 'diner'],
-      [-25, -145, 12, 10, 9, 'brickRed', 'W', 'apartmentB', false, 'apartment'],
-      [-122, -145, 14, 11, 8, 'brickTan', 'E', 'theater', true],
-      [-75, -195, 15, 12, 9, 'brickGray', 'S', 'department', true],
-      [-25, -195, 12, 10, 7, 'wallPlaster', 'S', 'pawnShop', false, 'pawnShop'],
-      [-122, -195, 12, 10, 8, 'brickRed', 'E', 'hotel', true],
-      [22, -95, 12, 10, 7, 'brickGray', 'W', 'mannequinShop', false, 'boutique'],
-      [22, -145, 13, 10, 8, 'wallConcrete', 'W', 'bank', true],
-      [22, -195, 12, 10, 7, 'brickRed', 'W', 'arcade', false, 'arcade'],
+      [-75, -95, 16, 12, 8, 'coursedStone', 'S', 'library', false, 'library'],
+      [-25, -92, 14, 11, 7, 'officeConcrete', 'S', 'office', false, 'office'],
+      [-122, -95, 12, 10, 9, 'brownBrickTenement', 'E', 'apartmentA', true],
+      [-75, -145, 13, 10, 8, 'stuccoPinkStrip', 'N', 'diner', false, 'diner'],
+      [-25, -145, 12, 10, 9, 'redbrickWalkup', 'W', 'apartmentB', false, 'apartment'],
+      [-122, -145, 14, 11, 8, 'tanBrickDeco', 'E', 'theater', true],
+      [-75, -195, 15, 12, 9, 'greyBrickCivic', 'S', 'department', true],
+      [-25, -195, 12, 10, 7, 'plasterTownhouse', 'S', 'pawnShop', false, 'pawnShop'],
+      [-122, -195, 12, 10, 8, 'brownBrickTenement', 'E', 'hotel', true],
+      [22, -95, 12, 10, 7, 'glazedTileShop', 'W', 'mannequinShop', false, 'boutique'],
+      [22, -145, 13, 10, 8, 'brutalist', 'W', 'bank', true],
+      [22, -195, 12, 10, 7, 'paintedBrickShop', 'W', 'arcade', false, 'arcade'],
     ];
     const shopfronts = new Set(['diner', 'pawnShop', 'boutique', 'arcade']);
-    for (const [bx, bz, w, d, h, wall, door, name, solid, use] of blocks) {
-      S({ x: bx, z: bz, w, d, h, wall, roof: 'flat', floor: 'floorTile', door, solid: !!solid, name, use,
-          doorTex: use && use !== 'apartment' ? 'doorShop' : 'doorWood',
+    for (const [bx, bz, w, d, h, mat, door, name, solid, use] of blocks) {
+      S({ x: bx, z: bz, w, d, h, mat, roof: 'flat', floor: 'floorTile', door, solid: !!solid, name, use,
           shopfront: shopfronts.has(use), awning: shopfronts.has(use), zone: 2 });
     }
     // Institutional strip north of the grid: civic buildings face the z=-70
     // road, central and reachable from every district.
-    S({ x: -75, z: -57, w: 14, d: 9, h: 6, wall: 'brickTan', roof: 'flat', floor: 'floorTile', door: 'N', doorTex: 'doorShop', name: 'townHall', use: 'townhall', zone: 2 });
-    S({ x: -25, z: -57, w: 11, d: 8, h: 5, wall: 'wallPlaster', roof: 'flat', floor: 'floorTile', door: 'N', name: 'clinic', use: 'clinic', zone: 2 });
+    S({ x: -75, z: -57, w: 14, d: 9, h: 6, mat: 'tanBrickDeco', roof: 'flat', floor: 'floorTile', door: 'N', name: 'townHall', use: 'townhall', zone: 2 });
+    S({ x: -25, z: -57, w: 11, d: 8, h: 5, mat: 'greyBrickCivic', roof: 'flat', floor: 'linoleum', door: 'N', name: 'clinic', use: 'clinic', zone: 2 });
     // School east of the grid, on the extended z=-120 road, yard behind it
     // (kept clear of the zone-1 border wall running along z=-110).
-    S({ x: 58, z: -102, w: 15, d: 11, h: 6, wall: 'brickTan', roof: 'flat', floor: 'floorTile', door: 'S', name: 'school', use: 'school', zone: 2 });
+    S({ x: 58, z: -102, w: 15, d: 11, h: 6, mat: 'redbrickWalkup', family: 'civic', roof: 'flat', floor: 'linoleum', door: 'S', name: 'school', use: 'school', zone: 2 });
     // Third gas station serving the south end of the grid.
-    S({ x: 34, z: -227, w: 7, d: 6, h: 3.6, wall: 'wallConcrete', roof: 'shed', roofTex: 'roofMetal', floor: 'floorTile', door: 'N', doorTex: 'doorShop', name: 'gasDowntown', use: 'gasShop', zone: 2 });
+    S({ x: 34, z: -227, w: 7, d: 6, h: 3.6, mat: 'officeConcrete', roof: 'shed', roofTex: 'roofMetal', floor: 'floorTile', door: 'N', doorTex: 'doorShop', name: 'gasDowntown', use: 'gasShop', zone: 2 });
+
+    // Street-wall shops facing the z=-120 cross street, in pairs with a 3 m
+    // service alley between them (see _alleys): the flanking routes that make
+    // the grid worth learning. All enterable, all stocked.
+    // Spacing is not cosmetic here: the nav grid's cells are 2 m and a
+    // blockBox rounds OUT to whole cells, so a three-metre slot between two
+    // buildings is swallowed whole and nothing can path down it. Each gap is
+    // 6.5 m, which always leaves two clear cells — narrow enough to be an
+    // alley, wide enough to be a route. See _alleys().
+    const strip = [
+      [-63.5, -110, 11, 9, 4.8, 'N', 'pharmacy', 'pharmacy', 'stuccoPinkStrip'],
+      [-77.5, -110, 8, 9, 5.2, 'N', 'laundromat', 'laundromat', 'glazedTileShop'],
+      [-41, -110, 10, 9, 5.0, 'N', 'recordShop', 'recordShop', 'paintedBrickShop'],
+      [-25.5, -110, 8, 9, 4.6, 'N', 'barbers', 'barbers', 'timberFramed'],
+      [13, -110, 10, 9, 5.4, 'N', 'hardware', 'hardware', 'brownBrickTenement'],
+    ];
+    for (const [bx, bz, w, d, h, door, name, use, mat] of strip) {
+      S({ x: bx, z: bz, w, d, h, mat, roof: 'flat', floor: 'floorTile', door, name, use,
+          shopfront: true, awning: true, zone: 2 });
+    }
+    // The firehouse: roll-up bay doors onto the z=-120 street, a landmark in
+    // its own right and the one downtown interior with a clear open span.
+    S({ x: -70, z: -129.5, w: 12, d: 10, h: 6.2, mat: 'redbrickWalkup', family: 'civic', roof: 'flat',
+        floor: 'concrete', door: 'N', doorTex: 'doorGarage', name: 'firehouse', use: 'firehouse', zone: 2 });
+
     // Downtown infill: extra buildings inside the blocks (clear of streets
     // at x=-100/-50/0 and z=-70/-120/-170/-220) so the grid reads dense.
     // Varied heights + materials so no adjacent pair matches.
     const infill = [
-      [-88, -108, 9, 8, 8, 'brickTan'], [-12, -108, 8, 8, 7, 'wallPlaster'],
-      [-60, -158, 8, 8, 9, 'wallConcrete'],
-      [-134, -110, 8, 8, 12, 'stuccoTan'], [34, -128, 8, 8, 9, 'brickGray'],
-      [-132, -160, 8, 8, 8, 'brickRed'], [-10, -180, 8, 8, 10, 'wallConcrete'],
+      [-92, -110, 8, 9, 8], [-11, -110, 8, 9, 7],
+      [-60, -158, 8, 8, 9],
+      [-134, -110, 8, 8, 12], [34, -128, 8, 8, 9],
+      [-132, -160, 8, 8, 8], [-10, -180, 8, 8, 10],
     ];
     let fi = 0;
-    for (const [bx, bz, w, d, h, wall] of infill) {
-      S({ x: bx, z: bz, w, d, h, wall, roof: 'flat', solid: true, name: 'infill' + fi++, zone: 2 });
+    for (const [bx, bz, w, d, h] of infill) {
+      S({ x: bx, z: bz, w, d, h, family: 'block', roof: 'flat', solid: true, name: 'infill' + fi++, zone: 2 });
     }
     // Tower block on the south rim — the tall landmark that orients the grid.
-    S({ x: -134, z: -234, w: 10, d: 10, h: 14, wall: 'brickGray', roof: 'flat', solid: true, name: 'towerBlock', zone: 2 });
+    S({ x: -134, z: -234, w: 10, d: 10, h: 14, mat: 'brownBrickTenement', family: 'tower', roof: 'flat', solid: true, name: 'towerBlock', zone: 2 });
     // The skyline: a corporate row along the south rim plus scattered
     // high-rises inside the blocks. All solid shafts — their windows stack
     // rows every storey so they read multi-floor — capped by _highrise()
     // with water tanks, masts and aviation beacons.
     const towers = [
-      [-108, -236, 12, 12, 26, 'wallConcrete', 'tank'],
-      [-76, -237, 13, 13, 34, 'brickTan', 'mast'],
-      [-44, -236, 12, 12, 22, 'brickGray', 'tank'],
-      [-12, -237, 12, 12, 30, 'stuccoTan', 'mast'],
-      [-112, -80, 9, 9, 16, 'brickRed', 'tank'],
-      [-88, -130, 9, 9, 18, 'stuccoTan', 'tank'],
-      [34, -186, 10, 10, 20, 'brickTan', 'mast'],
+      [-108, -236, 12, 12, 26, 'officeConcrete', 'tank'],
+      [-76, -237, 13, 13, 34, 'curtainGlass', 'mast'],
+      [-44, -236, 12, 12, 22, 'brutalist', 'tank'],
+      [-12, -237, 12, 12, 30, 'greyBrickCivic', 'mast'],
+      [-112, -80, 9, 9, 16, 'redbrickWalkup', 'tank'],
+      [-88, -130, 9, 9, 18, 'tanBrickDeco', 'tank'],
+      [34, -186, 10, 10, 20, 'curtainGlass', 'mast'],
     ];
     let ti = 0;
-    for (const [bx, bz, w, d, h, wall] of towers) {
-      S({ x: bx, z: bz, w, d, h, wall, roof: 'flat', solid: true, name: 'tower' + ti++, zone: 2 });
+    for (const [bx, bz, w, d, h, mat] of towers) {
+      S({ x: bx, z: bz, w, d, h, mat, family: 'tower', roof: 'flat', solid: true, name: 'tower' + ti++, zone: 2 });
     }
     this._towerCrowns = towers.map((t, i) => ['tower' + i, t[6]]);
     this._towerCrowns.push(['towerBlock', 'tank']);
@@ -342,30 +437,32 @@ export class World {
     // with a dead elevator bank and a maintenance room; the glass shaft above
     // is raised by _highrise(). The interior stops at the first ceiling — the
     // other twenty-six floors are somebody else's problem now.
-    S({ x: -30, z: -131, w: 12, d: 11, h: 5.4, wall: 'wallConcrete', roof: 'flat', floor: 'floorTile', door: 'S', doorTex: 'doorShop', partitions: lobbyPartitions(12, 11, 'S'), name: 'meridianTower', use: 'towerLobby', zone: 2 });
+    S({ x: -30, z: -131, w: 12, d: 11, h: 5.4, mat: 'curtainGlass', roof: 'flat', floor: 'floorTile', door: 'S', partitions: lobbyPartitions(12, 11, 'S'), name: 'meridianTower', use: 'towerLobby', zone: 2 });
 
     // Northern outskirt farms (east of downtown grid)
-    S({ x: 120, z: -160, w: 11, d: 8, h: 4, wall: 'wallWood', roof: 'gable', door: 'S', chimney: true, partitions: housePartitions(11, 8, 'S'), name: 'farmhouseA', use: 'house', zone: 2 });
-    S({ x: 170, z: -190, w: 14, d: 10, h: 6, wall: 'wallWood', roof: 'gable', roofTex: 'roofMetal', door: 'S', name: 'barn', use: 'barn', zone: 2 });
-    S({ x: 80, z: -200, w: 9, d: 7, h: 3.8, wall: 'wallPlaster', roof: 'gable', door: 'E', name: 'farmhouseB', zone: 2, solid: true });
+    S({ x: 120, z: -160, w: 11, d: 8, h: 4, mat: 'weatheredPlank', roof: 'gable', door: 'S', chimney: true, partitions: housePartitions(11, 8, 'S'), name: 'farmhouseA', use: 'house', zone: 2 });
+    S({ x: 170, z: -190, w: 14, d: 10, h: 6, mat: 'boardBattenRed', family: 'farm', roof: 'gable', door: 'S', name: 'barn', use: 'barn', zone: 2 });
+    S({ x: 80, z: -200, w: 9, d: 7, h: 3.8, mat: 'stuccoTanVilla', roof: 'gable', door: 'E', name: 'farmhouseB', zone: 2, solid: true });
 
     // --- Hollow Park (zone 3)
-    S({ x: -135, z: 70, w: 8, d: 6, h: 3.6, wall: 'wallWood', roof: 'gable', roofTex: 'roofMetal', door: 'E', name: 'boathouse', use: 'boathouse', zone: 3 });
-    S({ x: -210, z: 20, w: 9, d: 7, h: 4, wall: 'brickGray', roof: 'gable', door: 'E', chimney: true, partitions: housePartitions(9, 7, 'E'), name: 'lodge', use: 'house', zone: 3 });
+    S({ x: -135, z: 70, w: 8, d: 6, h: 3.6, mat: 'weatheredPlank', family: 'farm', roof: 'gable', door: 'E', name: 'boathouse', use: 'boathouse', zone: 3 });
+    S({ x: -210, z: 20, w: 9, d: 7, h: 4, mat: 'timberFramed', roof: 'gable', door: 'E', chimney: true, partitions: housePartitions(9, 7, 'E'), name: 'lodge', use: 'house', zone: 3 });
 
     // --- Southside Industrial (zone 4): heavy sheds on the map's south rim,
     // truck access off the service loop, decay signature all their own.
-    S({ x: -60, z: 190, w: 24, d: 16, h: 8, wall: 'wallMetal', roof: 'flat', roofTex: 'roofMetal', floor: 'concrete', door: 'N', doorTex: 'doorMetal', partitions: officePartitions(24, 16, 'N'), name: 'warehouseA', use: 'warehouse', zone: 4 });
-    S({ x: 0, z: 200, w: 26, d: 18, h: 9, wall: 'wallConcrete', roof: 'flat', roofTex: 'roofMetal', floor: 'concrete', door: 'N', doorTex: 'doorMetal', name: 'warehouseB', use: 'warehouseMezz', zone: 4 });
-    S({ x: 62, z: 185, w: 22, d: 15, h: 8, wall: 'wallMetalRusty', roof: 'gable', roofTex: 'roofMetal', floor: 'concrete', door: 'N', doorTex: 'doorMetal', partitions: officePartitions(22, 15, 'N'), name: 'warehouseC', use: 'warehouse', zone: 4 });
-    S({ x: 124, z: 195, w: 20, d: 14, h: 7, wall: 'wallConcrete', roof: 'flat', roofTex: 'roofMetal', floor: 'concrete', door: 'W', name: 'depot', zone: 4, solid: true });
-    S({ x: 34, z: 122, w: 8, d: 6, h: 3.6, wall: 'wallConcrete', roof: 'flat', floor: 'floorTile', door: 'W', doorTex: 'doorShop', name: 'gasShop', use: 'gasShop', zone: 4 });
-    S({ x: -100, z: 150, w: 10, d: 8, h: 4.5, wall: 'brickRed', roof: 'shed', roofTex: 'roofMetal', floor: 'concrete', door: 'E', doorTex: 'doorMetal', name: 'machineShop', use: 'machineShop', zone: 4 });
-    S({ x: -105, z: 205, w: 20, d: 14, h: 9, wall: 'wallMetalRusty', roof: 'flat', roofTex: 'roofMetal', floor: 'concrete', door: 'E', doorTex: 'doorMetal', name: 'factory', use: 'factory', zone: 4 });
+    S({ x: -60, z: 190, w: 24, d: 16, h: 8, mat: 'corrugatedShed', roof: 'flat', floor: 'concrete', door: 'N', doorTex: 'doorMetal', partitions: officePartitions(24, 16, 'N'), name: 'warehouseA', use: 'warehouse', zone: 4 });
+    S({ x: 0, z: 200, w: 26, d: 18, h: 9, mat: 'blockworkIndustrial', roof: 'flat', floor: 'concrete', door: 'N', doorTex: 'doorMetal', name: 'warehouseB', use: 'warehouseMezz', zone: 4 });
+    S({ x: 62, z: 185, w: 22, d: 15, h: 8, mat: 'rustedShed', roof: 'gable', floor: 'concrete', door: 'N', doorTex: 'doorMetal', partitions: officePartitions(22, 15, 'N'), name: 'warehouseC', use: 'warehouse', zone: 4 });
+    S({ x: 124, z: 195, w: 20, d: 14, h: 7, mat: 'corrugatedShed', roof: 'flat', floor: 'concrete', door: 'W', name: 'depot', zone: 4, solid: true, family: 'industrial' });
+    S({ x: 34, z: 122, w: 8, d: 6, h: 3.6, mat: 'officeConcrete', roof: 'flat', floor: 'floorTile', door: 'W', doorTex: 'doorShop', name: 'gasShop', use: 'gasShop', zone: 4 });
+    S({ x: -100, z: 150, w: 10, d: 8, h: 4.5, mat: 'blockworkIndustrial', roof: 'shed', floor: 'concrete', door: 'E', doorTex: 'doorMetal', name: 'machineShop', use: 'machineShop', zone: 4 });
+    S({ x: -105, z: 205, w: 20, d: 14, h: 9, mat: 'rustedShed', roof: 'flat', floor: 'concrete', door: 'E', doorTex: 'doorMetal', name: 'factory', use: 'factory', zone: 4 });
 
     // --- Chapel Ridge (zone 5)
-    S({ x: -195, z: -198, w: 12, d: 18, h: 7, wall: 'wallPlaster', roof: 'gable', roofTex: 'roofSlate', door: 'S', name: 'chapel', use: 'church', zone: 5 });
-    S({ x: -168, z: -170, w: 8, d: 6, h: 3.6, wall: 'brickGray', roof: 'gable', door: 'W', name: 'caretaker', zone: 5, solid: true });
+    S({ x: -195, z: -198, w: 12, d: 18, h: 7, mat: 'coursedStone', roof: 'gable', door: 'S', name: 'chapel', use: 'church', zone: 5 });
+    S({ x: -168, z: -170, w: 8, d: 6, h: 3.6, mat: 'plasterTownhouse', roof: 'gable', door: 'W', name: 'caretaker', zone: 5, solid: true });
+
+    this._assignMaterials();
   }
 
   _constructBuildings() {
@@ -442,7 +539,7 @@ export class World {
     this._patch(30, 122, 12, 9, 'concrete', 'concrete', 8);    // gas station apron (south)
     this._patch(61, 12, 11, 6.5, 'concrete', 'concrete', 8);   // gas station apron (Eastgate)
     this._patch(27, -228, 12, 6, 'concrete', 'concrete', 8);   // gas station apron (downtown)
-    this._patch(-42, -108, 7, 5.5, 'road', 'road', 6);         // midtown parking lot
+    this._patch(-42, -134, 4.5, 7.5, 'road', 'road', 6);       // midtown parking lot
     this._patch(-75, -212, 8, 5, 'road', 'road', 6);           // department-store lot
     this._patch(58, -90, 8, 6, 'gravel', 'dirt', 6);           // school yard
     this._patch(-62, -228, 58, 3.5, 'sidewalk', 'concrete', 30); // corporate-row forecourt
@@ -466,11 +563,49 @@ export class World {
     return q;
   }
 
+  /**
+   * Place a prop, unless it would stand in somebody's doorway.
+   *
+   * Market stalls parked across a shop's own front door is the single most
+   * common way a hand-placed town goes wrong, and it is invisible in the
+   * plan — the coordinates look fine, and then you walk up to the building
+   * and cannot get in. So the check lives at the point of placement rather
+   * than in a reviewer's head: anything with a collider is tested against
+   * every building's entry lane, and refused if it lands in one.
+   *
+   * Refusals are recorded rather than silently swallowed (`doorwayRejects`),
+   * so tests/world.mjs can name the offender instead of leaving a prop
+   * quietly missing from the map.
+   */
   _prop(maker, x, z, opts = {}) {
     const p = maker;
+    const collide = opts.collide === undefined ? p.collide : opts.collide;
+    if (collide && !opts.lift && this._inDoorway(x, z, Math.max(collide[0], collide[2]))) {
+      this.doorwayRejects.push({ x, z });
+      return null;
+    }
     this.props.place(p.group, x, z, { collide: p.collide, ...opts });
     this.group.add(p.group);
     return p.group;
+  }
+
+  /**
+   * Is (x, z) — grown by `pad` — inside the approach lane of any building's
+   * front door? The lane is DOOR_APPROACH metres straight out from the
+   * threshold and DOOR_LANE_HALF either side of its centre.
+   */
+  _inDoorway(x, z, pad = 0) {
+    for (const s of this.buildingSpecs) {
+      if (!s.door || s.solid) continue;
+      const n = DOOR_NORMAL[s.door];
+      if (!n) continue;
+      const half = n[0] ? s.w / 2 : s.d / 2;
+      const along = (x - s.x) * n[0] + (z - s.z) * n[1] - half;
+      if (along < -0.5 - pad || along > DOOR_APPROACH + pad) continue;
+      const across = Math.abs((x - s.x) * -n[1] + (z - s.z) * n[0]);
+      if (across < DOOR_LANE_HALF + pad) return true;
+    }
+    return false;
   }
 
   /** Decal quad on a building facade. side is a world direction N/S/E/W. */
@@ -564,7 +699,7 @@ export class World {
     // market morning that never ended: stalls still stocked around the plaza
     this._prop(P.marketStall(0x7a3b30), -11, -11, { yaw: 0.2 });
     this._prop(P.marketStall(0x39586b), 11, -11, { yaw: -0.15 });
-    this._prop(P.marketStall(0x4a5a38), -11, 13.5, { yaw: 2.95 });
+    this._prop(P.marketStall(0x4a5a38), -7.5, 16.5, { yaw: 2.6 });
     this._prop(P.crateStack(2), -14.5, -8.5, { yaw: 0.5 });
     for (const [x, z] of [[-38, 34], [24, -38], [-34, -30], [38, 32], [26, 18], [-28, 4]]) this.veg.tree(this.group, x, z, 0.9);
     for (const [x, z] of [[-22, 24], [18, 28], [-26, -6]]) this.veg.bush(this.group, x, z);
@@ -649,14 +784,14 @@ export class World {
     this._poleLine([[8.2, -76], [8.2, -111], [8.2, -146], [8.2, -181], [8.2, -216]]);
     // The odd manhole (secret #7) sits mid-block, greener than the rest.
     this.oddManhole = this._decal('manhole', -20, -95, 1.15, 0.3, 0x9fdf9f);
-    for (const [x, z, yaw] of [[-70, -75, 0.2], [-30, -122, 1.7], [-104, -168, 0.1], [-55, -218, -0.3], [8, -100, 1.6], [-96, -122, 0.4]]) {
+    for (const [x, z, yaw] of [[-70, -75, 0.2], [-39, -122, 1.7], [-104, -168, 0.1], [-55, -218, -0.3], [8, -100, 1.6], [-96, -122, 0.4]]) {
       this._prop(P.wreckedCar([0x6b3232, 0x39465e, 0x555c46, 0x694f28][Math.floor(rng() * 4)]), x, z, { yaw });
     }
     // abandoned lots: cars still parked where their owners left them
-    for (const [x, z, yaw] of [[-44.5, -106, 1.6], [-40, -110.5, 1.5], [-77, -211, 0.05], [-71.5, -213, -0.1]]) {
+    for (const [x, z, yaw] of [[-43.5, -131, 1.6], [-41, -137, 1.5], [-77, -211, 0.05], [-71.5, -213, -0.1]]) {
       this._prop(P.wreckedCar([0x39465e, 0x555c46, 0x694f28][Math.floor(rng() * 3)]), x, z, { yaw });
     }
-    this._prop(P.signPost(0x39586b), -47, -103);
+    this._prop(P.signPost(0x39586b), -47.5, -128);
     for (const [x, z] of [[-88, -95, 0], [-38, -145, 0], [-88, -195, 0], [10, -170, 0]]) this._prop(P.busStop(), x, z);
     for (const [x, z] of [[-63, -108], [-37, -132], [-110, -132], [-63, -182], [-12, -108], [-110, -182]]) this._prop(P.dumpster(), x, z, { yaw: rng() });
     for (const [x, z] of [[-95, -75], [-45, -75], [-95, -165], [-45, -165], [5, -125], [5, -215]]) this._prop(P.lamppost(), x, z);
@@ -674,9 +809,8 @@ export class World {
     // school yard details
     this._prop(P.bench(), 52, -90, { yaw: 0.2 });
     this._prop(P.signPost(0x7a3b30), 50, -113);
-    // Fountain plaza
-    this._prop(P.well(), -50, -145);
-    for (const [x, z, yaw] of [[-56, -140, 0.6], [-44, -150, -2.2], [-57, -150, 2.4]]) this._prop(P.bench(), x, z, { yaw });
+    this._alleys();
+    this._downtownSquare();
     // Vines climb the north faces (away from the dying sun)
     for (const name of ['library', 'diner', 'apartmentB', 'hotel', 'department']) {
       const b = this.built.get(name);
@@ -724,6 +858,95 @@ export class World {
     this._zoneSpawns(2, 26, -60, -140, 0, 0);
   }
 
+  /**
+   * The alley network behind the z=-120 shop row.
+   *
+   * Three slots barely three metres wide run north between the shops, feeding
+   * a continuous service lane squeezed between their back walls and the back
+   * of the library. That is the whole point of them: they are the flanking
+   * route through a block you would otherwise have to go round, they are too
+   * narrow to fight in at range, and a horde that follows you into one has
+   * you in a corridor. Every alley is dressed the same way a real one is —
+   * bins, dropped pallets, a fire escape overhead, pipework, and the graffiti
+   * that only ever appears where nobody official goes.
+   */
+  _alleys() {
+    const P = this.props;
+    // The service lane along the back of the row, between the shops' rear
+    // walls (z = -105.5) and the back of the library (z = -101). It runs in
+    // two halves because the Hollow Park border wall crosses x = -45 — that
+    // wall is not ours to move, and the lane picks up again on the far side
+    // of it once the district opens.
+    this._road([[-96, -103.3], [-70, -103.3], [-47.5, -103.3]], 'concrete', 4.0, 'concrete');
+    this._road([[-42.5, -103.3], [-30, -103.3], [-18, -103.3]], 'concrete', 4.0, 'concrete');
+    // the four slots down to the street, each in the middle of a 6.5 m gap
+    const slots = [
+      [-84.75, 'laundromat', -77.5, 8],
+      [-70.25, 'pharmacy', -63.5, 11],
+      [-32.75, 'barbers', -25.5, 8],
+      [-18.25, null, 0, 0],
+    ];
+    for (const [ax] of slots) this._road([[ax, -117], [ax, -103.3]], 'concrete', 3.6, 'concrete');
+
+    // Dressing. A bin at the mouth, something dropped halfway down, pipework
+    // and a fire escape overhead — an alley is unmistakable within a second
+    // of turning into one, and that legibility is what makes it usable as a
+    // flanking route under pressure.
+    // Alley furniture is solid to bodies but INVISIBLE to the nav grid
+    // (`nav: false`). A slot only has two clear 2 m cells to begin with, so a
+    // dumpster registered as a nav block would seal the route outright and the
+    // flanking path would exist for the player alone. Steering handles the
+    // local avoidance, which is what makes threading a bin-strewn alley feel
+    // like threading a bin-strewn alley.
+    let di = 0;
+    for (const [ax, wallName, wallX, wallW] of slots) {
+      this._prop(P.dumpster(), ax + 0.35, -114.6, { yaw: 1.55, nav: false });
+      this._prop(P.trashCan(), ax - 1.1, -110.8, { nav: false });
+      this._prop(P.crateStack(2), ax + 0.7, -107.4, { yaw: 0.6, nav: false });
+      if (!wallName) continue;
+      const face = wallX - wallW / 2 - 0.35;   // the alley-facing wall
+      this._prop(P.wallPipes(6), face, -111.6, { yaw: -Math.PI / 2, nav: false });
+      this._prop(P.fireEscape(2), face + 0.1, -108.4, { yaw: -Math.PI / 2, nav: false });
+      this._wallDecal('graffiti', wallName, 'W', -1.6 + di, 3.0, 1.5);
+      this._decal('oilStain', ax + 0.5, -112.2, 1.8);
+      di += 1.2;
+    }
+    // the lane itself: a hooded light that stopped working years ago, more
+    // bins, and the back doors nobody ever used from the outside
+    for (const [x, z] of [[-88, -103.3], [-52, -103.3], [-28, -103.3]]) this._prop(P.lamppost(), x, z, { nav: false });
+    for (const [x, z, yaw] of [[-60, -102.3, 0.2], [-45, -104.3, -0.3]]) this._prop(P.dumpster(), x, z, { yaw, nav: false });
+    for (const [x, z] of [[-68, -102.5], [-38, -104.4]]) this._prop(P.trashCan(), x, z, { nav: false });
+    this._prop(P.crateStack(3), -56, -104.4, { yaw: 0.4, nav: false });
+    this._wallDecal('graffiti', 'library', 'N', 3.4, 3.6, 1.8);
+    for (const [x, z] of [[-80, -103], [-48, -103.8], [-24, -103]]) this._decal('oilStain', x, z, 1.6);
+  }
+
+  /**
+   * Founders Square: the public space that breaks up the block grid and, more
+   * usefully, the open ground the mid-game fights want. A paved plaza with a
+   * statue in the middle you can see from three streets away, benches and
+   * planters round the edge for cover, and the old fountain moved here off
+   * the carriageway where it used to sit.
+   */
+  _downtownSquare() {
+    const P = this.props;
+    this._patch(-40, -158, 6, 8, 'sidewalk', 'concrete', 8);
+    this.statuePos = { x: -40, z: -158 };
+    this._prop(P.statue(), -40, -158, { yaw: 0.4 });
+    this._prop(P.well(), -40, -150.5);                       // the fountain
+    for (const [x, z, yaw] of [[-45, -153, 1.4], [-35, -153, -1.4], [-45, -163, 2.0], [-35, -163, -2.0]]) {
+      this._prop(P.bench(), x, z, { yaw });
+    }
+    for (const [x, z] of [[-44.5, -157.5], [-35.5, -157.5], [-40, -165.5]]) {
+      this._prop(P.planter(this.veg._cross(this.veg.bushMat, 1.1, 0.9)), x, z);
+    }
+    for (const [x, z] of [[-45.5, -149.5], [-34.5, -149.5]]) this._prop(P.bollard(), x, z);
+    this._prop(P.trashCan(), -36.5, -151.5);
+    this._prop(P.newsstand(), -45.2, -166, { yaw: 0.3 });
+    for (const [x, z] of [[-46, -160], [-34, -160.5], [-46, -155]]) this.veg.tree(this.group, x, z, 0.85);
+    this._decal('crosswalk', -40, -148.5, 5.5, 0);
+  }
+
   _park() {
     const P = this.props;
     const rng = mulberry32(44);
@@ -758,7 +981,7 @@ export class World {
     this._prop(P.picnicTable(), -128, 27, { yaw: -0.7 });
     this._prop(P.wreckedCar(0x555c46), -70, 10, { yaw: -0.3 });
     // Rocks along the ravine lip
-    for (const [x, z, s] of [[-172, 62, 1.6], [-128, 70, 1.3], [-166, 105, 1.8], [-134, 104, 1.2]]) {
+    for (const [x, z, s] of [[-172, 62, 1.6], [-125, 75, 1.3], [-166, 105, 1.8], [-134, 104, 1.2]]) {
       const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(s, 0), this.kit.mat('rock'));
       const g = new THREE.Group(); g.add(rock); rock.position.y = s * 0.5;
       this._prop({ group: g, collide: [s * 0.8, s * 0.7, s * 0.8] }, x, z, { yaw: rng() * 3 });
@@ -841,7 +1064,7 @@ export class World {
     const chapel = this.built.get('chapel');
     // Bell tower attached to the chapel front
     const s = chapel.spec;
-    const towerX = s.x, towerZ = s.z + s.d / 2 + 2.5;
+    const towerX = s.x - 4.6, towerZ = s.z + s.d / 2 + 2.5;
     const towerY = s.y;
     const tower = P.box(4, 11, 4, 'wallPlaster');
     const tg = new THREE.Group();
@@ -961,8 +1184,8 @@ export class World {
 
     // alarmed civilian cars: shoot one and the horde goes to it, not you
     const lotCar = P.parkedCar(0x555c46);
-    this._prop(lotCar, -37, -104, { yaw: 1.55 });
-    this._registerAlarmCar(lotCar, -37, -104);
+    this._prop(lotCar, -42, -137.5, { yaw: 0.1 });
+    this._registerAlarmCar(lotCar, -42, -137.5);
     const plazaCar = P.parkedCar(0x6b3a32);
     this._prop(plazaCar, 20, 6.5, { yaw: 0.05 });
     this._registerAlarmCar(plazaCar, 20, 6.5);

@@ -843,6 +843,189 @@ export class PropKit {
     return { group: g, collide: [0.95, 0.5, 0.85] };
   }
 
+  /* ---- urban street furniture ---------------------------------------- */
+
+  /**
+   * Zig-zag fire escape bolted to an alley wall: landings, ladders between
+   * them, and the counterweighted bottom flight still hanging down. Purely
+   * scenic above the first landing — but it is what makes an alley read as an
+   * alley the instant you turn into one.
+   */
+  fireEscape(floors = 3, storey = 2.8) {
+    const g = new THREE.Group();
+    const steel = this.mat('metalRust');
+    for (let f = 0; f < floors; f++) {
+      const y = 2.6 + f * storey;
+      const deck = this.box(2.6, 0.08, 1.15, 'metalRust');
+      deck.position.set(0, y, 0.55);
+      g.add(deck);
+      for (const sx of [-1.25, 1.25]) {   // stringers back to the wall
+        const rail = this.box(0.06, 0.95, 0.06, 'metalRust');
+        rail.position.set(sx, y + 0.5, 1.05);
+        g.add(rail);
+      }
+      const front = this.box(2.6, 0.06, 0.06, 'metalRust');
+      front.position.set(0, y + 0.95, 1.1);
+      const mid = this.box(2.6, 0.06, 0.06, 'metalRust');
+      mid.position.set(0, y + 0.5, 1.1);
+      g.add(front, mid);
+      for (const sz of [0.1, 1.05]) {     // balusters
+        for (let i = -2; i <= 2; i++) {
+          const bar = this.box(0.04, 0.95, 0.04, 'metalRust');
+          bar.position.set(i * 0.6, y + 0.5, sz);
+          g.add(bar);
+        }
+      }
+      // the flight up to the next landing, alternating sides
+      if (f < floors - 1) {
+        const side = f % 2 ? -1 : 1;
+        const flight = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.08, storey * 1.15), steel);
+        flight.position.set(side * 0.85, y + storey / 2, 0.55);
+        flight.rotation.x = -Math.atan2(storey, storey * 1.05);
+        g.add(flight);
+        for (let s = 0; s < 7; s++) {
+          const step = this.box(0.9, 0.05, 0.16, 'metalRust');
+          const t = (s + 0.5) / 7;
+          step.position.set(side * 0.85, y + 0.1 + t * storey, 0.05 + t * 1.0);
+          g.add(step);
+        }
+      }
+      // brackets carrying the landing back into the wall
+      for (const sx of [-1.1, 1.1]) {
+        const brace = this.box(0.08, 0.08, 1.1, 'metalRust');
+        brace.position.set(sx, y - 0.35, 0.5);
+        brace.rotation.x = -0.5;
+        g.add(brace);
+      }
+    }
+    // drop ladder, lowered years ago and never raised
+    const ladder = new THREE.Group();
+    for (const sx of [-0.28, 0.28]) {
+      const rail = this.box(0.05, 2.6, 0.05, 'metalRust');
+      rail.position.set(sx, 1.3, 0);
+      ladder.add(rail);
+    }
+    for (let r = 0; r < 7; r++) {
+      const rung = this.box(0.6, 0.04, 0.04, 'metalRust');
+      rung.position.set(0, 0.2 + r * 0.36, 0);
+      ladder.add(rung);
+    }
+    ladder.position.set(1.1, 0, 0.9);
+    ladder.rotation.x = 0.12;
+    g.add(ladder);
+    return { group: g, collide: [1.3, 0.12, 0.5] };
+  }
+
+  /**
+   * The founder on his plinth: the downtown square's wayfinding landmark.
+   * Weathered bronze, one arm raised — and, since nothing in this town is
+   * quite right, he is looking at the ground rather than the horizon.
+   */
+  statue() {
+    const g = new THREE.Group();
+    const step = this.box(3.2, 0.35, 3.2, 'wallStone');
+    step.position.y = 0.17;
+    const plinth = this.box(2.0, 2.2, 2.0, 'marbleWhite');
+    plinth.position.y = 1.45;
+    const cap = this.box(2.25, 0.22, 2.25, 'trimStone');
+    cap.position.y = 2.66;
+    const plaque = this.box(1.1, 0.6, 0.05, 'goldMetal');
+    plaque.position.set(0, 1.5, 1.02);
+    g.add(step, plinth, cap, plaque);
+    const bronze = this.colorMat(0x4d6151);
+    const legs = this.box(0.62, 1.1, 0.44, bronze);
+    legs.position.y = 3.32;
+    const coat = this.box(0.78, 1.0, 0.5, bronze);
+    coat.position.y = 4.32;
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.24, 8, 6), bronze);
+    head.position.set(0, 5.0, 0.1);
+    const armUp = this.box(0.18, 0.95, 0.18, bronze);
+    armUp.position.set(0.5, 4.75, 0);
+    armUp.rotation.z = -0.5;
+    const armDown = this.box(0.18, 0.85, 0.18, bronze);
+    armDown.position.set(-0.48, 4.2, 0.06);
+    armDown.rotation.z = 0.2;
+    g.add(legs, coat, head, armUp, armDown);
+    return { group: g, collide: [1.2, 1.4, 1.2] };
+  }
+
+  /** Street planter: a concrete tub with something still alive in it. */
+  planter(veg) {
+    const g = new THREE.Group();
+    const tub = this.box(1.3, 0.6, 1.3, 'wallConcrete');
+    tub.position.y = 0.3;
+    const soil = this.box(1.1, 0.06, 1.1, 'dirt');
+    soil.position.y = 0.6;
+    g.add(tub, soil);
+    if (veg) { veg.position.y = 0.62; g.add(veg); }
+    return { group: g, collide: [0.68, 0.35, 0.68] };
+  }
+
+  /** Wire litter bin, overflowing, at every corner it should be at. */
+  trashCan() {
+    const g = new THREE.Group();
+    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.24, 0.85, 8), this.mat('metalRust'));
+    body.position.y = 0.43;
+    const rim = new THREE.Mesh(new THREE.TorusGeometry(0.28, 0.035, 5, 10), this.mat('metalRust'));
+    rim.rotation.x = Math.PI / 2;
+    rim.position.y = 0.86;
+    const sack = this.box(0.42, 0.3, 0.42, this.colorMat(0x2a2c2a));
+    sack.position.y = 0.96;
+    g.add(body, rim, sack);
+    return { group: g, collide: [0.3, 0.45, 0.3] };
+  }
+
+  /** Corner newsstand: a kiosk with the last edition still racked. */
+  newsstand() {
+    const g = new THREE.Group();
+    const body = this.box(2.2, 2.1, 1.2, 'wallMetal');
+    body.position.y = 1.05;
+    const shutter = this.box(1.8, 1.0, 0.06, 'doorGarage');
+    shutter.position.set(0, 1.45, 0.62);
+    const counter = this.box(2.3, 0.1, 0.55, 'wallWood');
+    counter.position.set(0, 0.92, 0.82);
+    const roof = this.box(2.6, 0.12, 1.7, 'roofMetal');
+    roof.position.set(0, 2.2, 0.16);
+    g.add(body, shutter, counter, roof);
+    for (let i = 0; i < 4; i++) {   // papers gone soft in the weather
+      const stack = this.box(0.38, 0.07, 0.44, this.colorMat(0xb8b2a0));
+      stack.position.set(-0.75 + i * 0.5, 0.99, 0.82);
+      g.add(stack);
+    }
+    return { group: g, collide: [1.2, 1.05, 0.85] };
+  }
+
+  /** Cast bollard guarding a kerb line. */
+  bollard() {
+    const g = new THREE.Group();
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.14, 0.9, 8), this.mat('metalRust'));
+    post.position.y = 0.45;
+    const cap = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 5), this.mat('metalRust'));
+    cap.position.y = 0.92;
+    g.add(post, cap);
+    return { group: g, collide: [0.16, 0.5, 0.16] };
+  }
+
+  /** Alley service pipework climbing a wall, with a dripping elbow. */
+  wallPipes(h = 6) {
+    const g = new THREE.Group();
+    for (const [sx, r] of [[-0.35, 0.09], [0, 0.13], [0.32, 0.07]]) {
+      const pipe = new THREE.Mesh(new THREE.CylinderGeometry(r, r, h, 6), this.mat('metalRust'));
+      pipe.position.set(sx, h / 2, 0);
+      g.add(pipe);
+      for (let y = 1.2; y < h; y += 2.2) {
+        const clamp = this.box(r * 3, 0.12, 0.2, 'metalRust');
+        clamp.position.set(sx, y, 0.08);
+        g.add(clamp);
+      }
+    }
+    const elbow = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.13, 0.9, 6), this.mat('metalRust'));
+    elbow.rotation.z = Math.PI / 2;
+    elbow.position.set(0.45, 1.6, 0);
+    g.add(elbow);
+    return { group: g, collide: [0.5, 0.4, 0.2] };
+  }
+
   /** Fence run between two points; registers thin collider. */
   fenceRun(x1, z1, x2, z2, parent) {
     const len = Math.hypot(x2 - x1, z2 - z1);

@@ -16,7 +16,10 @@ import * as THREE from '../../lib/three.module.js';
  *  - the map edge rises steeply into fog on every side
  */
 export const MAP_HALF = 320; // world spans [-320, 320] on X and Z
-export const EDGE_LIMIT = 250; // invisible wall; playable content stays inside ~245
+// Hard clamp on player/NPC position. The thing you actually walk into is the
+// stone rampart at BARRIER (Boundary.js), whose inner face sits ~249; this is
+// only the backstop behind it. Playable content stays inside ~245.
+export const EDGE_LIMIT = 250;
 
 export class Terrain {
   constructor() {
@@ -44,9 +47,13 @@ export class Terrain {
     // Industrial flats (S).
     h = lerp(h, -0.8, 0.85 * boxMask(x, z, -150, 170, 110, 290, 40));
 
-    // The world rises into the fog at the edges.
+    // Beyond the rampart (see Boundary.js) the ground lifts into a low berm
+    // and stops. It used to ramp up 50 m into the fog, which is what you saw
+    // over the top of the map when nothing was standing in front of it; the
+    // wall is the world's edge now, so the ground outside only has to fill
+    // the gap between the wall's foot and the horizon.
     const edge = Math.max(Math.abs(x), Math.abs(z));
-    if (edge > 252) h += (edge - 252) * (edge - 252) * 0.012;
+    if (edge > 254) h += Math.min(8.5, (edge - 254) * 0.22);
     return h;
   }
 
