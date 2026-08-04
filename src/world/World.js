@@ -76,6 +76,9 @@ export class World {
     this.beacons = [];           // {mesh, phase} — tower aviation lights
     this.windmillRotors = [];
     this.playgroundSwings = [];
+    this.spinners = [];          // {node, speed} — carousel decks
+    this.flags = [];             // {strips[], phase} — rippling cloth
+    this.ropeSwings = [];        // pivots that keep an arc nobody started
     this.alarmCars = [];         // {x, y, z, lights[]} — shootable car alarms
     this.phoneBoothPos = null;
   }
@@ -99,6 +102,7 @@ export class World {
     this._industrial();
     this._ridge();
     this._highrise();
+    this._cityInteractables();
     // The edge of the world. Never sinks, never opens — see Boundary.js.
     this.barrier = new WorldBarrier({
       texLib: this.texLib, collision: this.collision, nav: this.nav,
@@ -396,8 +400,10 @@ export class World {
     }
     // The firehouse: roll-up bay doors onto the z=-120 street, a landmark in
     // its own right and the one downtown interior with a clear open span.
+    // Bay doors onto the z=-120 street, which lies to the SOUTH of it — the
+    // appliance has to be able to get out onto the carriageway.
     S({ x: -70, z: -129.5, w: 12, d: 10, h: 6.2, mat: 'redbrickWalkup', family: 'civic', roof: 'flat',
-        floor: 'concrete', door: 'N', doorTex: 'doorGarage', name: 'firehouse', use: 'firehouse', zone: 2 });
+        floor: 'concrete', door: 'S', doorTex: 'doorGarage', name: 'firehouse', use: 'firehouse', zone: 2 });
 
     // Downtown infill: extra buildings inside the blocks (clear of streets
     // at x=-100/-50/0 and z=-70/-120/-170/-220) so the grid reads dense.
@@ -520,6 +526,12 @@ export class World {
         this._road([[sx + off, -60], [sx + off, -140], [sx + off, -225]], 'sidewalk', 2.4, 'concrete');
       }
     }
+    // Side streets: short connectors branching off the through-roads, so the
+    // grid reads as a place that grew rather than as a lattice. Rowan Lane
+    // runs the length of the west block down to the service alley; the second
+    // is Founders Square's own approach off the x=-50 street.
+    this._road([[-59, -74], [-59, -90], [-59, -101]], 'road', 5.0);
+    this._road([[-47.5, -157], [-42, -157]], 'concrete', 4.2, 'concrete');
     // Road to farms
     this._road([[10, -170], [60, -168], [120, -164], [168, -184]], 'road', 5);
     // Park Rd + trails
@@ -801,6 +813,12 @@ export class World {
     this._wallDecal('graffiti', 'arcade', 'N', -1.5);
     this._wallDecal('graffiti', 'department', 'E', 3.0);
     this._wallDecal('graffiti', 'hotel', 'W', -2.0);
+    // The 41 stopped here and never moved again: slewed across the z=-170
+    // lane, it is the heaviest cover downtown and a thing you give directions
+    // by. Vans and pickups break up the parked sedans elsewhere in the grid.
+    this._prop(P.bus(0x2f6a52), -62, -168.4, { yaw: 0.34 });
+    this._prop(P.van(0x6b6f60, true), -92, -196, { yaw: 1.58 });
+    this._prop(P.van(0x7a5b3a), 19.5, -118, { yaw: 1.55 });
     // pocket park north of the z=-170 road — a breath between the blocks
     this._prop(P.bench(), 31, -160, { yaw: 2.4 });
     this._prop(P.bench(), 37, -162, { yaw: -0.6 });
@@ -826,7 +844,9 @@ export class World {
     marquee.position.set(th.spec.x + th.spec.w / 2 + 1.1, th.spec.y + 4.6, th.spec.z);
     this.group.add(marquee);
     // Farms NE
-    this._prop(P.wreckedCar(0x694f28), 130, -168, { yaw: 0.2 });
+    this._prop(P.pickup(0x694f28, true), 130, -168, { yaw: 0.2 });
+    this._prop(P.pickup(0x4c5548), 128, -155, { yaw: 1.5 });
+    this._prop(P.pickup(0x6b3a32, true), 162, -185, { yaw: -0.3 });
     for (const [x1, z1, x2, z2] of [[105, -150, 105, -175], [105, -175, 140, -178]]) this.props.fenceRun(x1, z1, x2, z2, this.group);
     // Working farmland fills the east flats: two fields still holding their
     // crop rows, an orchard planted in ranks, and the windmill idling at the
@@ -980,6 +1000,32 @@ export class World {
     this._prop(P.picnicTable(), -112, 14, { yaw: 0.4 });
     this._prop(P.picnicTable(), -128, 27, { yaw: -0.7 });
     this._prop(P.wreckedCar(0x555c46), -70, 10, { yaw: -0.3 });
+
+    // --- the park's moving parts.
+    // Everything else in town is stopped. Here the carousel turns, the flag
+    // ripples and the rope swing keeps its arc — slowly, quietly, and with
+    // nobody near any of them. It reads as a place that is still running
+    // rather than as a place that has been staged, which is a much colder
+    // thing to walk into.
+    const car = P.carousel();
+    this._prop(car, -100, 34);
+    this.spinners.push({ node: car.deck, speed: 0.16 });
+    const pole = P.flagpole(7, 0x8a2a24);
+    this._prop(pole, -113, 27);
+    this.flags.push({ strips: pole.strips, phase: 0 });
+    // the rope swing hangs from a real bough on a real tree — plant the tree
+    // first, or the rope is tied to nothing
+    this.veg.tree(this.group, -92.6, 20.4, 1.35);
+    const swing = P.ropeSwing();
+    this._prop(swing, -92, 20, { yaw: 0.7 });
+    this.ropeSwings.push(swing.pivot);
+    this._prop(P.noticeBoard(), -117, 12, { yaw: 0.2 });
+    this._prop(P.drinkingFountain(), -108, 18);
+    for (const [x, z] of [[-104, 26], [-96, 14]]) this._prop(P.trashCan(), x, z);
+
+    // the jetty out over the pond, and the footbridge across the ravine lip
+    this._prop(P.jetty(6), -138, 78, { yaw: -0.9 });
+    this._prop(P.footbridge(9), -124, 58, { yaw: Math.PI / 2 });
     // Rocks along the ravine lip
     for (const [x, z, s] of [[-172, 62, 1.6], [-125, 75, 1.3], [-166, 105, 1.8], [-134, 104, 1.2]]) {
       const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(s, 0), this.kit.mat('rock'));
@@ -1003,8 +1049,28 @@ export class World {
     this._prop(P.tent(), -202, -42, { yaw: 0.6 });
     this._prop(P.campfire(), -197, -38);
     this._prop(P.crateStack(2), -204, -36);
+    // reeds along the pond margin — the only thing in the park that has any
+    // business moving, and it moves less than the carousel does
+    const reeds = [];
+    for (let a = 0; a < Math.PI * 2; a += 0.16) {
+      const r = 16.6 + Math.sin(a * 3.7) * 1.1;
+      reeds.push([-150 + Math.cos(a) * r, 85 + Math.sin(a) * r]);
+    }
+    this.veg.tuftField(this.group, reeds);
+    for (let a = 0.1; a < Math.PI * 2; a += 0.9) {
+      this.veg.bush(this.group, -150 + Math.cos(a) * 18.5, 85 + Math.sin(a) * 18.5, 0.9);
+    }
+
     this._sprinkleTufts(-140, 20, 100, 120, 110);
-    this._zoneSpawns(3, 18, -150, 0, 0, 0);
+    this._zoneSpawns(3, 14, -150, 0, 0, 0);
+    // and the ones you do not see coming: in the lee of the treeline, behind
+    // the bandstand, among the ravine boulders, back in the woods
+    this._concealedSpawns(3, [
+      [-108, 40, 1, -1], [-131, 40, 1, -0.6], [-95, 30, 1, 0.4],
+      [-146, 52, 0.4, -1], [-163, 34, 1, -0.4], [-176, 70, 1, 0.5],
+      [-190, 12, 1, -0.3], [-112, 62, 0.2, -1], [-133, 100, 0.5, -1],
+      [-168, 100, 0.8, -1], [-88, -14, 0.6, 1], [-205, 52, 1, -0.2],
+    ]);
   }
 
   _industrial() {
@@ -1039,7 +1105,10 @@ export class World {
       this._prop(P.crateStack(2 + Math.floor(rng() * 3)), x, z, { yaw: rng() });
     }
     for (const [x, z] of [[-40, 165], [20, 178], [70, 168], [110, 210], [-70, 172]]) this._prop(P.barrel(), x, z);
-    for (const [x, z, yaw] of [[-15, 155, 0.1], [55, 158, 1.8], [140, 165, -0.2]]) this._prop(P.wreckedCar(0x4c5548), x, z, { yaw });
+    for (const [x, z, yaw] of [[-15, 155, 0.1], [140, 165, -0.2]]) this._prop(P.wreckedCar(0x4c5548), x, z, { yaw });
+    this._prop(P.van(0x6b6f60, true), 55, 158, { yaw: 1.8 });
+    this._prop(P.van(0x8a8272), -46, 176, { yaw: 0.2 });
+    this._prop(P.pickup(0x555c46, true), 40, 170, { yaw: 0.3 });
     // Oil soaked into the yard dirt under decades of trucks
     for (const [x, z, s] of [[12, 185, 2.6], [45, 196, 2.0], [70, 178, 2.4], [-15, 192, 2.2], [30, 130, 1.8]]) {
       this._decal('oilStain', x, z, s);
@@ -1115,7 +1184,7 @@ export class World {
       this._prop({ group: g, collide: [0.25, 1.7, 0.25] }, x, z);
     }
     this._sprinkleTufts(-195, -195, 45, 45, 30);
-    this._zoneSpawns(5, 10, -195, -195, 0, 0);
+    this._zoneSpawns(5, 18, -195, -195, 0, 0);
   }
 
   /**
@@ -1209,6 +1278,84 @@ export class World {
     this.alarmCars.push({ x, y: this.terrain.heightAt(x, z), z, lights: car.lights });
   }
 
+  /**
+   * Things in the town you can actually put your hands on.
+   *
+   * Two of these are tools rather than dressing. The firehouse siren and the
+   * record-shop turntable both emit a real 'noise' event — the same signal a
+   * car alarm sends, so every zombie in earshot converges on the sound
+   * instead of on you. Setting one running and leaving down the alley behind
+   * it is a legitimate way to clear a block.
+   *
+   * The rest are here because a dead town you cannot touch is a diorama. They
+   * also carry a share of the district's quiet wrongness: the notice is dated
+   * after the evacuation it announces, and the pump still has pressure behind
+   * it.
+   */
+  _cityInteractables() {
+    const fire = this.built.get('firehouse');
+    if (fire) {
+      const s = fire.spec;
+      const pos = { x: s.x + 3.6, y: s.y + 1.2, z: s.z + s.d / 2 - 1.6 };  // by the bay doors
+      this.addInteractable({
+        x: pos.x, z: pos.z, y: s.y, radius: 2.4,
+        prompt: 'Start the siren [E]',
+        onInteract: () => {
+          this.events.emit('noise', { pos, radius: 110 });
+          this.events.emit('car:alarm', { pos });
+          this.events.emit('subtitle', { text: 'The siren winds up. Something in the street answers it.' });
+        },
+      });
+    }
+
+    const rec = this.built.get('recordShop');
+    if (rec) {
+      const s = rec.spec;
+      const pos = { x: s.x + s.w / 2 - 1.6, y: s.y + 1.2, z: s.z - s.d / 2 + 1.4 };
+      this.addInteractable({
+        x: pos.x, z: pos.z, y: s.y, radius: 2.0,
+        prompt: 'Drop the needle [E]',
+        onInteract: () => {
+          this.events.emit('noise', { pos, radius: 62 });
+          this.events.emit('subtitle', { text: 'The record catches. It is a song you have never heard and know every word of.' });
+          this.events.emit('whisper', { intensity: 0.5 });
+        },
+      });
+    }
+
+    // The carousel: give it a push and it runs faster for a while. It was
+    // already turning before you touched it.
+    const spin = this.spinners[0];
+    if (spin?.node.parent) {
+      const p = spin.node.parent;
+      this.addInteractable({
+        x: p.position.x, z: p.position.z, y: p.position.y, radius: 4.2,
+        prompt: 'Push the carousel [E]',
+        onInteract: () => {
+          spin.speed = Math.min(1.5, spin.speed + 0.55);
+          this.events.emit('subtitle', { text: 'It takes the push easily. It was never stiff.' });
+        },
+      });
+    }
+
+    // the park noticeboard, and Founders Square's pump
+    this.addInteractable({
+      x: -117, z: 12, y: this.terrain.heightAt(-117, 12), radius: 2.2,
+      prompt: 'Read the notice [E]',
+      onInteract: () => this.events.emit('subtitle', {
+        text: 'EVACUATION COMPLETE — ALL RESIDENTS ACCOUNTED FOR. The date on it is next Tuesday.',
+      }),
+    });
+    this.addInteractable({
+      x: -40, z: -150.5, y: this.terrain.heightAt(-40, -150.5), radius: 2.2,
+      prompt: 'Work the pump [E]',
+      onInteract: () => {
+        this.events.emit('anomaly:sound', { kind: 'drip', pos: { x: -40, y: 0, z: -150.5 } });
+        this.events.emit('subtitle', { text: 'Still pressure behind it. Whatever comes up is warm.' });
+      },
+    });
+  }
+
   _nearBuilding(x, z, margin) {
     for (const s of this.buildingSpecs) {
       if (Math.abs(x - s.x) < s.w / 2 + margin && Math.abs(z - s.z) < s.d / 2 + margin) return true;
@@ -1225,6 +1372,34 @@ export class World {
       pts.push([x, z]);
     }
     if (pts.length) this.veg.tuftField(this.group, pts);
+  }
+
+  /**
+   * Spawn points placed deliberately BEHIND cover, with the cover planted to
+   * make sure of it.
+   *
+   * Scattered spawns (see _zoneSpawns) put things on open ground, which in a
+   * park means you watch them arrive from sixty metres away. These sit in the
+   * lee of a trunk, a boulder or a bush thicket: each one gets a screen of
+   * vegetation planted between it and the direction you would be looking
+   * from, so the first you know of it is the movement, not the spawn.
+   *
+   * @param {number} zone
+   * @param {Array<[number, number, number, number]>} spots
+   *        [x, z, screenX, screenZ] — the point, and the direction the cover
+   *        goes in (normally toward the open ground you would approach from).
+   */
+  _concealedSpawns(zone, spots) {
+    for (const [x, z, sx, sz] of spots) {
+      const len = Math.hypot(sx, sz) || 1;
+      const nx = sx / len, nz = sz / len;
+      // a screen of two bushes and a tree, offset across the sight line so it
+      // reads as undergrowth rather than as a planted wall
+      this.veg.bush(this.group, x + nx * 1.6 - nz * 0.9, z + nz * 1.6 + nx * 0.9, 1.15);
+      this.veg.bush(this.group, x + nx * 2.1 + nz * 0.8, z + nz * 2.1 - nx * 0.8, 0.95);
+      this.veg.tree(this.group, x + nx * 3.2 + nz * 1.4, z + nz * 3.2 - nx * 1.4, 1.05);
+      this.spawnPoints.push({ x, z, zone, indoor: false });
+    }
   }
 
   /** Outdoor spawn points scattered through a zone (off nav-blocked cells). */

@@ -224,6 +224,32 @@ export class Anomalies {
 
     for (const r of this.w.windmillRotors ?? []) r.rotation.z += dt * 0.8;
 
+    // The park's moving parts. Distance-culled against the camera, because
+    // there is no reason to ripple a flag on the far side of the map — but
+    // note that nothing here is driven by wind, weight or a hand. It simply
+    // keeps going.
+    if (camPos) {
+      const near = (o, r) => {
+        const p = o.parent ? o.parent.position : o.position;
+        const dx = p.x - camPos.x, dz = p.z - camPos.z;
+        return dx * dx + dz * dz < r * r;
+      };
+      for (const s of this.w.spinners ?? []) {
+        if (near(s.node, 130)) s.node.rotation.y += dt * s.speed;
+      }
+      for (const f of this.w.flags ?? []) {
+        if (!f.strips.length || !near(f.strips[0], 150)) continue;
+        // a travelling phase down the chain reads as a wave running out of
+        // the cloth; each segment inherits the one before it
+        for (let i = 0; i < f.strips.length; i++) {
+          f.strips[i].rotation.y = Math.sin(time * 2.1 - i * 0.8) * (0.12 + i * 0.05);
+        }
+      }
+      for (const p of this.w.ropeSwings ?? []) {
+        if (near(p, 110)) p.rotation.x = Math.sin(time * 0.82) * 0.26 * (0.6 + 0.4 * Math.sin(time * 0.041));
+      }
+    }
+
     for (const b of this.w.beacons ?? []) {
       b.mesh.visible = ((time * 0.5 + b.phase) % 1) < 0.15;
     }
