@@ -320,7 +320,11 @@ There is deliberately no command that touches the kill counter — the
   rumble and sink into the ground when a district opens; the world tells
   you, not a popup.
 - **Terrain:** a real heightfield — the chapel hill climbs 16 m, the park
-  drops into a ravine, steep slopes slow you down. The **pond** is a real
+  drops into a ravine, steep slopes slow you down. Roads, plazas and ground
+  decals are **draped**: the waypoints are a road's shape, not its resolution,
+  so every centreline is resampled at a metre and subdivided across its width,
+  and it samples `meshHeightAt` — the *rendered* ground — rather than the
+  analytic height function the ground mesh only approximates. The **pond** is a real
   basin: a terrain pad sunk into the ravine floor, with the water built as a
   sheet clipped to it — a quad is emitted only where all four corners are
   genuinely below the water line, so the shoreline follows the ground exactly
@@ -524,7 +528,10 @@ that hang over a slope or sink into one, footprints that overlap, anything
 parked in a doorway or standing inside a building, two vehicles on the same
 ground, neighbours sharing a wall texture, weathering that isn't actually
 spatial, unfurnished interiors, alleys too narrow to path down, spawn points on
-blocked ground, a pond floating over its own bed, and gaps in the world barrier
+blocked ground, roads floating over or cutting into the ground (sampled inside
+each triangle, since the vertices sit on the terrain by construction and only
+the middle of a long span misbehaves), a pond floating over its own bed, and
+gaps in the world barrier
 — including walking the player hard into the wall from eight directions to
 confirm it holds. It also **floods the nav grid from the spawn** and asserts
 that no locked district is reachable on foot, which is the check that catches a

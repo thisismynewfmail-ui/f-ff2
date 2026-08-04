@@ -19,6 +19,8 @@
  *  10. nothing solid stands inside a building or inside another vehicle
  *  11. a locked district cannot be reached on foot — a flood fill from the
  *      spawn over the nav grid must not get into one
+ *  11b. every road, plaza and decal lies ON the ground, sampled inside its
+ *      triangles rather than at its vertices
  *  12. no facade band (plinth, water table, belt course) juts into a room or
  *      z-fights the inside of the wall it wraps
  *  13. the pond sits in its basin: never floating over the ground, no dry
@@ -272,6 +274,34 @@ const r = await page.evaluate(async () => {
   }
   out.trespass = [...trespass];
 
+  // --- 11b. everything draped on the ground actually lies on it
+  //
+  // Roads, plazas and decals are built from waypoints and rectangles, and the
+  // waypoints are forty to sixty metres apart — so the vertices sit on the
+  // terrain while the middle of every long span does whatever it likes. That
+  // is what put roads four metres in the air over the ravine and buried them
+  // a metre deep through the rises. Vertex checks pass on all of it, so
+  // sample INSIDE each triangle: centroid and edge midpoints, interpolated on
+  // the mesh, compared with the ground that is actually rendered.
+  out.drape = { worstUp: -99, worstDown: 99, upAt: '', downAt: '', tris: 0, meshes: (w.groundMeshes || []).length };
+  for (const gm of w.groundMeshes || []) {
+    const g = gm.mesh.geometry, p = g.attributes.position, ix = g.index;
+    const n = ix ? ix.count : p.count;
+    const at = gm.mesh.position;
+    for (let i = 0; i < n; i += 3) {
+      const k = [0, 1, 2].map((o) => (ix ? ix.getX(i + o) : i + o));
+      const V = k.map((q) => [p.getX(q) + at.x, p.getY(q) + at.y, p.getZ(q) + at.z]);
+      out.drape.tris++;
+      for (const bc of [[1 / 3, 1 / 3, 1 / 3], [0.5, 0.5, 0], [0, 0.5, 0.5], [0.5, 0, 0.5]]) {
+        let sx = 0, sy = 0, sz = 0;
+        for (let c = 0; c < 3; c++) { sx += V[c][0] * bc[c]; sy += V[c][1] * bc[c]; sz += V[c][2] * bc[c]; }
+        const gap = sy - w.terrain.meshHeightAt(sx, sz);
+        if (gap > out.drape.worstUp) { out.drape.worstUp = gap; out.drape.upAt = `${gm.kind}@${sx.toFixed(0)},${sz.toFixed(0)}`; }
+        if (gap < out.drape.worstDown) { out.drape.worstDown = gap; out.drape.downAt = `${gm.kind}@${sx.toFixed(0)},${sz.toFixed(0)}`; }
+      }
+    }
+  }
+
   // --- 12a. no facade band shows through the inside of a wall
   //
   // The plinth and the trim courses wrap the OUTSIDE of a wall. Two ways they
@@ -320,7 +350,7 @@ const r = await page.evaluate(async () => {
     const p = m.geometry.attributes.position;
     for (let i = 0; i < p.count; i++) {
       const x = p.getX(i), z = p.getZ(i);
-      const depth = p.getY(i) - w.terrain.heightAt(x, z);
+      const depth = p.getY(i) - w.terrain.meshHeightAt(x, z);
       out.pond.minDepth = Math.min(out.pond.minDepth, depth);
       out.pond.maxDepth = Math.max(out.pond.maxDepth, depth);
       out.pond.verts++;
@@ -338,7 +368,7 @@ const r = await page.evaluate(async () => {
     const sr = w._shoreRadius(a);
     for (let rr = sr; rr <= sr + 12; rr += 0.4) {
       const x = pb.x + Math.cos(a) * rr, z = pb.z + Math.sin(a) * rr;
-      out.pond.dryBelow = Math.max(out.pond.dryBelow, pb.level - w.terrain.heightAt(x, z));
+      out.pond.dryBelow = Math.max(out.pond.dryBelow, pb.level - w.terrain.meshHeightAt(x, z));
     }
   }
   return out;
@@ -369,6 +399,12 @@ check('the world barrier exists', r.barrierExists);
 check('no solid prop stands inside a building', r.propInBuilding.length === 0, r.propInBuilding.slice(0, 5).join(' '));
 check('no two vehicles occupy the same ground', r.propOverlap.length === 0, r.propOverlap.slice(0, 5).join(' '));
 check('locked districts are unreachable on foot', r.trespass.length === 0, r.trespass.join(', '));
+check('ground surfaces cover enough of the town', r.drape.meshes >= 60 && r.drape.tris > 5000,
+  `${r.drape.meshes} meshes, ${r.drape.tris} triangles`);
+check('no road or plaza floats over the ground', r.drape.worstUp <= 0.35,
+  `${r.drape.worstUp.toFixed(2)}m at ${r.drape.upAt}`);
+check('no road or plaza cuts into the ground', r.drape.worstDown >= -0.15,
+  `${r.drape.worstDown.toFixed(2)}m at ${r.drape.downAt}`);
 check('no facade band shows through an interior wall', r.innerKerb.length === 0, r.innerKerb.slice(0, 5).join(', '));
 check('no dry ground sits below the waterline', r.pond.dryBelow <= 0.05,
   `${r.pond.dryBelow.toFixed(2)}m of bank under the surface`);

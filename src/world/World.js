@@ -85,6 +85,7 @@ export class World {
     this.flags = [];             // {strips[], phase} — rippling cloth
     this.ropeSwings = [];        // pivots that keep an arc nobody started
     this.waterSurfaces = [];     // {mat, u, v} — sheets whose UVs drift
+    this.groundMeshes = [];      // {kind, mesh} — everything draped on the ground
     this.alarmCars = [];         // {x, y, z, lights[]} — shootable car alarms
     this.phoneBoothPos = null;
   }
@@ -317,32 +318,55 @@ export class World {
     // The pond basin.
     //
     // The water level is taken from the ground that SURROUNDS the pond, not
-    // from the pond's own floor: sample the natural terrain on a ring and set
-    // the surface just below the lowest point of it. That is the property that
-    // makes a lake look like a lake — there is then nowhere outside the water
-    // where dry ground sits below the waterline, so the surface never reads as
-    // standing proud of the bank it meets.
+    // from the pond's own floor. That is the property that makes a lake look
+    // like a lake: there is then nowhere outside the water where dry ground
+    // sits below the waterline, so the surface never reads as standing proud
+    // of the bank it meets. Deriving it the other way round (floor + depth)
+    // is what made the water look too high.
     //
-    // Deriving the level the other way round (floor + depth) is what made the
-    // water look too high: it put the surface above the shallowest part of the
-    // surround, and clipping the sheet to an ellipse to stop it spreading just
-    // moved the problem to a hard edge with low grass beyond it.
+    // The sample ring is the pad's OWN outer boundary — the distance at which
+    // the pad stops affecting the ground, which varies by bearing because the
+    // pad is a rounded rectangle. Sampling at a fixed radius instead reads
+    // ground the pad has already lowered, which drags the level down and
+    // turns the pond into a puddle.
     const x = -150, z = 85;
-    let ringMin = Infinity;
-    for (let k = 0; k < 32; k++) {
-      const a = (k / 32) * Math.PI * 2;
-      ringMin = Math.min(ringMin, this.terrain.baseHeight(x + Math.cos(a) * 18, z + Math.sin(a) * 18));
-    }
-    const level = ringMin - 0.12;
-    const floorY = level - 1.3;
-    // A short blend keeps the bank defined: with a long one the ground creeps
-    // toward its natural height so slowly that the shoreline ends up twenty
-    // metres further out than the bowl.
     const hx = 13, hz = 11, blend = 6;
-    this.terrain.addPad(x, z, hx, hz, floorY, blend);
-    // rx/rz are a backstop only — with the level set from the surround, the
-    // terrain clip decides the shoreline in every normal direction.
-    this.pondBasin = { x, z, hx, hz, blend, floorY, level, rx: 24, rz: 22 };
+    // The ellipse is a backstop, deliberately wider than the rim the level is
+    // derived from: if it ever bit, it would cut the water off while the
+    // ground beneath was still below the surface, leaving exactly the floating
+    // lip this whole derivation exists to avoid. The terrain decides the
+    // shoreline; this only stops a runaway.
+    this.pondBasin = { x, z, hx, hz, blend, rx: hx + blend + 9, rz: hz + blend + 9 };
+    const ringMin = this._basinRimHeight((px, pz) => this.terrain.baseHeight(px, pz));
+    this.pondBasin.level = ringMin - 0.15;
+    this.pondBasin.floorY = this.pondBasin.level - 1.3;
+    this.terrain.addPad(x, z, hx, hz, this.pondBasin.floorY, blend);
+  }
+
+  /**
+   * The lowest ground on the pad's outer boundary — the ring at which the
+   * pad stops pulling the terrain down, walked bearing by bearing because a
+   * rounded-rectangle pad reaches further along its long axis than its short.
+   */
+  _basinRimHeight(sample) {
+    const b = this.pondBasin;
+    let lowest = Infinity;
+    for (let k = 0; k < 48; k++) {
+      const a = (k / 48) * Math.PI * 2;
+      const cx = Math.cos(a), cz = Math.sin(a);
+      let r = 8;
+      for (; r < 44; r += 0.5) {
+        const dx = Math.max(0, Math.abs(cx * r) - b.hx);
+        const dz = Math.max(0, Math.abs(cz * r) - b.hz);
+        if (Math.hypot(dx, dz) >= b.blend) break;
+      }
+      // ...and on out past it, because a dip in the ravine floor a few metres
+      // beyond the rim is still ground you see next to the water
+      for (let t = r; t <= r + 10; t += 1) {
+        lowest = Math.min(lowest, sample(b.x + cx * t, b.z + cz * t));
+      }
+    }
+    return lowest;
   }
 
   _planBuildings() {
@@ -542,6 +566,7 @@ export class World {
     const mat = new THREE.MeshLambertMaterial({ map: this.texLib.tiled(tex, 1, 1) });
     const mesh = this.terrain.makeRibbon(points, width, mat);
     this.group.add(mesh);
+    this.groundMeshes.push({ kind: 'road:' + tex, mesh });
     for (let i = 1; i < points.length; i++) {
       const [x1, z1] = points[i - 1], [x2, z2] = points[i];
       this.addSurface(Math.min(x1, x2) - width / 2, Math.min(z1, z2) - width / 2,
@@ -552,7 +577,9 @@ export class World {
 
   _patch(x, z, hx, hz, tex, surface, repeat = 8) {
     const mat = new THREE.MeshLambertMaterial({ map: this.texLib.tiled(tex, repeat, repeat) });
-    this.group.add(this.terrain.makePatch(x, z, hx, hz, mat));
+    const mesh = this.terrain.makePatch(x, z, hx, hz, mat);
+    this.group.add(mesh);
+    this.groundMeshes.push({ kind: 'patch:' + tex, mesh });
     if (surface) this.addSurface(x - hx, z - hz, x + hx, z + hz, surface);
   }
 
@@ -613,16 +640,15 @@ export class World {
     this._patch(200, -150, 3, 3, 'dirt', 'dirt', 3);           // windmill pad
   }
 
-  _decal(tex, x, z, size, yaw = 0, tint = null) {
+  _decal(tex, x, z, size, yaw = 0, tint = null, sizeZ = size) {
     const mat = new THREE.MeshLambertMaterial({
       map: this.texLib.get(tex), transparent: true, depthWrite: false,
       ...(tint ? { color: tint } : {}),
     });
-    const q = new THREE.Mesh(new THREE.PlaneGeometry(size, size), mat);
-    q.rotation.set(-Math.PI / 2, 0, yaw);
-    q.position.set(x, this.terrain.heightAt(x, z) + 0.1, z);
+    const q = this.terrain.makeDecal(x, z, size, sizeZ, yaw, mat);
     q.renderOrder = 2;
     this.group.add(q);
+    this.groundMeshes.push({ kind: 'decal:' + tex, mesh: q });
     return q;
   }
 
@@ -1486,6 +1512,12 @@ export class World {
    */
   _pond() {
     const b = this.pondBasin;
+    // The level was estimated in _planTerrain from the ANALYTIC ground,
+    // because the pad has to exist before the ground mesh is built. Now that
+    // the mesh exists, re-derive it from what is actually rendered: the two
+    // differ by up to a couple of decimetres, which is the whole margin
+    // between a shoreline that meets the bank and one that hangs over it.
+    b.level = Math.min(b.level, this._basinRimHeight((px, pz) => this.terrain.meshHeightAt(px, pz)) - 0.1);
     const bed = this._clippedSheet(b, { drape: true, tex: 'dirt', tiles: 0.35, lift: 0.03 });
     if (bed) this.group.add(bed);
     const water = this._clippedSheet(b, {
@@ -1519,7 +1551,7 @@ export class World {
     const R = Math.max(basin.rx, basin.rz) + 2;
     const step = 0.9;
     const n = Math.ceil((R * 2) / step);
-    const h = (x, z) => this.terrain.heightAt(x, z);
+    const h = (x, z) => this.terrain.meshHeightAt(x, z);
     const pos = [], uv = [], idx = [];
     let base = 0;
     for (let j = 0; j < n; j++) {
@@ -1558,7 +1590,7 @@ export class World {
     const to = Math.max(b.rx, b.rz) + 1;
     for (let r = from; r <= to; r += 0.35) {
       const x = b.x + dx * r, z = b.z + dz * r;
-      if (!this._inBasin(x, z) || this.terrain.heightAt(x, z) >= b.level) return r;
+      if (!this._inBasin(x, z) || this.terrain.meshHeightAt(x, z) >= b.level) return r;
     }
     return to;
   }

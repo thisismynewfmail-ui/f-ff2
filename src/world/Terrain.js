@@ -20,6 +20,11 @@ export const MAP_HALF = 320; // world spans [-320, 320] on X and Z
 // stone rampart at BARRIER (Boundary.js), whose inner face sits ~249; this is
 // only the backstop behind it. Playable content stays inside ~245.
 export const EDGE_LIMIT = 250;
+// Ground-mesh resolution: 2.5 m cells. The mesh is only ever an approximation
+// of baseHeight(), and every crease between its cells is somewhere a draped
+// surface can disagree with it, so the cell size sets the floor on how well a
+// road can be made to sit. See meshHeightAt().
+const MESH_SEGS = 200;
 
 export class Terrain {
   constructor() {
@@ -124,13 +129,23 @@ export class Terrain {
 
   /** Build the displaced, grass-textured ground mesh. Call after all pads. */
   buildMesh(texLib) {
-    const segs = 200;
+    const segs = MESH_SEGS;
     const geo = new THREE.PlaneGeometry(MAP_HALF * 2, MAP_HALF * 2, segs, segs);
     geo.rotateX(-Math.PI / 2);
     const pos = geo.attributes.position;
+    // Keep the lattice: it is the ground the player actually SEES, and every
+    // surface draped on top has to agree with it rather than with the
+    // analytic function it approximates.
+    const cell = (MAP_HALF * 2) / segs;
+    const grid = new Float32Array((segs + 1) * (segs + 1));
     for (let i = 0; i < pos.count; i++) {
-      pos.setY(i, this.heightAt(pos.getX(i), pos.getZ(i)));
+      const h = this.heightAt(pos.getX(i), pos.getZ(i));
+      pos.setY(i, h);
+      const gi = Math.round((pos.getX(i) + MAP_HALF) / cell);
+      const gj = Math.round((pos.getZ(i) + MAP_HALF) / cell);
+      grid[gj * (segs + 1) + gi] = h;
     }
+    this.grid = { segs, cell, h: grid };
     geo.computeVertexNormals();
     const tex = texLib.tiled('grass', 160, 160);
     this.mesh = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ map: tex }));
@@ -139,29 +154,78 @@ export class Terrain {
   }
 
   /**
-   * A ground ribbon (road / path) draped over the terrain between waypoints.
-   * Returns a mesh slightly above ground to avoid z-fighting.
+   * Height of the RENDERED ground, by bilinear interpolation over the mesh
+   * lattice built in buildMesh().
+   *
+   * heightAt() is the analytic surface; the mesh is a 3.2 m approximation of
+   * it, and the two disagree by tens of centimetres wherever the ground
+   * curves. A road drapes onto what you can SEE, so it has to sample this —
+   * matching the analytic surface instead is what left roads hanging over,
+   * and cutting into, the hillsides they cross.
+   *
+   * Falls back to the analytic height before the mesh exists.
    */
-  makeRibbon(points, width, material, lift = 0.06) {
-    const positions = [];
-    const uvs = [];
-    const indices = [];
+  meshHeightAt(x, z) {
+    const g = this.grid;
+    if (!g) return this.heightAt(x, z);
+    const n = g.segs + 1;
+    const fx = (x + MAP_HALF) / g.cell, fz = (z + MAP_HALF) / g.cell;
+    const i = Math.max(0, Math.min(g.segs - 1, Math.floor(fx)));
+    const j = Math.max(0, Math.min(g.segs - 1, Math.floor(fz)));
+    const tx = Math.max(0, Math.min(1, fx - i)), tz = Math.max(0, Math.min(1, fz - j));
+    const h00 = g.h[j * n + i], h10 = g.h[j * n + i + 1];
+    const h01 = g.h[(j + 1) * n + i], h11 = g.h[(j + 1) * n + i + 1];
+    return (h00 * (1 - tx) + h10 * tx) * (1 - tz) + (h01 * (1 - tx) + h11 * tx) * tz;
+  }
+
+  /**
+   * A ground ribbon (road / path) draped over the terrain between waypoints.
+   *
+   * The waypoints are only the road's SHAPE, not its resolution. Emitting one
+   * cross-section per waypoint puts a flat quad across whatever the ground
+   * does in between, and the town's waypoints are forty to sixty metres apart
+   * — which on rolling terrain left roads hanging four metres in the air over
+   * dips and buried a metre deep through rises. So the centreline is resampled
+   * at a fixed step and the ground is queried at every station.
+   *
+   * Each station is also subdivided ACROSS its width, not just at the two
+   * edges: a road crossing a slope sideways is otherwise a chord over the
+   * hill, and its crown floats however finely the length is sampled.
+   */
+  makeRibbon(points, width, material, lift = 0.06, step = 1.0) {
+    // resample the centreline
+    const line = [];
+    for (let i = 1; i < points.length; i++) {
+      const [x0, z0] = points[i - 1], [x1, z1] = points[i];
+      const n = Math.max(1, Math.round(Math.hypot(x1 - x0, z1 - z0) / step));
+      for (let k = i === 1 ? 0 : 1; k <= n; k++) {
+        const t = k / n;
+        line.push([x0 + (x1 - x0) * t, z0 + (z1 - z0) * t]);
+      }
+    }
+    const across = Math.max(2, Math.round(width / 1.5));  // spans across the width
+    const perStation = across + 1;
+    const positions = [], uvs = [], indices = [];
     let dist = 0;
-    for (let i = 0; i < points.length; i++) {
-      const p = points[i];
-      const prev = points[Math.max(0, i - 1)];
-      const next = points[Math.min(points.length - 1, i + 1)];
+    for (let i = 0; i < line.length; i++) {
+      const p = line[i];
+      const prev = line[Math.max(0, i - 1)];
+      const next = line[Math.min(line.length - 1, i + 1)];
       const dir = new THREE.Vector2(next[0] - prev[0], next[1] - prev[1]).normalize();
       const nrm = new THREE.Vector2(-dir.y, dir.x).multiplyScalar(width / 2);
       if (i > 0) dist += Math.hypot(p[0] - prev[0], p[1] - prev[1]);
-      for (const s of [-1, 1]) {
+      for (let j = 0; j <= across; j++) {
+        const s = (j / across) * 2 - 1;
         const x = p[0] + nrm.x * s, z = p[1] + nrm.y * s;
-        positions.push(x, this.heightAt(x, z) + lift, z);
+        positions.push(x, this.meshHeightAt(x, z) + lift, z);
         uvs.push(s * 0.5 + 0.5, dist / width);
       }
       if (i > 0) {
-        const b = i * 2;
-        indices.push(b - 2, b - 1, b, b - 1, b + 1, b);
+        const b = i * perStation;              // this station's first vertex
+        const a = b - perStation;              // the previous station's
+        for (let j = 0; j < across; j++) {
+          indices.push(a + j, a + j + 1, b + j, a + j + 1, b + j + 1, b + j);
+        }
       }
     }
     const geo = new THREE.BufferGeometry();
@@ -174,14 +238,37 @@ export class Terrain {
 
   /**
    * A rectangular ground patch (plaza, parking lot) draped over terrain.
+   * Subdivided to the same fixed step as a ribbon, capped so the big
+   * industrial yard does not turn into fifty thousand triangles.
    */
-  makePatch(x, z, hx, hz, material, lift = 0.05) {
-    const nx = Math.max(2, Math.ceil(hx / 3)), nz = Math.max(2, Math.ceil(hz / 3));
+  makePatch(x, z, hx, hz, material, lift = 0.05, step = 1.5) {
+    const nx = Math.max(2, Math.min(64, Math.ceil((hx * 2) / step)));
+    const nz = Math.max(2, Math.min(64, Math.ceil((hz * 2) / step)));
     const geo = new THREE.PlaneGeometry(hx * 2, hz * 2, nx, nz);
     geo.rotateX(-Math.PI / 2);
     const pos = geo.attributes.position;
     for (let i = 0; i < pos.count; i++) {
-      pos.setY(i, this.heightAt(pos.getX(i) + x, pos.getZ(i) + z) + lift);
+      pos.setY(i, this.meshHeightAt(pos.getX(i) + x, pos.getZ(i) + z) + lift);
+    }
+    geo.computeVertexNormals();
+    const mesh = new THREE.Mesh(geo, material);
+    mesh.position.set(x, 0, z);
+    return mesh;
+  }
+
+  /**
+   * A ground decal (crosswalk, manhole, oil stain) draped over the terrain.
+   * A single flat quad floats at its corners on any slope, which is what put
+   * crosswalks in the air at the downtown intersections.
+   */
+  makeDecal(x, z, sizeX, sizeZ, yaw, material, lift = 0.1) {
+    const seg = Math.max(1, Math.round(Math.max(sizeX, sizeZ) / 1.5));
+    const geo = new THREE.PlaneGeometry(sizeX, sizeZ, seg, seg);
+    geo.rotateX(-Math.PI / 2);
+    geo.rotateY(yaw);
+    const pos = geo.attributes.position;
+    for (let i = 0; i < pos.count; i++) {
+      pos.setY(i, this.meshHeightAt(pos.getX(i) + x, pos.getZ(i) + z) + lift);
     }
     geo.computeVertexNormals();
     const mesh = new THREE.Mesh(geo, material);

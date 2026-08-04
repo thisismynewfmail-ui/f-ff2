@@ -65,14 +65,7 @@ export class Anomalies {
     // a tree's shadow on the open Eastgate field — the nearest tree is far away
     this.w._decal('shadowDecal', 121, 28, 4.2, 2.1, 0x1c2026);
     // a long figure-thin shadow across the industrial yard, pointing at the sun
-    const mat = new THREE.MeshLambertMaterial({
-      map: this.w.texLib.get('shadowDecal'), transparent: true, depthWrite: false, color: 0x14161c,
-    });
-    const q = new THREE.Mesh(new THREE.PlaneGeometry(1.1, 5.2), mat);
-    q.rotation.set(-Math.PI / 2, 0, 0.9);
-    q.position.set(18, this.w.terrain.heightAt(18, 173) + 0.09, 173);
-    q.renderOrder = 2;
-    this.w.group.add(q);
+    this.w._decal('shadowDecal', 18, 173, 1.1, 0.9, 0x14161c, 5.2);
   }
 
   /** One grave on the ridge stands open. The dirt is piled on the downhill
@@ -80,10 +73,8 @@ export class Anomalies {
   _openGrave() {
     const x = -207, z = -188;
     const y = this.w.terrain.heightAt(x, z);
-    const pit = new THREE.Mesh(new THREE.PlaneGeometry(1.3, 2.3),
-      new THREE.MeshLambertMaterial({ color: 0x08080a }));
-    pit.rotation.set(-Math.PI / 2, 0, 0.06);
-    pit.position.set(x, y + 0.07, z);
+    const pit = this.w.terrain.makeDecal(x, z, 1.3, 2.3, 0.06,
+      new THREE.MeshLambertMaterial({ color: 0x08080a }), 0.07);
     pit.renderOrder = 2;
     this.w.group.add(pit);
     const mound = this.w.kit.box(1.1, 0.5, 1.9, 'dirt');
