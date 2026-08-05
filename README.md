@@ -230,12 +230,15 @@ There is deliberately no command that touches the kill counter — the
   it is still coming. "Flee until out of sight" is literally correlated to
   zombie sight distance.
 - **Savable citizen:** a captive woman tied up **inside a building**, and the
-  one NPC you rescue rather than fight. **Wave 2 always has one** — a scripted
-  introduction to the mechanic, long before any kill gate — and after that she
-  **starts appearing once you pass 100 kills**, with a **chance to show up on
-  any wave**. She is always in a *random* enterable building in a district you
-  have already unlocked, so both whether she appears and where she is hiding
-  differ every playthrough (only one is ever out at a time). Walk up and an
+  one NPC you rescue rather than fight. **Wave 1 always has one, inside the
+  district you spawn in** — a short walk rather than a search — and **wave 2
+  always has one** anywhere unlocked: a scripted introduction to the mechanic,
+  long before any kill gate. After that she **starts appearing once you pass
+  100 kills**, with a **chance to show up on any wave**. She is always in a
+  *random* enterable building in a district you have already unlocked, so past
+  those opening two, both whether she appears and where she is hiding differ
+  every playthrough (only one is ever out at a time — leave wave 1's tied up
+  and wave 2 adds nobody). Walk up and an
   **[E] prompt** offers to free her: interacting swaps her from the captured
   sprite to the released one, **drops a health kit** at her feet, and sends her
   running for the street. She routes herself through the building's interior

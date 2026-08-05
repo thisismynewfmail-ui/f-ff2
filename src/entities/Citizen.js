@@ -7,9 +7,11 @@ import { local2world } from '../world/Buildings.js';
 
 /**
  * The savable citizen — a captive found tied up inside a random building.
- * Spawned by CitizenSystem, which rolls a spawn chance every wave and picks
- * one random enterable building in an unlocked district, so both whether she
- * appears and where change every playthrough.
+ * Spawned by CitizenSystem, which guarantees one on each of the first two
+ * waves (wave 1's in the player's own starting district) and then rolls a
+ * spawn chance every wave after the kill gate, picking one random enterable
+ * building in an unlocked district — so past the opening pair, both whether
+ * she appears and where change every playthrough.
  *
  * States:
  *   captured  she stands in place wearing npc_save_captured.png, and an
