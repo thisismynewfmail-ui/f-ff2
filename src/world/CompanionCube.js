@@ -4,7 +4,8 @@ import { canonXform } from './Interiors.js';
 
 /**
  * The Companion Cube — a findable Easter egg hidden in the Meridian Tower's
- * maintenance room, waiting under a faint pink glow.
+ * maintenance room, lit by nothing but whatever reaches the back of the
+ * lobby. It casts no light of its own; you find it by looking.
  *
  * Built to the classic reference as a machined shell: chamfered pale corner
  * blocks and edge rails standing proud of a recessed grey body, a magenta
@@ -46,11 +47,6 @@ export class CompanionCube {
     this.mesh.rotation.y = 0.5;
     world.group.add(this.mesh);
 
-    // a soft pink pulse marks it out in the windowless back room
-    this.light = new THREE.PointLight(0xffc2da, 3.6, 7);
-    this.light.position.set(this.pos.x, this.pos.y + 1.1, this.pos.z);
-    world.group.add(this.light);
-
     // 'furniture', not 'prop': it lives inside the tower on purpose, and the
     // placement audit treats a 'prop' inside a building as a mistake.
     this._colliderId = world.collision.addBoxCentered(
@@ -68,7 +64,6 @@ export class CompanionCube {
     if (this.taken) return;
     this.taken = true;
     this.world.group.remove(this.mesh);
-    this.world.group.remove(this.light);
     this.world.collision.remove(this._colliderId);
     this.world.events.emit('pickup', { type: 'companionCube', amount: 1, label: 'Companion Cube' });
     this.world.events.emit('subtitle', { text: 'The cube is warm. It seems glad you came.' });
@@ -91,8 +86,6 @@ export class CompanionCube {
     this.mesh.position.set(x, this.pos.y, z);
     this.mesh.rotation.y = Math.random() * Math.PI * 2;
     this.world.group.add(this.mesh);
-    this.light.position.set(x, this.pos.y + 1.1, z);
-    this.world.group.add(this.light);
     this._colliderId = this.world.collision.addBoxCentered(
       x, this.baseY + CUBE_SIZE / 2, z, 0.34, 0.34, 0.34, 'furniture');
     Object.assign(this._interactable, { x, y: this.baseY, z });
@@ -100,18 +93,14 @@ export class CompanionCube {
     return true;
   }
 
-  update(dt, time) {
-    if (this.taken || !this.light) return;
-    if (this._falling) { // the short drop out of the satchel
-      this._fallVy += DROP_GRAVITY * dt;
-      this.pos.y -= this._fallVy * dt;
-      const restY = this.baseY + this.restOffset;
-      if (this.pos.y <= restY) { this.pos.y = restY; this._falling = false; }
-      this.mesh.position.y = this.pos.y;
-      this.light.position.y = this.pos.y + 1.1;
-    }
-    // a slow, heart-like double pulse
-    this.light.intensity = 3.2 + Math.sin(time * 2.4) * 0.4 + Math.sin(time * 4.8) * 0.25;
+  update(dt) {
+    if (this.taken || !this.mesh || !this._falling) return;
+    // the short drop out of the satchel
+    this._fallVy += DROP_GRAVITY * dt;
+    this.pos.y -= this._fallVy * dt;
+    const restY = this.baseY + this.restOffset;
+    if (this.pos.y <= restY) { this.pos.y = restY; this._falling = false; }
+    this.mesh.position.y = this.pos.y;
   }
 }
 
@@ -151,9 +140,10 @@ function buildCubeMesh() {
   const body = new THREE.MeshLambertMaterial({ color: 0x868d92 });  // the recessed body
   const steel = new THREE.MeshLambertMaterial({ color: 0x9aa1a6 }); // pressure plates + tabs
   const seam = new THREE.MeshLambertMaterial({ color: 0xa8447a });  // the magenta groove lines
-  // A trace of emissive keeps the hearts legible in the windowless room the
-  // cube waits in — as if it carries its own faint light. It does. It still
-  // shades with the world, so it never blows out into a flat white sticker.
+  // A trace of emissive is a floor under the hearts, not a glow: the cube
+  // throws no light of its own, and the room it waits in has little, so
+  // without this the plates crush to black. It still shades with the world,
+  // so it never lifts into a flat white sticker either.
   const heartMat = new THREE.MeshLambertMaterial({ map: heartTexture(), emissive: 0x1a1d20 });
 
   // --- the recessed body every other part is bolted to

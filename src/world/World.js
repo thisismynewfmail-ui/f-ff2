@@ -230,7 +230,7 @@ export class World {
     this.zones.update(dt);
     this.veg.update(time, cameraPos);
     this.anomalies.update(dt, time, cameraPos);
-    this.companionCube.update(dt, time);
+    this.companionCube.update(dt);
     this.scarecrow.update(dt, time, cameraPos);
     this._updateClock();
   }

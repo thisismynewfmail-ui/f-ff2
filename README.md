@@ -410,8 +410,8 @@ There is deliberately no command that touches the kill counter — the
   approach, drifting back once you have gone.
 - **Companion Cube:** a findable Easter egg, built to the classic
   reference — pale chamfered corners, magenta seams, a pink heart plate on
-  every face — waiting under a faint pulse of light somewhere high-rise
-  adjacent. Take it; it stows in the satchel and stays with you.
+  every face — waiting in a back room somewhere high-rise adjacent, throwing
+  no light of its own. Take it; it stows in the satchel and stays with you.
 - **Secrets:** ten of them, found by shooting, interacting, standing,
   looking, or killing exactly the right number. The mannequin is watching.
 
