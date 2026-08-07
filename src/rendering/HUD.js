@@ -93,6 +93,11 @@ export class HUD {
     this._el('div', 'vignette');
     this._el('div', 'healflash');
     this._el('div', 'crosshair').innerHTML = '<span></span>';
+    // Shown only while the game is running and the browser has not handed the
+    // pointer back yet — which is a real state (see Input.requestPointerLock)
+    // and used to be a silent one the player could only read as a broken game.
+    this.lockHint = this._el('div', 'lock-hint');
+    this.lockHint.innerHTML = '<b>CLICK</b> TO TAKE THE MOUSE BACK';
 
     // Bottom instrument dock: the two status meters ride at the BOTTOM as
     // side HUDs flanking the main console — WAVE on the left, CONFIRMED KILLS
@@ -826,6 +831,14 @@ export class HUD {
     on('weapon:switch', () => this.showWeaponMenu());
     on('weapon:fire', () => this.hideWeaponMenu());
     on('weapon:reload:start', () => this.hideWeaponMenu());
+  }
+
+  /** Toggle the "click to take the mouse back" prompt. Called every frame, so
+   *  it does nothing at all unless the state actually changed. */
+  setLockHint(on) {
+    if (this._lockHintOn === on) return;
+    this._lockHintOn = on;
+    this.lockHint.classList.toggle('on', on);
   }
 
   showWeaponMenu() {

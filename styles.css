@@ -645,6 +645,21 @@ html, body {
 .scope-h { left: 50%; top: 50%; width: 60vh; height: 2px; transform: translate(-50%, -50%); }
 .scope-v { left: 50%; top: 50%; width: 2px; height: 60vh; transform: translate(-50%, -50%); }
 
+/* "click to take the mouse back": the pointer-lock prompt. Delayed in, instant
+   out — an ordinary resume gets the pointer within a frame or two and must not
+   flash this at the player on the way past. */
+#lock-hint {
+  position: absolute; left: 50%; top: 62%; transform: translateX(-50%);
+  z-index: 45; pointer-events: none; opacity: 0;
+  font-size: 13px; letter-spacing: 3px; color: #cfc9a8;
+  background: rgba(10, 12, 10, 0.82); border: 2px solid #33372c; border-radius: 4px;
+  padding: 8px 18px; white-space: nowrap;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.06), 0 3px 10px rgba(0,0,0,0.65);
+  transition: opacity 0.15s;
+}
+#lock-hint b { color: #e6c24a; }
+#lock-hint.on { opacity: 1; transition: opacity 0.25s ease 0.7s; }
+
 /* full screens */
 .screen {
   position: absolute; inset: 0; z-index: 50;

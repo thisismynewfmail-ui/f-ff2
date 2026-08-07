@@ -80,12 +80,25 @@ the desktop shell.
 | Mouse wheel | Cycle weapons (also reveals the weapon menu) |
 | R | Reload |
 | E | Interact |
-| Esc | Pause (releases pointer lock) |
+| Esc | Pause / resume (toggles the pause screen either way) |
 | ` / ~ | Dev console |
 
 The weapon menu is hidden during play; a number key or a mouse-wheel scroll
 fades it in at the top of the screen, and it fades back out after a couple of
 seconds (or the instant you fire).
+
+**Pausing always gives the mouse back.** Resuming asks the browser for the
+pointer, and a browser refuses that request outright for about a second after
+the *user* pressed Escape to leave a lock — which is the situation every resume
+is in, because Escape is how you paused. Asked once and refused, the game used
+to un-pause into a state with no mouse look, no cursor and no key that did
+anything about it, since Escape only ever paused by dropping a lock there was
+no longer any of. The request is a standing intent now: `src/engine/Input.js`
+keeps asking a few times a second until it lands, and retries on the spot
+whenever the player presses or clicks anything. Escape closes the pause screen
+as well as opening it, pausing cancels any outstanding request (so the retry
+cannot reach around the menu and take the pointer back under it), and while a
+request is outstanding the game says so on screen rather than looking hung.
 
 **Mouse look filters the pointer-lock plumbing out of your aim.** A locked
 mousemove does not always carry your hand: the browser reports the cursor's
@@ -713,8 +726,12 @@ third of Eastgate's front doors that used to open onto open grass.
 `smoke.mjs` drives the real game headless: boot without errors, movement, town
 structure, wave spawning, ammo consumption, an end-to-end gunfire kill, zone
 unlocks, and the exact-250,000 victory (no win at 249,999; stats screen at
-250,000). It also stages a run against known numbers and opens the pause
-screen on it: every readout has to show the value it is supposed to be
+250,000). It plays the reported pause/resume dead end back at the game with the
+harness's pointer-lock bypass switched OFF and the browser made to refuse the
+first few requests — the one path that decides whether a player can carry on
+playing was also the one path the suite never exercised, which is exactly how
+it shipped broken. It also stages a run against known numbers and opens the
+pause screen on it: every readout has to show the value it is supposed to be
 showing, every bay has to be a different instrument, and every moving part has
 to be a **running Animation** rather than a style that snapped to its end —
 a panel that ends up correct without ever moving looks identical in a
