@@ -316,6 +316,11 @@ export class Game {
 
   pause() {
     if (!this.state.to('paused')) return;
+    // Show the case FIRST, then write the readouts into it. The instruments
+    // animate from a rest pose, and a transition cannot run on an element that
+    // was display:none when its "before" value was set — fill it while hidden
+    // and every needle, cell and tape snaps straight to its value instead.
+    this.hud.showScreen('pause');
     this.hud.fillPauseStats(this.score.stats(), {
       found: this.world.secrets.found.size,
       total: this.world.secrets.total,
@@ -328,7 +333,6 @@ export class Game {
         state: this.waves.state,
       },
     });
-    this.hud.showScreen('pause');
   }
 
   respawn() {

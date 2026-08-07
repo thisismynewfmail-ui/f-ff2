@@ -486,15 +486,7 @@ export class HUD {
     this.menuEl = this._el('div', 'screen-menu', null, 'screen menu-screen');
     this.menuEl.style.display = 'none';
     this.titleMenu = new TitleMenu(this.menuEl, this.actions, this.settingsStore);
-    this.pauseEl = this._screen('pause', `
-      <h1>PAUSED</h1>
-      <div id="pause-stats" class="statrings"></div>
-      <div class="pause-actions">
-        <button id="btn-resume">RESUME</button>
-        <button id="btn-save" class="btn-secondary">SAVE RUN</button>
-        <button id="btn-pause-settings" class="btn-secondary">SETTINGS</button>
-        <button id="btn-quit" class="btn-secondary">QUIT TO TITLE</button>
-      </div>`);
+    this._buildPause();
     // In-game Settings overlay, layered over the pause screen. Reuses the same
     // shared form (sliders + key bindings) as the title menu. APPLY confirms the
     // (already-live) settings; RETURN TO GAME — like ESC — drops straight back
@@ -524,6 +516,170 @@ export class HUD {
       <p class="story">The fog lifts. The clock on the tower strikes a kinder hour.</p>`);
   }
 
+  /**
+   * The pause screen: the same instrument case the HUD dock is built from,
+   * opened up on the bench.
+   *
+   * Seven identical rings told you seven things in one voice, which is the
+   * opposite of what an instrument panel does — on a real one you learn to
+   * read health without reading it, because health is a FLUID CELL and nothing
+   * else on the panel is. So every readout here is a different instrument, and
+   * each is the one its quantity would actually be built as:
+   *
+   *   VITALS      a vertical fluid cell with a graduated scale and a danger band
+   *   ENGAGEMENT  a bank of vacuum tubes lighting as the wave is cleared
+   *   MARKSMANSHIP an analogue needle gauge (the same one the dock carries)
+   *   PROGRESS    punched paper tape running toward the count
+   *   SECRETS     one lamp per secret, lit as you find them
+   *   SCORE       a mechanical odometer that rolls up to the number
+   *   CLOCK       a split-flap board
+   *
+   * All of it is built once here and only re-driven on each pause, so opening
+   * the menu never rebuilds the DOM under the animations.
+   */
+  _buildPause() {
+    const s = this._el('div', 'screen-pause', null, 'screen pause-screen');
+    s.style.display = 'none';
+    this.pauseEl = s;
+
+    const c = this._el('div', 'pause-case', s);
+    this.pauseCase = c;
+    c.style.backgroundImage = `url(${this._tex.bar})`;
+    for (const k of ['tl', 'tr', 'bl', 'br']) this._el('div', null, c, 'screw ' + k);
+
+    const head = this._el('div', null, c, 'pause-head');
+    this._el('div', null, head, 'pause-lamp');
+    const title = this._el('div', null, head, 'pause-title');
+    title.innerHTML = 'SANDBOX DEFENSE NETWORK <span>// OPERATOR STATUS</span>';
+    this._el('div', null, head, 'pause-stamp').textContent = 'SYSTEM HOLD';
+
+    const bays = this._el('div', 'pause-stats', c, 'pause-bays');
+    this.pauseParts = {
+      vitals: this._bayVitals(bays),
+      wave: this._bayWave(bays),
+      aim: this._bayAim(bays),
+      progress: this._bayProgress(bays),
+      secrets: this._baySecrets(bays),
+      score: this._bayScore(bays),
+      clock: this._bayClock(bays),
+    };
+
+    const actions = this._el('div', null, c, 'pause-actions');
+    const mk = (id, label, cls) => {
+      const b = this._el('button', id, actions, 'pact ' + cls);
+      this._el('span', null, b, 'pact-wipe');
+      this._el('span', null, b, 'pact-label').textContent = label;
+      this._el('span', null, b, 'pact-key');
+      return b;
+    };
+    mk('btn-resume', 'RESUME', 'pact-go');
+    mk('btn-save', 'SAVE RUN', 'pact-save');
+    mk('btn-pause-settings', 'SETTINGS', 'pact-set');
+    mk('btn-quit', 'QUIT TO TITLE', 'pact-quit');
+    this._el('div', null, c, 'pause-foot').textContent =
+      'FIELD TERMINAL · UNIT 07 · PROPERTY OF THE COUNTY · DO NOT REMOVE FROM POST';
+    return s;
+  }
+
+  /** A titled instrument bay with its own bezel and a hover-revealed detail. */
+  _bay(parent, area, label) {
+    const el = this._el('div', null, parent, 'bay bay-' + area);
+    this._el('div', null, el, 'bay-label').textContent = label;
+    const body = this._el('div', null, el, 'bay-body');
+    const detail = this._el('div', null, el, 'bay-detail');
+    return { el, body, detail };
+  }
+
+  /** HEALTH — a vertical fluid cell: graduated scale, danger band, odometer. */
+  _bayVitals(parent) {
+    const b = this._bay(parent, 'vitals', 'VITALS');
+    const col = this._el('div', null, b.body, 'cell-col');
+    const tube = this._el('div', null, col, 'cell-tube');
+    const fill = this._el('div', null, tube, 'cell-fill');
+    // graduations etched on the glass, quarter by quarter, the lowest in red
+    for (const q of [25, 50, 75]) {
+      const m = this._el('div', null, tube, 'cell-mark' + (q === 25 ? ' danger' : ''));
+      m.style.bottom = q + '%';
+    }
+    this._el('div', null, tube, 'cell-gloss');
+    const odo = this._el('div', null, col, 'odometer pause-odo');
+    return { el: b.el, detail: b.detail, fill, tube, odo };
+  }
+
+  /** WAVE — a bank of vacuum tubes that light as the quota is cleared. */
+  _bayWave(parent) {
+    const b = this._bay(parent, 'wave', 'ENGAGEMENT');
+    const row = this._el('div', null, b.body, 'tube-row');
+    const num = this._el('div', null, row, 'tube-num');
+    const bank = this._el('div', null, row, 'tube-bank');
+    const tubes = [];
+    for (let i = 0; i < 10; i++) {
+      const t = this._el('div', null, bank, 'vtube');
+      t.style.setProperty('--i', String(i));
+      this._el('div', null, t, 'vtube-glass');
+      this._el('div', null, t, 'vtube-fil');
+      tubes.push(t);
+    }
+    const state = this._el('div', null, row, 'tube-state');
+    return { el: b.el, detail: b.detail, num, tubes, state };
+  }
+
+  /** ACCURACY — the dock's analogue needle gauge, on the pause bench. */
+  _bayAim(parent) {
+    const b = this._bay(parent, 'aim', 'MARKSMANSHIP');
+    const g = this._deviceGauge(b.body, {
+      sub: '% HIT',
+      majors: ['0', '25', '50', '75', '100'],
+      bands: [
+        { from: 0, to: 0.3, color: '#a83428' },
+        { from: 0.3, to: 0.65, color: '#c1922f' },
+        { from: 0.65, to: 1, color: '#4f8f3a' },
+      ],
+    });
+    return { el: b.el, detail: b.detail, gauge: g };
+  }
+
+  /** KILLS — punched paper tape running toward 250,000. */
+  _bayProgress(parent) {
+    const b = this._bay(parent, 'progress', 'PROGRESS');
+    const odo = this._el('div', null, b.body, 'odometer pause-odo wide');
+    const tape = this._el('div', null, b.body, 'tape');
+    this._el('div', null, tape, 'tape-sprockets');
+    const run = this._el('div', null, tape, 'tape-run');
+    const punch = this._el('div', null, tape, 'tape-punch');
+    const pct = this._el('div', null, tape, 'tape-pct');
+    this._el('div', null, tape, 'tape-head');
+    return { el: b.el, detail: b.detail, odo, run, punch, pct };
+  }
+
+  /** SECRETS — one lamp per secret; found ones are lit. */
+  _baySecrets(parent) {
+    const b = this._bay(parent, 'secrets', 'SECRETS');
+    const row = this._el('div', null, b.body, 'sec-row');
+    const count = this._el('div', null, b.body, 'sec-count');
+    return { el: b.el, detail: b.detail, row, count, lamps: [] };
+  }
+
+  /** SCORE — a mechanical odometer that rolls up to the number. */
+  _bayScore(parent) {
+    const b = this._bay(parent, 'score', 'SCORE');
+    const odo = this._el('div', null, b.body, 'odometer pause-odo');
+    return { el: b.el, detail: b.detail, odo };
+  }
+
+  /** TIME — a split-flap board, seconds flipping as it lands. */
+  _bayClock(parent) {
+    const b = this._bay(parent, 'clock', 'MISSION CLOCK');
+    const board = this._el('div', null, b.body, 'flapboard');
+    const flaps = [];
+    for (let i = 0; i < 3; i++) {
+      if (i) this._el('div', null, board, 'flap-colon').textContent = ':';
+      const pair = this._el('div', null, board, 'flap-pair');
+      flaps.push(this._el('div', null, pair, 'flap'), this._el('div', null, pair, 'flap'));
+    }
+    return { el: b.el, detail: b.detail, flaps };
+  }
+
   _screen(id, html) {
     const s = this._el('div', 'screen-' + id, null, 'screen');
     s.innerHTML = html;
@@ -539,6 +695,9 @@ export class HUD {
     // While the title menu is up the combat chrome (dock, crosshair) hides so
     // the cinematic reads clean; see the #hud.on-menu rules in styles.css.
     this.root.classList.toggle('on-menu', which === 'menu');
+    // The pause case carries every readout the dock does, so the dock itself
+    // showing through underneath is just noise behind the panel.
+    this.root.classList.toggle('on-pause', which === 'pause');
     if (which === 'menu') this.titleMenu.refresh();
     if (which) {
       const el = { menu: this.menuEl, pause: this.pauseEl, dead: this.deadEl, victory: this.victoryEl }[which];
@@ -560,6 +719,27 @@ export class HUD {
     this.pausePanel?.cancelCapture();
     this.pauseSettingsEl.hidden = true;
     if (toGame) this.actions.onResume();
+  }
+
+  /**
+   * Keyboard on the pause panel: arrows/Tab walk the actions, Enter throws
+   * the one that is selected. A pause screen you can only click is a pause
+   * screen that stops being usable the moment the mouse is where the gun is.
+   */
+  _wirePauseKeys() {
+    const acts = () => [...this.pauseEl.querySelectorAll('.pact')].filter((b) => !b.disabled);
+    const focus = (i) => {
+      const list = acts();
+      if (!list.length) return;
+      const cur = list.indexOf(document.activeElement);
+      list[((cur < 0 ? 0 : cur + i) + list.length) % list.length].focus();
+    };
+    document.addEventListener('keydown', (e) => {
+      if (this.pauseEl.style.display === 'none') return;
+      if (this.pauseSettingsEl && !this.pauseSettingsEl.hidden) return;
+      if (e.code === 'ArrowRight' || e.code === 'ArrowDown') { e.preventDefault(); focus(1); }
+      else if (e.code === 'ArrowLeft' || e.code === 'ArrowUp') { e.preventDefault(); focus(-1); }
+    });
   }
 
   _applyPauseSettings(btn) {
@@ -594,13 +774,25 @@ export class HUD {
     document.getElementById('btn-save').addEventListener('click', async (e) => {
       const b = e.currentTarget;
       if (b.disabled) return;
+      // The label lives in its own span now (the button also carries a wipe
+      // layer and a key hint), so write THERE — setting textContent on the
+      // button would delete the animation it is playing.
+      const label = b.querySelector('.pact-label');
       b.disabled = true;
-      b.textContent = 'SAVING…';
+      b.classList.add('working');
+      label.textContent = 'SAVING…';
       let where = null;
       try { where = await this.actions.onSave(); } catch { /* fall through to FAILED */ }
-      b.textContent = where === 'server' ? 'SAVED ✓' : where === 'local' ? 'SAVED (LOCAL) ✓' : 'SAVE FAILED';
-      setTimeout(() => { b.textContent = 'SAVE RUN'; b.disabled = false; }, 1400);
+      b.classList.remove('working');
+      b.classList.add(where ? 'ok' : 'bad');
+      label.textContent = where === 'server' ? 'SAVED ✓' : where === 'local' ? 'SAVED (LOCAL) ✓' : 'SAVE FAILED';
+      setTimeout(() => {
+        label.textContent = 'SAVE RUN';
+        b.classList.remove('ok', 'bad');
+        b.disabled = false;
+      }, 1400);
     });
+    this._wirePauseKeys();
 
     const on = this.events.on.bind(this.events);
     on('subtitle', ({ text }) => { this.notify(text); this.logMsg(text); });
@@ -923,42 +1115,140 @@ export class HUD {
       <span>TANKS</span><b>${(stats.byType.Tank || 0).toLocaleString('en-US')}</b>`;
   }
 
-  _ring(label, ratio, num, sub, cls = '') {
-    const C = 2 * Math.PI * 44;
-    const off = C * (1 - Math.max(0, Math.min(1, ratio)));
-    return `<div class="ring"><div class="ring-wrap">
-        <svg viewBox="0 0 104 104">
-          <circle class="track" cx="52" cy="52" r="44"></circle>
-          <circle class="arc ${cls}" cx="52" cy="52" r="44"
-            stroke-dasharray="${C.toFixed(1)}" stroke-dashoffset="${off.toFixed(1)}"></circle>
-        </svg>
-        <div class="ring-val"><div class="ring-num">${num}</div><div class="ring-sub">${sub}</div></div>
-      </div><div class="ring-label">${label}</div></div>`;
-  }
-
   /**
-   * The pause screen's stat meters. `extra` carries the live-run readouts the
-   * score stats don't know about: { found, total (secrets), health, maxHealth,
-   * wave: { n, quota, cleared, state } }.
+   * Drive the pause instruments from a live snapshot, then run them in.
+   *
+   * `extra` carries the readouts the score stats don't know about:
+   * { found, total (secrets), health, maxHealth, wave: {n, quota, cleared, state} }.
+   *
+   * Nothing here rebuilds DOM — the panel is built once in _buildPause and
+   * this only moves needles, so the CSS transitions and keyframes survive
+   * being re-paused. Everything animates FROM rest: the case is stripped back
+   * to its unarmed state, the browser is made to acknowledge that, and only
+   * then are the real values written, so every pause plays the instruments
+   * coming up rather than showing them already settled.
    */
   fillPauseStats(stats, extra) {
-    const el = document.getElementById('pause-stats');
+    const p = this.pauseParts;
+    if (!p) return;
+    const c = this.pauseCase;
+    c.classList.remove('armed');
+    void c.offsetWidth;                        // force the reset to land
+    // A generation counter, not cancelAnimationFrame: the arm is a rAF that
+    // schedules a second rAF, and cancelling the outer one leaves the inner
+    // one already queued — it would land the PREVIOUS pause's values on top of
+    // this one's rest pose.
+    const gen = (this._pauseGen = (this._pauseGen || 0) + 1);
+
+    const w = extra.wave || { n: 0, quota: 0, cleared: 0, state: 'respite' };
+    const hp = Math.max(0, Math.min(1, extra.maxHealth ? extra.health / extra.maxHealth : 1));
+    const waveFrac = w.state === 'active' && w.quota ? Math.min(1, w.cleared / w.quota) : 0;
+
+    // --- VITALS: the cell empties from the top; a red tube at a quarter left
+    p.vitals.fill.style.height = '0%';
+    p.vitals.tube.classList.toggle('crit', hp < 0.25);
+    p.vitals.tube.classList.toggle('low', hp >= 0.25 && hp < 0.5);
+    p.vitals.detail.textContent = `${Math.ceil(extra.health ?? 0)} OF ${extra.maxHealth ?? 100} · ${(hp * 100) | 0}%`;
+
+    // --- ENGAGEMENT: one tube per tenth of the quota, and the wave in stencil
+    p.wave.num.textContent = w.n ? String(w.n).padStart(2, '0') : '--';
+    p.wave.state.textContent = w.state === 'active' ? 'ENGAGED' : 'RESPITE';
+    p.wave.state.className = 'tube-state ' + (w.state === 'active' ? 'hot' : 'cool');
+    p.wave.el.classList.toggle('respite', w.state !== 'active');
+    for (const t of p.wave.tubes) t.classList.remove('lit');
+    p.wave.detail.textContent = w.state === 'active'
+      ? `${w.cleared} OF ${w.quota} CLEARED` : 'WAVE COMPLETE — SUPPLIES INBOUND';
+
+    // --- MARKSMANSHIP: the needle parks at zero, then sweeps up on arming
+    p.aim.gauge.set(0);
+    p.aim.gauge.caption.innerHTML =
+      `<span>${stats.shotsHit}</span> / ${stats.shotsFired} ROUNDS`;
+    p.aim.detail.textContent = `${(stats.accuracy * 100).toFixed(1)}% OF ${stats.shotsFired} FIRED`;
+
+    // --- PROGRESS: the tape runs out under the count
+    const frac = Math.max(0, Math.min(1, stats.kills / WIN_KILLS));
+    p.progress.run.style.width = '0%';
+    p.progress.odo._last = null;
+    this._odoDigits(p.progress.odo, 0, 6);
+    p.progress.pct.textContent = (frac * 100).toFixed(3) + '%';
+    p.progress.detail.textContent =
+      `${(WIN_KILLS - stats.kills).toLocaleString('en-US')} REMAINING · ${(frac * 100).toFixed(3)}%`;
+
+    // --- SECRETS: one lamp each, lit in sequence once armed
+    if (p.secrets.lamps.length !== extra.total) {
+      p.secrets.row.innerHTML = '';
+      p.secrets.lamps = [];
+      for (let i = 0; i < extra.total; i++) {
+        const l = this._el('div', null, p.secrets.row, 'sec-lamp');
+        l.style.setProperty('--i', String(i));
+        p.secrets.lamps.push(l);
+      }
+    }
+    for (const l of p.secrets.lamps) l.classList.remove('lit');
+    p.secrets.count.innerHTML = `<b>${extra.found}</b> / ${extra.total}`;
+    p.secrets.detail.textContent = extra.found === extra.total
+      ? 'THE TOWN HAS NOTHING LEFT TO SHOW YOU'
+      : `${extra.total - extra.found} STILL OUT THERE`;
+
+    // --- SCORE + CLOCK: both roll up from nothing
+    p.score.odo._last = null;
+    this._odoDigits(p.score.odo, 0, 6);
+    p.score.detail.textContent = `${stats.kills.toLocaleString('en-US')} CONFIRMED`;
     const t = stats.timePlayed;
     const hh = Math.floor(t / 3600), mm = Math.floor((t % 3600) / 60), ss = Math.floor(t % 60);
-    const time = (hh ? hh + ':' : '') + String(mm).padStart(2, '0') + ':' + String(ss).padStart(2, '0');
-    const secRatio = extra.total ? extra.found / extra.total : 0;
-    const hpRatio = extra.maxHealth ? extra.health / extra.maxHealth : 1;
-    const w = extra.wave || { n: 0, quota: 0, cleared: 0, state: 'respite' };
-    const waveRatio = w.state === 'active' && w.quota ? Math.min(1, w.cleared / w.quota) : w.n ? 1 : 0;
-    el.innerHTML =
-      this._ring('HEALTH', hpRatio, `${Math.ceil(extra.health ?? 0)}`, `/ ${extra.maxHealth ?? 100}`, hpRatio < 0.3 ? 'red' : 'green') +
-      this._ring('WAVE', waveRatio, w.n ? String(w.n) : '—',
-        w.state === 'active' ? `${w.cleared}/${w.quota} CLEAR` : 'RESPITE', 'red') +
-      this._ring('ACCURACY', stats.accuracy, `${(stats.accuracy * 100).toFixed(0)}%`, `${stats.shotsHit}/${stats.shotsFired}`, 'blue') +
-      this._ring('PROGRESS', stats.kills / WIN_KILLS, stats.kills.toLocaleString('en-US'), `/ ${(WIN_KILLS / 1000) | 0}k`, 'green') +
-      this._ring('SECRETS', secRatio, `${extra.found}/${extra.total}`, 'FOUND') +
-      this._ring('SCORE', 1, stats.points.toLocaleString('en-US'), 'POINTS', 'green') +
-      this._ring('SURVIVED', 1, time, 'TIME', 'blue');
+    for (const f of p.clock.flaps) { f.textContent = '0'; f.classList.remove('flip'); }
+    p.clock.detail.textContent = hh
+      ? `${hh} HOURS ${mm} MINUTES ON POST` : `${mm} MINUTES ${ss} SECONDS ON POST`;
+
+    // Arm across two frames, so the rest pose has been through a full style,
+    // layout and paint cycle before the real values land on top of it. One
+    // frame is not enough: the style change can still be coalesced with the
+    // one that precedes it, and a coalesced transition never runs.
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      if (gen !== this._pauseGen) return;
+      c.classList.add('armed');
+      p.vitals.fill.style.height = (hp * 100).toFixed(1) + '%';
+      this._odometer(p.vitals.odo, Math.ceil(extra.health ?? 0));
+      p.aim.gauge.set(stats.accuracy);
+      // A hundred and eighteen kills out of a quarter of a million is a third
+      // of a pixel of tape. The run keeps a visible minimum so the meter has a
+      // head you can see moving, and the honest figure is stencilled beside it
+      // — a bar nobody can read is not more truthful, it is just unreadable.
+      p.progress.run.style.width = Math.max(frac * 100, frac > 0 ? 3.5 : 0).toFixed(2) + '%';
+      const lit = Math.round(waveFrac * p.wave.tubes.length);
+      p.wave.tubes.forEach((tb, i) => tb.classList.toggle('lit', i < lit));
+      p.secrets.lamps.forEach((l, i) => l.classList.toggle('lit', i < extra.found));
+      this._rollOdometer(p.score.odo, stats.points, 6);
+      this._rollOdometer(p.progress.odo, stats.kills, 6);
+      this._runFlaps(p.clock.flaps, [hh % 100, mm, ss]);
+    }));
+  }
+
+  /** Spin an odometer up to its value over ~0.7 s, the way a counter settles. */
+  _rollOdometer(el, value, digits) {
+    clearInterval(el._roll);
+    const target = Math.max(0, value | 0);
+    const t0 = performance.now();
+    el._roll = setInterval(() => {
+      const k = Math.min(1, (performance.now() - t0) / 700);
+      // ease out hard: most of the count happens early, then it creeps home
+      this._odoDigits(el, Math.round(target * (1 - Math.pow(1 - k, 3))), digits);
+      if (k >= 1) clearInterval(el._roll);
+    }, 40);
+  }
+
+  /** Land the split-flap clock: each card flips to its digit on a stagger. */
+  _runFlaps(flaps, parts) {
+    const digits = parts.flatMap((n) => String(Math.min(99, n)).padStart(2, '0').split(''));
+    flaps.forEach((f, i) => {
+      clearTimeout(f._flip);
+      f._flip = setTimeout(() => {
+        f.textContent = digits[i] ?? '0';
+        f.classList.remove('flip');
+        void f.offsetWidth;
+        f.classList.add('flip');
+      }, 120 + i * 70);
+    });
   }
 
   fillDeadStats(stats) {

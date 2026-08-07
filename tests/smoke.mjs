@@ -459,7 +459,7 @@ const fx = await page.evaluate(async () => {
   // 8. Stats are OFF the HUD and rendered as circular gauges on pause.
   out.noHudStats = document.getElementById('hud-tr') === null && document.getElementById('acc') === null;
   g.state.state = 'playing'; g.pause();
-  out.pauseRings = document.querySelectorAll('#pause-stats .ring').length >= 3;
+  out.pauseBays = document.querySelectorAll('#pause-stats .bay').length >= 7;
   g.hud.showScreen(null);
 
   // restore for the win-condition test
@@ -476,7 +476,7 @@ check('cockroach hides by day, roams by night', fx.roachDayNight);
 check('zombies have varied size + individual gait', fx.zombieVary);
 check('graphic death FX pools present', fx.deathFx);
 check('run stats are not on the HUD', fx.noHudStats);
-check('pause screen shows circular stat gauges', fx.pauseRings);
+check('run stats live on the pause screen instead', fx.pauseBays);
 
 // SPITTER: the CS:GO-styled dual-pistol ranged enemy. Spawn gate at 100 kills,
 // a kited ~6–8 ft standoff band, a slightly-slower-than-player walk, a planted
@@ -1078,6 +1078,146 @@ check('an isolated movement spike is rejected', look.withSpike === 18, `${look.w
 check('a genuine hard flick is not eaten as a spike', look.flick === look.flickWant,
   `${look.flick} vs ${look.flickWant}`);
 check('one frame cannot turn the view without limit', look.clamped <= 1430, `${look.clamped}px`);
+
+/* ------------------------------------------------------------------ */
+/* the pause screen: seven instruments, all of them live                */
+/* ------------------------------------------------------------------ */
+// Staged against known values so every readout can be checked against the
+// number it is supposed to be showing — a panel that animates beautifully and
+// reports the wrong health is worse than one that does neither.
+const pauseData = await page.evaluate(async () => {
+  const g = window.__game;
+  g.state.state = 'playing';
+  g.player.health = 41; g.player.maxHealth = 100;
+  g.score.kills = 1180; g.score.points = 14820;
+  g.score.shotsFired = 612; g.score.shotsHit = 389; g.score.timePlayed = 3742;
+  g.waves.wave = 12; g.waves.quota = 26; g.waves.killsThisWave = 17; g.waves.state = 'active';
+  for (const id of ['a', 'b', 'c', 'd', 'e', 'f', 'g']) g.world.secrets.found.add(id);
+  g.hud.showScreen(null);
+  g.pause();
+  const q = (s) => document.querySelector(s);
+  const out = {
+    shown: getComputedStyle(q('#screen-pause')).display,
+    dockHidden: getComputedStyle(document.getElementById('hud-dock')).display === 'none',
+    bays: [...document.querySelectorAll('.bay')].map((b) => b.className.split(' ')[1]),
+    // Every bay must carry its own KIND of instrument. Two counters may both
+    // use odometer wheels — a count is a count — so the signature is the whole
+    // set of parts in the bay, which is what makes each readout its own thing.
+    instruments: [...document.querySelectorAll('.bay')].map((b) =>
+      [...b.querySelectorAll('.bay-body > *')].map((e) => e.className.split(' ')[0]).join('+')),
+    secretsWanted: window.__game.world.secrets.found.size,
+    // the rest pose, before arming: every driven instrument sits at zero
+    restCell: parseFloat(q('.cell-fill').style.height),
+    restTape: parseFloat(q('.tape-run').style.width),
+    restTapePx: q('.tape-run').getBoundingClientRect().width,
+  };
+  // Arm, then read what is actually RUNNING. A style that snapped to its value
+  // produces no Animation object at all, which is the difference between a
+  // panel that animates and one that merely ends up correct.
+  await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(r))));
+  const running = (sel) => (q(sel)?.getAnimations() ?? []).map((a) => a.animationName || 'transition');
+  out.armed = q('#pause-case').classList.contains('armed');
+  out.setCell = parseFloat(q('.cell-fill').style.height);
+  out.setTape = parseFloat(q('.tape-run').style.width);
+  out.moving = {
+    cell: running('.cell-fill'),
+    needle: running('.bay-aim .dev-needle'),
+    tape: running('.tape-head'),
+    bay: running('.bay-vitals'),
+    lamp: running('.pause-lamp'),
+    punch: running('.tape-punch'),
+    button: running('#btn-resume'),
+  };
+  out.tubesLit = document.querySelectorAll('.vtube.lit').length;
+  out.lampsLit = document.querySelectorAll('.sec-lamp.lit').length;
+  out.secretsTotal = document.querySelectorAll('.sec-lamp').length;
+  // and the readouts, once everything has landed
+  await new Promise((r) => setTimeout(r, 1100));
+  out.health = q('.bay-vitals .odometer').textContent;
+  out.wave = q('.tube-num').textContent;
+  out.waveState = q('.tube-state').textContent;
+  out.kills = q('.bay-progress .odometer').textContent;
+  out.aim = q('.bay-aim .dev-gauge-cap').textContent.replace(/\s+/g, ' ').trim();
+  out.clock = [...document.querySelectorAll('.flap')].map((f) => f.textContent).join('');
+  out.score = q('.bay-score .odometer').textContent;
+  return out;
+});
+check('pause opens the instrument case', pauseData.shown === 'flex' && pauseData.dockHidden,
+  `display ${pauseData.shown}, dock hidden ${pauseData.dockHidden}`);
+check('all seven readouts are present', pauseData.bays.length === 7,
+  pauseData.bays.join(' '));
+check('and every one of them is a different instrument',
+  new Set(pauseData.instruments).size === pauseData.instruments.length,
+  pauseData.instruments.join(' '));
+check('the readouts show the run that is actually being played',
+  pauseData.health === '041' && pauseData.wave === '12' && pauseData.waveState === 'ENGAGED'
+  && pauseData.kills === '001180' && /389 \/ 612/.test(pauseData.aim)
+  && pauseData.tubesLit === 7 && pauseData.lampsLit === pauseData.secretsWanted
+  && pauseData.clock === '010222',
+  `hp ${pauseData.health} wave ${pauseData.wave}/${pauseData.waveState} kills ${pauseData.kills}`
+  + ` aim "${pauseData.aim}" tubes ${pauseData.tubesLit}`
+  + ` secrets ${pauseData.lampsLit}/${pauseData.secretsTotal} (want ${pauseData.secretsWanted})`
+  + ` clock ${pauseData.clock}`);
+check('the instruments start at rest and are driven to their values',
+  pauseData.restCell === 0 && pauseData.restTape === 0
+  && pauseData.armed && Math.abs(pauseData.setCell - 41) < 0.05 && pauseData.setTape > 0,
+  `rest ${pauseData.restCell}/${pauseData.restTape} → cell ${pauseData.setCell}%`
+  + ` tape ${pauseData.setTape}%, armed ${pauseData.armed}`);
+check('every moving part is really animating, not snapping',
+  ['cell', 'needle', 'tape', 'bay', 'lamp', 'punch', 'button']
+    .every((k) => pauseData.moving[k].length > 0),
+  Object.entries(pauseData.moving).map(([k, v]) => `${k}:${v.join('+') || 'NONE'}`).join(' '));
+check('the odometer rolls up to the score', pauseData.score === '014820', pauseData.score);
+
+// Each action must carry its OWN mechanism, not one shared hover colour: the
+// four are compared against each other and against their own resting state.
+// Driven by real pointer moves rather than element.focus(), because
+// :focus-visible is a heuristic and a scripted focus does not always trip it.
+const readPact = () => window.__game && [...document.querySelectorAll('.pact')].map((b) => {
+  const w = b.querySelector('.pact-wipe'), k = b.querySelector('.pact-key');
+  const cs = getComputedStyle(b);
+  return [cs.color, cs.borderTopColor,
+    w ? getComputedStyle(w).transform + '|' + getComputedStyle(w).opacity : '',
+    k ? getComputedStyle(k).transform : ''].join('|');
+});
+await page.mouse.move(4, 4);
+await page.waitForTimeout(320);
+const pauseBtns = { rest: await page.evaluate(readPact), hover: [], who: [] };
+const IDS = ['btn-resume', 'btn-save', 'btn-pause-settings', 'btn-quit'];
+for (const id of IDS) {
+  await page.hover('#' + id);
+  // Wait for the hover transition to START and then FINISH, rather than for a
+  // fixed number of milliseconds. getComputedStyle during a transition returns
+  // the interpolated value, so on a software renderer running at a few frames
+  // a second a timed wait reads the resting colour back and calls the button
+  // dead — which is a bug in the test, not in the button.
+  await page.waitForFunction((sel) => {
+    const b = document.querySelector(sel);
+    const t = [b, ...b.querySelectorAll('*')].flatMap((e) => e.getAnimations())
+      .filter((a) => a.constructor.name === 'CSSTransition');
+    return t.length > 0 && t.every((a) => a.playState === 'finished');
+  }, '#' + id, { timeout: 8000 }).catch(() => {});
+  pauseBtns.who.push(`${id}->${await page.evaluate(() => [...document.querySelectorAll('.pact:hover')].map((b) => b.id).join(',') || 'NOBODY')}`);
+  pauseBtns.hover.push((await page.evaluate(readPact))[IDS.indexOf(id)]);
+}
+await page.mouse.move(4, 4);
+pauseBtns.focused = await page.evaluate(() => {
+  document.getElementById('btn-resume').focus();
+  for (const code of ['ArrowRight', 'ArrowRight']) {
+    document.dispatchEvent(new KeyboardEvent('keydown', { code, bubbles: true }));
+  }
+  return document.activeElement.id;
+});
+check('every action button reacts to being selected',
+  pauseBtns.rest.every((r, i) => r !== pauseBtns.hover[i]),
+  pauseBtns.rest.map((r, i) => (r === pauseBtns.hover[i] ? 'DEAD' : 'ok')).join(' ')
+  + ' | ' + pauseBtns.who.join(' '));
+check('and each one reacts in its own way',
+  new Set(pauseBtns.hover).size === pauseBtns.hover.length,
+  `${new Set(pauseBtns.hover).size} distinct of ${pauseBtns.hover.length}`);
+check('the action row can be walked from the keyboard',
+  pauseBtns.focused === 'btn-pause-settings', `focus landed on ${pauseBtns.focused}`);
+await page.evaluate(() => { window.__game.hud.showScreen(null); window.__game.state.state = 'playing'; });
 
 check('no console errors across the whole run', errors.length === 0, errors.slice(0, 3).join(' | '));
 

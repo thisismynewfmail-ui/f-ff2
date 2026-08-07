@@ -8,7 +8,8 @@ Boot runs through an animated loading screen (a Hilbert-curve "texture
 memory map" walked in step with real asset progress) into a CS-1.6-style
 title menu rendered over a live cinematic orbit of the town, with NEW GAME /
 RESUME LAST SESSION / SETTINGS and a LAST SESSION stats card. The pause menu
-carries the run's stat rings plus a working SAVE RUN button.
+carries the run's readouts as a full instrument panel, plus a working SAVE RUN
+button.
 
 Built on a vendored Three.js (no build step, no network dependencies): all
 surface textures are generated pixel art, all audio is synthesized with
@@ -312,8 +313,23 @@ There is deliberately no command that touches the kill counter — the
   mechanical odometer, the needle and teal bar sweeping toward 250,000, a red
   bar through the current 1,000, a blue accuracy bar, lamps that blip on each
   kill and flash at every 1,000-kill milestone, and a REMAINING nameplate. Run
-  stats — accuracy, score, secrets, progress, time — live on the **pause screen
-  as circular gauges**, not on the HUD.
+  stats live on the **pause screen**, not on the HUD.
+- **The pause screen is the same case, opened on the bench.** Seven readouts
+  and seven DIFFERENT instruments, because a panel of identical rings makes
+  you read every one of them from scratch every time — health is a **graduated
+  fluid cell** with a red band at the quarter mark, the wave is a **bank of
+  vacuum tubes** lighting as the quota clears (and idling in a slow chase
+  through each respite), accuracy is the same **ivory needle gauge** the dock
+  carries, kills run on **punched paper tape** under a mechanical odometer,
+  secrets are **one lamp per secret**, score is an odometer that rolls up to
+  the number, and time is a **split-flap board**. It powers on rather than
+  appearing: the case flashes up, the bays come in one by one, the needle
+  sweeps and overshoots, the cell fills, the tape's read head seeks the count,
+  the lamps light in sequence and the flaps drop. Hovering an instrument lifts
+  it and gives up a second readout it otherwise keeps back. Each of the four
+  actions has its own mechanism — RESUME wipes green across, SAVE RUN runs
+  punched tape over its face, SETTINGS turns a driver slot, QUIT lifts hazard
+  stripes — and the row can be walked with the arrow keys.
 - **The NOTICE readout:** messages the world sends you — a district opening,
   a secret giving something up, a thing you touched answering back — arrive on
   their own instrument in the **top-right corner**, deliberately out of the
@@ -352,6 +368,22 @@ There is deliberately no command that touches the kill counter — the
   (2,500), Southside Industrial (4,500), Chapel Ridge (7,000). Barricades
   rumble and sink into the ground when a district opens; the world tells
   you, not a popup.
+- **The ground is four grasses, not one.** A district mown for a century does
+  not look like the ravine in Hollow Park, and neither looks like the flats
+  past the last kerb — so the terrain carries a **kept lawn**, a **parched**
+  one, **deep park growth** and **unmown meadow**, blended per fragment from a
+  weight baked onto every vertex. The tiles themselves are drawn rather than
+  noise-filled: a soil layer with the field thinning over it, then a few
+  thousand short tapered strokes at unbiased angles, with clover, dead straw
+  and seed heads per variant. Because the whole 640 m ground is one mesh, the
+  boundaries have no seam to hide — the weights simply interpolate. Districts
+  are composited as **soft rectangles** and the point they are read at is
+  pushed around by a low-frequency wobble, so a planning rectangle never gets
+  drawn on the ground in colour: the change happens somewhere in a field. Each
+  vertex also carries a tone multiplier on a longer wavelength again, which is
+  what stops one tile repeated a hundred times reading as one tile repeated a
+  hundred times. The standing tufts follow the same regions, so a clump of
+  parched straw never turns up in the middle of a park lawn.
 - **Terrain:** a real heightfield — the chapel hill climbs 16 m, the park
   drops into a ravine, steep slopes slow you down. Roads, plazas and ground
   decals are **draped**: the waypoints are a road's shape, not its resolution,
@@ -660,7 +692,12 @@ front door in the district has to have a **carriageway actually out in front of
 it** (walk out from each threshold along its own normal and look), no building
 may stand in one (sampled off the rendered road surface, because the bounding
 box of a curving road is far fatter than the road), and the planting and props
-have to be animated rather than merely present. Anything that moves without a
+have to be animated rather than merely present. The ground's own grass gets a
+group: all four textures bound, no patch asking for more grass than exists,
+districts that genuinely differ from one another, and — the one that matters —
+a bound on how much the blend may change between neighbouring lattice cells,
+which is what turns "there is a hard line across that field" from something
+somebody has to notice into something the suite refuses. Anything that moves without a
 moving part behind it is checked by driving the animator and watching the
 material, not by counting registry entries — a screen that quietly stops
 playing looks exactly like one that was never registered. The scarecrow's
@@ -676,5 +713,12 @@ third of Eastgate's front doors that used to open onto open grass.
 `smoke.mjs` drives the real game headless: boot without errors, movement, town
 structure, wave spawning, ammo consumption, an end-to-end gunfire kill, zone
 unlocks, and the exact-250,000 victory (no win at 249,999; stats screen at
-250,000). Its wave-spawn step waits on wall-clock time, so it needs a machine
+250,000). It also stages a run against known numbers and opens the pause
+screen on it: every readout has to show the value it is supposed to be
+showing, every bay has to be a different instrument, and every moving part has
+to be a **running Animation** rather than a style that snapped to its end —
+a panel that ends up correct without ever moving looks identical in a
+screenshot and is not what was asked for. The four actions are hovered one at
+a time and compared against each other, so a shared hover colour cannot pass
+for four mechanisms. Its wave-spawn step waits on wall-clock time, so it needs a machine
 that renders faster than software GL.

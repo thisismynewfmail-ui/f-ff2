@@ -15,8 +15,12 @@ export const TEXTURE_DIR = 'assets/textures/';
 export const SPRITE_DIR = 'assets/sprites/';
 
 export const TEXTURES = {
-  // ground
+  // ground. Four grasses, blended across the map by src/world/Terrain.js —
+  // a kept lawn, a parched one, deep park growth and unmown meadow.
   grass: 'grass.png',
+  grassDry: 'grass_dry.png',
+  grassLush: 'grass_lush.png',
+  grassWild: 'grass_wild.png',
   dirt: 'dirt.png',
   gravel: 'gravel.png',
   road: 'road_asphalt.png',
@@ -128,6 +132,8 @@ export const TEXTURES = {
   leaves: 'leaves.png',
   bush: 'bush.png',
   grassTuft: 'grass_tuft.png',
+  grassTuftDry: 'grass_tuft_dry.png',
+  grassTuftWild: 'grass_tuft_wild.png',
   vine: 'vine.png',
   // residential planting: clipped boundary hedges, garden flowers, the dry
   // weeds that come up through a pavement crack, and wall ivy

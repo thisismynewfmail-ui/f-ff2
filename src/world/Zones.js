@@ -194,3 +194,23 @@ export class Zones {
 export function pointInRect(x, z, r) {
   return x >= r.minX && x <= r.maxX && z >= r.minZ && z <= r.maxZ;
 }
+
+/**
+ * District id at a point, or -1 for the ground outside every district.
+ *
+ * Deliberately not Zones.zoneAt: that one answers "which district is the
+ * player in" and falls back to the square, because a player is always
+ * somewhere. A caller asking about the GROUND (Terrain's grass blend) needs
+ * to know that the flats past the last kerb belong to no district at all.
+ * Free-standing so it can be called before Zones is constructed.
+ */
+export function zoneIdAt(x, z) {
+  let best = -1, bestArea = Infinity;
+  for (const zone of ZONES) {
+    const r = zone.rect;
+    if (x < r.minX || x > r.maxX || z < r.minZ || z > r.maxZ) continue;
+    const area = (r.maxX - r.minX) * (r.maxZ - r.minZ);
+    if (area < bestArea) { best = zone.id; bestArea = area; }
+  }
+  return best;
+}
