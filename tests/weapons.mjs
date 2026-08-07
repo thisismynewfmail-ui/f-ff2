@@ -195,6 +195,31 @@ const bores = await page.evaluate(() => {
   }
   return out;
 });
+// Alignment is a two-part claim and the bore check only proves half of it: a
+// tube can run perfectly true down the axis and still point over the player's
+// shoulder. The blaster shipped exactly that way — every barrel dead on axis,
+// the whole weapon back to front, with the rear of the shell filling the lower
+// third of the screen. So measure the direction too: the muzzle anchor must
+// come out IN FRONT of the grip once the rest transform is applied, which for
+// a camera looking down -Z means a more negative world z than the rig origin.
+const aim = await page.evaluate(() => {
+  const out = [];
+  for (const cfg of window.__game.weapons.weapons.map((w) => w.config)) {
+    const rig = window.__game.viewModel.rigs[cfg.id];
+    if (!rig?.muzzle) continue;
+    rig.group.position.fromArray(rig.rest.position);
+    rig.group.rotation.fromArray(rig.rest.rotation);
+    rig.group.updateMatrixWorld(true);
+    const m = rig.muzzle.matrixWorld.elements;
+    out.push({ id: cfg.id, reach: +(rig.rest.position[2] - m[14]).toFixed(3) });
+  }
+  return out;
+});
+for (const a of aim) {
+  check(`${a.id}: points away from the player, not at them`, a.reach > 0.05,
+    `muzzle sits ${a.reach}m forward of the grip`);
+}
+
 for (const b of bores) {
   check(`${b.id}: every barrel runs true down the bore axis`,
     b.worst < 10, `worst tube off-axis by ${b.worst}°${b.len ? ` (${b.len}m tube)` : ''}`);
@@ -282,12 +307,31 @@ const anim = await page.evaluate(() => {
     rig.reload(1, rig.parts, false);
     rig.idle(0, rig.parts);
 
+    // Energy weapons have no reload stroke — the cell refills itself — so the
+    // model has to carry the ammo state some other way. Drive sync() at a full
+    // cell and at an empty one and measure how far the idle pose moves.
+    let chargeDiffers = 0;
+    if (cfg.energy && rig.sync) {
+      const poseAt = (mag) => {
+        rig.sync({ mag, config: cfg });
+        const frames = [];
+        for (let t = 0; t <= 1.2; t += 0.15) { rig.idle(t, rig.parts); frames.push(snap(rig)); }
+        return frames;
+      };
+      const full = poseAt(cfg.magSize), empty = poseAt(0);
+      for (let i = 0; i < full.length; i++) chargeDiffers += dist(full[i], empty[i]);
+      rig.sync({ mag: cfg.magSize, config: cfg });
+      rig.idle(0, rig.parts);
+    }
+
     out.push({
       id: cfg.id,
       idleRange: +idleRange.toFixed(3), idleLoop: +bestT.toFixed(2), idleLoopErr: +bestD.toFixed(3),
       firePeakAt: +peakF.toFixed(2), firePeak: +peakD.toFixed(3), fireEnd: +endD.toFixed(3),
       fireDuration: rig.fireDuration, fireInterval: cfg.fireInterval,
       reloadRange: +reloadRange.toFixed(3), hasTactical: !!cfg.tacticalReload, tacticalDiffers,
+      reloads: !cfg.melee && !cfg.energy, energy: !!cfg.energy,
+      chargeDiffers: +chargeDiffers.toFixed(3),
     });
   }
   return out;
@@ -302,8 +346,21 @@ for (const a of anim) {
   check(`${a.id}: fire duration matches its rate of fire`,
     a.fireDuration > 0 && a.fireDuration <= a.fireInterval + 1e-6,
     `${a.fireDuration}s anim vs ${a.fireInterval}s between shots`);
-  if (a.id !== 'bat') {
+  // Only weapons that actually reload have a reload to animate. A club has
+  // nothing to load, and the blaster's cell refills itself — faking a reload
+  // stroke on either would be animating a mechanism the weapon does not have.
+  if (a.reloads) {
     check(`${a.id}: reload animates`, a.reloadRange > 0.02, `range ${a.reloadRange}`);
+  } else {
+    check(`${a.id}: has no reload stroke to animate`, a.reloadRange <= 0.02,
+      `range ${a.reloadRange}`);
+  }
+  if (a.energy) {
+    // The charge readout IS this weapon's reload: its idle must visibly differ
+    // between a full cell and an empty one, or the player has no way to read
+    // the ammo state off the model at all.
+    check(`${a.id}: the model reads out its charge`, a.chargeDiffers > 0.05,
+      `full vs empty idle differs by ${a.chargeDiffers}`);
   }
   if (a.hasTactical) {
     check(`${a.id}: quick-tap reload differs from the full reload`, a.tacticalDiffers);
@@ -522,6 +579,12 @@ check('menu hides immediately when the player fires', menu.afterFire < 0.05, `op
 const live = await page.evaluate(async () => {
   const g = window.__game;
   const seen = [];
+  // Locked weapons refuse to equip, which is the point of them — but it also
+  // means a coverage hole exactly where the newest rig is. Grant every unlock
+  // first so the sweep really does reach every weapon in the game.
+  for (const w of g.weapons.weapons) {
+    if (w.config.locked) g.events.emit('weapon:unlock', { id: w.config.id });
+  }
   for (let i = 0; i < g.weapons.weapons.length; i++) {
     g.weapons.switchTo(i);
     for (let k = 0; k < 20; k++) await new Promise(requestAnimationFrame);

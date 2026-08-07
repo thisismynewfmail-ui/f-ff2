@@ -438,6 +438,124 @@ const r = await page.evaluate(async () => {
   out.windFields = 0;
   w.group.traverse((o) => { if (o.isMesh && o.geometry?.attributes?.aSway) out.windFields++; });
 
+  // Surfaces that move without a moving part behind them: the TV static
+  // flipbook, the arcade and vending tubes, the campfire. Counting the
+  // registry only proves it was declared, so sample every entry's actual
+  // state, run the animator, and require each one to have changed — a kind
+  // that silently stops matching (a renamed field, a texture that lost its
+  // map) shows up here rather than as a screen nobody notices is frozen.
+  const mats = w.matAnims || [];
+  out.matAnims = mats.length;
+  out.matKinds = [...new Set(mats.map((m) => m.kind))].sort();
+  const sampleMat = (m) => (m.kind === 'flip'
+    ? `${m.map.offset.x},${m.map.offset.y},${m.map.repeat.x}`
+    : m.kind === 'ember'
+      ? m.nodes.map((n) => n.scale.y.toFixed(4)).join(',') + '|' + (m.light?.intensity ?? 0).toFixed(3)
+      : m.mat.color.getHexString());
+  // Drive the animator itself rather than waiting on frames: the camera is at
+  // the spawn and some of these are culled by distance from it, so stand the
+  // probe on each entry in turn. Collect the whole run, not just its ends — a
+  // tube on a slow blink can finish a sweep on the colour it started with.
+  const seenStates = mats.map(() => new Set());
+  for (let i = 0; i < 60; i++) {
+    for (const m of mats) {
+      w.anomalies.update(0.05, i * 0.05, { x: m.x ?? 0, y: 0, z: m.z ?? 0 });
+    }
+    mats.forEach((m, k) => seenStates[k].add(sampleMat(m)));
+  }
+  out.matFrozen = mats
+    .map((m, i) => (seenStates[i].size < 2 ? `${m.kind}#${i}` : null))
+    .filter(Boolean);
+
+  // The phone booth has a voice but it also has to have a face: while it rings
+  // the roof lamp comes up and the handset shakes, and both die the moment it
+  // stops. Drive the ring state directly — waiting out the real 25 s cycle in
+  // a world test would be waiting on a timer, not testing anything.
+  {
+    const an = w.anomalies, parts = w.phoneBoothParts, p = window.__game.player;
+    const home = { x: p.position.x, y: p.position.y, z: p.position.z };
+    const b = w.phoneBoothPos;
+    const sample = () => `${parts.lampMat.color.getHexString()}|${parts.hook.rotation.z.toFixed(4)}`;
+    // It only rings for somebody who is there to hear it, so stand the player
+    // at the booth — from across town the ring cycle correctly gives up.
+    p.teleport(b.x + 3, w.groundHeightFor(b.x + 3, b.z, 1e9), b.z);
+    an._phone.ringing = false;
+    an.update(0.05, 1, { x: b.x, y: 0, z: b.z });
+    const quiet = sample();
+    let ringing = quiet;
+    for (let i = 0; i < 30 && ringing === quiet; i++) {
+      an._phone.ringing = true;
+      an._phone.ringFor = 9;
+      an.update(0.05, 1 + i * 0.05, { x: b.x, y: 0, z: b.z });
+      ringing = sample();
+    }
+    an._phone.ringing = false;
+    an._phone.timer = 25;
+    p.teleport(home.x, home.y, home.z);
+    out.boothRings = ringing !== quiet;
+    out.boothStates = `${quiet} -> ${ringing}`;
+  }
+
+  // The scarecrow's easter-egg chain spans two places, so both ends have to
+  // survive a world rebuild: the bearing it holds must land on open ground with
+  // the wreck actually on it, the blaster must be reachable there, and the two
+  // things you can shoot off the figure itself must be registered.
+  const sc = w.scarecrow;
+  const near = (x, z, r) => w.shootables.filter((s) => Math.hypot(s.x - x, s.z - z) < r);
+  const crashClear = !w._nearBuilding(sc.crash.x, sc.crash.z, 8);
+  const pickup = w.interactables.some((it) =>
+    Math.hypot(it.x - sc.crash.x, it.z - sc.crash.z) < 6);
+  const onIt = near(sc.pos.x, sc.pos.z, 1.2);
+  out.scarecrow = {
+    crash: `${sc.crash.x},${sc.crash.z} clear=${crashClear}`,
+    pickup, shootables: onIt.length,
+    chain: crashClear && pickup && onIt.length >= 2 && !!sc._crashGlow && sc._shards.length >= 3,
+  };
+
+  // The hat is a full state machine — shot off, thrown, landed, and back on
+  // its head once you are too far away to catch it happening — and every step
+  // of it is invisible unless somebody walks the whole loop. Walk it here.
+  {
+    const hatTarget = onIt.find((s) => s.y > sc.pos.y + 2.2);
+    const tick = (n, dx) => {
+      for (let i = 0; i < n; i++) sc.update(0.05, i * 0.05, { x: sc.pos.x + dx, y: 0, z: sc.pos.z });
+    };
+    const startY = sc._hat.position.y;
+    hatTarget?.onHit();
+    out.hatCameOff = sc._hatOn === false && !!sc._hatFall;
+    tick(80, 5);                                   // it falls, it lands
+    out.hatLanded = !sc._hatFall && !!sc._hatGround
+      && sc._hatGround.position.y < sc.pos.y + 1;
+    tick(4, 200);                                  // and you walk away
+    out.hatWentBack = sc._hatOn === true && !sc._hatGround
+      && Math.abs(sc._hat.position.y - startY) < 1e-6 && hatTarget.active;
+    // put the whole thing back the way it was found
+    sc._hatBackNotice = false;
+    sc._headSnap = false;
+    sc._forceLook = 0;
+  }
+
+  // And the chain itself, end to end: three touches makes it stop looking at
+  // you and hold a bearing, the bearing is the wreck's, and the thing at the
+  // far end of it is a weapon you did not have. If any link of that breaks the
+  // blaster becomes unobtainable without a console command and nobody notices.
+  {
+    const p = window.__game.player;
+    const home = { x: p.position.x, y: p.position.y, z: p.position.z };
+    p.teleport(sc.pos.x + 2, w.groundHeightFor(sc.pos.x + 2, sc.pos.z, 1e9), sc.pos.z);
+    for (let i = 0; i < 3; i++) sc._interact();
+    out.pointing = sc._pointing;
+    for (let i = 0; i < 200; i++) sc.update(0.05, i * 0.05, { x: p.position.x, y: 0, z: p.position.z });
+    const want = Math.atan2(sc.crash.x - sc.pos.x, sc.crash.z - sc.pos.z) - sc.bodyYaw;
+    const err = Math.abs(((sc._headYaw - want + Math.PI) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI) - Math.PI);
+    out.bearingErr = +err.toFixed(3);
+    const take = w.interactables.find((it) => Math.hypot(it.x - sc.crash.x, it.z - sc.crash.z) < 6);
+    take.onInteract();
+    out.blasterUnlocked = window.__game.weapons.unlocked.has('blaster');
+    out.blasterCounted = window.__game.world.secrets.found.has('alienBlaster');
+    p.teleport(home.x, home.y, home.z);
+  }
+
   // --- 12. the pond is a lake, not a sheet of glass laid over a hillside
   const pb = w.pondBasin;
   out.pond = { minDepth: 1e9, maxDepth: -1e9, verts: 0, overBuilding: 0, animated: w.waterSurfaces.length };
@@ -537,6 +655,21 @@ check('Eastgate roofs and porches vary', r.roofKinds >= 3 && r.eastgatePorches >
 check('planting is animated across the town', r.swayers >= 400 && r.windFields >= 20,
   `${r.swayers} swayers, ${r.windFields} wind-bent ground-cover fields`);
 check('the district has moving props', r.animProps >= 15, `${r.animProps} animated`);
+check('screens, tubes and the fire animate in place', r.matAnims >= 4 && r.matKinds.length >= 3,
+  `${r.matAnims} animated surfaces: ${r.matKinds.join(', ')}`);
+check('no animated surface is stuck', r.matFrozen.length === 0,
+  `frozen: ${r.matFrozen.join(', ')}`);
+check('the phone booth lights up while it rings', r.boothRings, r.boothStates);
+check('the scarecrow points somewhere real', r.scarecrow.chain,
+  `crash ${r.scarecrow.crash} — blaster pickup ${r.scarecrow.pickup}, ${r.scarecrow.shootables} shootable parts`);
+check('its hat comes off, lands, and finds its way back',
+  r.hatCameOff && r.hatLanded && r.hatWentBack,
+  `off ${r.hatCameOff}, landed ${r.hatLanded}, back on ${r.hatWentBack}`);
+check('three touches make it point at the wreck', r.pointing && r.bearingErr < 0.1,
+  `pointing ${r.pointing}, bearing off by ${r.bearingErr} rad`);
+check('and the wreck hands over a weapon you could not otherwise have',
+  r.blasterUnlocked && r.blasterCounted,
+  `unlocked ${r.blasterUnlocked}, counted as a secret ${r.blasterCounted}`);
 
 // The barrier is a wall, not a suggestion: walk hard into it and stay inside.
 await page.click('#btn-start');

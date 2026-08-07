@@ -520,16 +520,53 @@ export class InteriorKit {
     return { group: g, collide: [0.95, 1.2, 0.65] };
   }
 
+  /**
+   * An arcade cabinet still running its attract loop.
+   *
+   * There are three screen materials, handed out round-robin, and each one
+   * strikes and drops on its own beat — because a row of seven cabinets
+   * blinking in perfect time is one machine seen seven times, and a row of
+   * three phases is an arcade. The marquee above the screen is lit off the
+   * same tube, so a cabinet dying takes its own sign with it.
+   */
   arcadeCab(color = 0x39465e) {
     const g = new THREE.Group();
     const body = this.P.box(0.72, 1.75, 0.8, this.P.colorMat(color));
     body.position.y = 0.88;
-    const screen = this.P.box(0.55, 0.45, 0.04, this.P.colorMat(0x10161c));
+    const tube = this._screenMat();
+    const screen = this.P.box(0.55, 0.45, 0.04, tube);
     screen.position.set(0, 1.35, 0.41);
+    const marquee = this.P.box(0.6, 0.16, 0.03, tube);
+    marquee.position.set(0, 1.68, 0.41);
     const deck = this.P.box(0.6, 0.08, 0.3, this.P.colorMat(0x1c2026));
     deck.position.set(0, 0.95, 0.48);
-    g.add(body, screen, deck);
+    // stick and buttons, so the deck reads as something you could play
+    const stick = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.02, 0.1, 5), this.P.colorMat(0x14161a));
+    stick.position.set(-0.17, 1.03, 0.48);
+    const ball = new THREE.Mesh(new THREE.SphereGeometry(0.035, 6, 5), this.P.colorMat(0x8c2a22));
+    ball.position.set(-0.17, 1.09, 0.48);
+    g.add(body, screen, marquee, deck, stick, ball);
+    for (let i = 0; i < 3; i++) {
+      const btn = new THREE.Mesh(new THREE.CylinderGeometry(0.026, 0.026, 0.02, 6),
+        this.P.colorMat([0xc8b040, 0x3a6ea8, 0x40a06a][i]));
+      btn.position.set(0.02 + i * 0.08, 1.0, 0.48);
+      g.add(btn);
+    }
     return { group: g, collide: [0.38, 0.9, 0.45] };
+  }
+
+  /** One of three attract-mode tubes, each on its own strike/dropout cycle. */
+  _screenMat() {
+    this._screenAt = ((this._screenAt ?? -1) + 1) % 3;
+    const i = this._screenAt;
+    return this._mat('screen' + i, () => {
+      const rgb = [[0.30, 0.62, 1.0], [0.36, 1.0, 0.62], [1.0, 0.62, 0.28]][i];
+      const mat = new THREE.MeshBasicMaterial({ color: 0x10161c });
+      this.w._animateMat(mat, 'tube', {
+        r: rgb[0], g: rgb[1], b: rgb[2], hi: 0.62, lo: 0.07, duty: 0.9, rate: 0.5 + i * 0.31,
+      });
+      return mat;
+    });
   }
 
   displayStand() {
@@ -790,16 +827,25 @@ export class InteriorKit {
     return { group: g, collide: [0.22, 0.8, 0.16] };
   }
 
-  /** Lit vending machine. There is no power in this town. */
+  /** Lit vending machine. There is no power in this town.
+   *  The tube behind the glass strikes, holds, and drops out again — the way a
+   *  fluorescent does when it is on its last few hundred hours. */
   vending() {
     const g = new THREE.Group();
     const body = this.P.box(0.9, 1.9, 0.7, this.P.colorMat(0x8a2a24));
     body.position.y = 0.95;
     g.add(body);
-    const glass = new THREE.Mesh(new THREE.PlaneGeometry(0.68, 1.3),
-      new THREE.MeshBasicMaterial({ color: 0x2a3a30 }));
+    const lit = this._mat('vendingTube', () => {
+      const mat = new THREE.MeshBasicMaterial({ color: 0x2a3a30 });
+      this.w._animateMat(mat, 'tube', { r: 0.42, g: 0.86, b: 0.62, hi: 0.44, lo: 0.11, duty: 0.86, rate: 0.9 });
+      return mat;
+    });
+    const glass = new THREE.Mesh(new THREE.PlaneGeometry(0.68, 1.3), lit);
     glass.position.set(-0.05, 1.15, 0.36);
     g.add(glass);
+    const strip = this.P.box(0.66, 0.04, 0.03, lit);   // the tube itself, over the rack
+    strip.position.set(-0.05, 1.78, 0.35);
+    g.add(strip);
     for (let r = 0; r < 4; r++) {
       for (let c = 0; c < 4; c++) {
         if ((r * 4 + c) % 3 === 0) continue; // half of it sold out

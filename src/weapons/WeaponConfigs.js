@@ -145,4 +145,41 @@ export const WEAPON_CONFIGS = [
     altLabel: 'HEAVY SWING',
     alt: { mode: 'charge', damageMul: 2.1, knockbackMul: 1.7, arcMul: 1.25, fireInterval: 0.95, sound: 'batCharge' },
   },
+  {
+    // The sixth bay is empty when the run starts. It stays empty until you
+    // find what goes in it — see src/world/Scarecrow.js and the crash site it
+    // is looking at. `locked` keeps it off the wheel and out of the number
+    // keys until 'weapon:unlock' says otherwise.
+    id: 'blaster',
+    name: 'ALIEN BLASTER',
+    flavor: 'RECOVERED ARTEFACT',
+    fireMode: 'CELL',
+    slot: 6,
+    locked: true,
+    melee: false,
+    damage: 58,
+    pellets: 1,
+    pierce: 2,        // the bolt goes through what it hits
+    magSize: 14,
+    reserveStart: 0,  // there is no ammunition for this. There is only the cell.
+    // Energy: the cell refills itself, one charge every this many seconds, and
+    // it does it faster the emptier it is. No reload, no reserve, no pickups —
+    // the weapon's limit is your rate of fire, not your supply.
+    energy: true,
+    rechargeInterval: 0.62,
+    fireInterval: 0.34,
+    auto: false,
+    reloadTime: 0,
+    spread: 0.5,
+    bloomPerShot: 0.3,
+    bloomMax: 2.2,
+    range: 120,
+    noise: 30,        // it is a quiet weapon; that is most of its value
+    kick: 0.9,
+    zoom: null,
+    sound: 'blaster',
+    ammoType: null,
+    altLabel: 'OVERCHARGE',
+    alt: { mode: 'double', shells: 4, damageMul: 2.6, pierce: 4, fireInterval: 0.9, spread: 0.2, sound: 'blasterCharged', noise: 46 },
+  },
 ];

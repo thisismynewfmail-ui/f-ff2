@@ -339,6 +339,57 @@ export class Anomalies {
       }
     }
 
+    // Surfaces that move without anything moving them. Materials are shared,
+    // so this is a handful of entries driving every screen in the town.
+    for (const a of this.w.matAnims ?? []) {
+      if (a.x !== undefined && camPos) {
+        const dx = a.x - camPos.x, dz = a.z - camPos.z;
+        if (dx * dx + dz * dz > 14400) continue;   // 120 m
+      }
+      if (a.kind === 'flip') {
+        // A flipbook of static frames. Cells step in order rather than at
+        // random: a dead set rolls, and a roll you can follow for a second or
+        // two before it breaks up is far more like a television than noise.
+        a.t -= dt;
+        if (a.t > 0) continue;
+        a.t = a.rate * (0.7 + Math.random() * 0.6);
+        a.frame = (a.frame + (Math.random() < 0.14 ? 2 : 1)) % (a.cols * a.rows);
+        a.map.offset.set(
+          (a.frame % a.cols) / a.cols,
+          1 - (Math.floor(a.frame / a.cols) + 1) / a.rows,
+        );
+      } else if (a.kind === 'tube') {
+        // Strike, hold, drop out. The hold is not steady either — mains hum
+        // rides on top of it at a rate you register without being able to see.
+        a.t -= dt;
+        if (a.t <= 0) {
+          a.t = 0.09 + Math.random() * a.rate;
+          a.lit = Math.random() < a.duty;
+        }
+        const k = a.lit ? a.hi * (0.84 + Math.sin(time * 27 + a.phase) * 0.16) : a.lo;
+        a.mat.color.setRGB(a.r * k, a.g * k, a.b * k);
+      } else if (a.kind === 'ember') {
+        // Two beats, deliberately not harmonics of each other, so the fire
+        // never settles into a loop you can hear the seam in.
+        // Two beats, deliberately not harmonics of each other, so the fire
+        // never settles into a loop you can hear the seam in. It flexes AROUND
+        // its built size rather than shrinking from it — a flame that spends
+        // most of its time at three-quarter height is a pilot light.
+        const f = Math.sin(time * 6.3 + a.phase) * 0.62 + Math.sin(time * 17.1) * 0.38;
+        for (let i = 0; i < a.nodes.length; i++) {
+          const n = a.nodes[i];
+          // each tier on its own beat, and each turning at its own rate, so the
+          // ragged silhouette the low segment counts give never comes round twice
+          const b = f + Math.sin(time * (9.1 + i * 4.3) + i * 2.1) * 0.3;
+          n.scale.set(0.94 + b * 0.09, 0.95 + b * (0.2 - i * 0.05), 0.94 + b * 0.09);
+          n.rotation.y += dt * [1.4, -2.1, 3.3][i % 3];
+        }
+        const heat = 0.5 + f * 0.35;                       // 0..1-ish
+        a.mat.color.setRGB(1, 0.3 + heat * 0.32, 0.06 + heat * 0.16);
+        if (a.light) a.light.intensity = 8 + heat * 5;
+      }
+    }
+
     // factory smoke: rise, spread, fade, repeat — camera-faced quads
     for (const s of this._smoke) {
       const t = (time * 0.08 + s.phase) % 1;
@@ -389,6 +440,14 @@ export class Anomalies {
             ph.ringing = ph.ringFor > 0 && near;
           }
         }
+      }
+      // While it rings, the roof lamp comes up and the handset shakes on its
+      // cradle. Both die the instant it stops, whether or not you answered.
+      const parts = this.w.phoneBoothParts;
+      if (parts) {
+        const k = ph.ringing ? 0.5 + 0.5 * Math.max(0, Math.sin(time * 9)) : 0;
+        parts.lampMat.color.setRGB(0.1 + k * 0.85, 0.1 + k * 0.78, 0.09 + k * 0.5);
+        parts.hook.rotation.z = ph.ringing ? Math.sin(time * 33) * 0.14 * k : 0;
       }
     }
 

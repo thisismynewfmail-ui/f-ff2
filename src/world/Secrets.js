@@ -1,7 +1,9 @@
 import * as THREE from '../../lib/three.module.js';
 
 /**
- * Fourteen hand-placed secrets. Discovery methods vary by design:
+ * Fifteen secrets — fourteen hand-placed here, plus the alien blaster, which
+ * lives in Scarecrow.js and counts against this total. Discovery methods vary
+ * by design:
  *  - shootable  (#1 cracked wall, #3 chapel bell)
  *  - interact   (#2 library bookshelf, #4 key + locked basement,
  *                #11 the treehouse, #12 the shelter under the shed)
@@ -19,7 +21,9 @@ export class Secrets {
     this.world = world;
     this.events = world.events;
     this.found = new Set();
-    this.total = 14;
+    // 14 hand-placed here + the alien blaster, which Scarecrow.js owns because
+    // its trigger is the scarecrow and its reward is a weapon unlock.
+    this.total = 15;
     this.game = null;
     this.hasBasementKey = false;
     this._manholeTimer = 0;

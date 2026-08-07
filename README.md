@@ -75,7 +75,7 @@ the desktop shell.
 | Shift | Sprint |
 | Ctrl / C | Crouch |
 | Space | Jump |
-| 1–5 | Pistol / Shotgun / Assault Rifle / Sniper / Bat |
+| 1–6 | Pistol / Shotgun / Assault Rifle / Sniper / Bat / Alien Blaster (once found) |
 | Mouse wheel | Cycle weapons (also reveals the weapon menu) |
 | R | Reload |
 | E | Interact |
@@ -103,7 +103,9 @@ an isolated jump never reaches your aim.
 Every weapon is a fully 3D, PBR-textured model with a steampunk / Bioshock
 finish — brass, blued gunsteel, cast iron, copper, oiled walnut, cracked
 leather, and on the machine pistol matte phosphate under chipped caution
-banding — each a novel take on its type with a **working action**. All are
+banding — each a novel take on its type with a **working action**. The one
+exception is deliberate: the alien blaster is seamless polished alloy with no
+fastener anywhere on it, because nobody in this town made it. All are
 animated with an idle sway, a three-phase fire recoil, extensive part motion
 (slides, hammers, bolts, cranes, ratcheting drums), a full reload
 choreography, equip/unequip transitions, and **ejected brass** (cases, spent
@@ -119,6 +121,7 @@ firing sound and a distinct right-mouse secondary action:
 | 3 | Foundry Gun (rifle) | Lewis-pattern steam machine gun; flank pan drum ratchets a round per shot, charging handle reciprocates, live pressure valve, drum swap reload | **3-round burst** — tight grouping |
 | 4 | Meridian Long Rifle (sniper) | precision **bolt-action** — full lift/draw/eject/close cycle each shot, glowing telescope reticle, rangefinder drum, en-bloc clip reload | **Scope** — telescopic zoom |
 | 5 | Ironshod Slugger (melee) | ironclad club; swings alternate forehand / backhand horizontal cuts | **Heavy swing** — charged overhead slam, wider arc, more knockback |
+| 6 | Alien Blaster (**locked**) | recovered artefact — blue energy bolts that punch through two bodies, no reserve and no reload; the cell refills itself, faster the emptier it is, and the emitter vanes spin up while it does. Not on the wheel until you find it — see the scarecrow | **Overcharge** — four cells at once, heavier bolt, deeper pierce |
 
 ## Dev console
 
@@ -470,21 +473,56 @@ There is deliberately no command that touches the kill counter — the
   pool nobody has touched in a year whose surface will not hold still. Every
   one is registered in a single distance-culled registry and costs nothing
   until you are within ninety metres of it.
+- **Surfaces that move with no moving part behind them.** Every dead
+  television in town plays real static — a sixteen-frame flipbook baked into
+  `tv_static.png` and stepped at twelve frames a second, roll band and all,
+  with one frame in sixteen that is not static and is on screen for a twelfth
+  of a second at a time. Arcade cabinets run their attract loops off three
+  screen tubes handed out round-robin, each striking and dropping out on its
+  own beat so a row of seven never blinks as one machine; their marquees are
+  lit off the same tube, so a cabinet dying takes its own sign with it.
+  Vending machines hold a fluorescent on its last few hundred hours. The
+  campfire at the dead camp is still burning — three tiers on five and four
+  sides, each flexing and turning on its own beat, with the light flexing
+  with them. The phone booth's roof lamp comes up and its handset shakes
+  while it rings, and both die the instant it stops, whether or not you
+  answered. All of it lives in one material registry
+  (`World._animateMat`) driven from `Anomalies.update`.
 - **The scarecrow (`src/world/Scarecrow.js`):** an aware, animated set piece
   on the east farm. Textured from canvas sources — woven burlap sacking, a
   stitched cross-eyed face, tattered flannel plaid, straw wisps — it sways in
-  a wind that isn't there. Its head slowly turns to keep you in view, but
+  a wind that isn't there, hung with rags that flutter on their own phases and
+  a tin can turning on a string. Its head slowly turns to keep you in view, but
   **only while you are not looking at it**: meet its stitched eyes and it goes
-  dead still, facing the field; look away and back and it has found you. Get
+  dead still, facing the field; look away and back and it has found you. Close
+  in and two faint motes come up over the stitched eyes — never bright, never
+  visible at range, and only while it has its face turned to yours. Get
   close and you can **set its head straight** (it resists, and creaks) or, if
   it faces the field, **touch its shoulder** and watch it turn, slowly, to
   you. A **crow** perches on one arm and scatters with a caw when you
   approach, drifting back once you have gone.
+  - **Shoot the tin can** and it rings and spins off the hit. Nothing comes of
+    it and nothing is supposed to.
+  - **Shoot its hat off** and the head does the one thing it has spent the
+    whole game refusing to do in front of you: it moves while you are
+    watching, in a single step, with no creak. The hat lands in the dirt where
+    you shot it. Walk far enough away that you cannot read the post any more,
+    come back, and it is wearing the hat.
+  - **Lay a hand on it three times** and it stops being about you. The head
+    turns past you and holds, on a fixed bearing, at nothing you can see. Walk
+    the bearing and there is a **crash site** out in the flats — a burnt scar
+    with a trench ploughed into the near end of it, spoil thrown up either
+    side, a thread of smoke still coming off it a year later, and a hull that
+    went in edge-first with a tear down one flank and something lit still
+    running behind it. Thrown clear of the tear is the **alien blaster**
+    (weapon slot 6): blue energy bolts, no reserve and no reload, a cell that
+    refills itself faster the emptier it gets. Nothing marks the site on the
+    map. The scarecrow told you, and only if you kept touching it.
 - **Companion Cube:** a findable Easter egg, built to the classic
   reference — pale chamfered corners, magenta seams, a pink heart plate on
   every face — waiting in a back room somewhere high-rise adjacent, throwing
   no light of its own. Take it; it stows in the satchel and stays with you.
-- **Secrets:** fourteen of them, found by shooting, interacting, standing,
+- **Secrets:** fifteen of them, found by shooting, interacting, standing,
   looking, or killing exactly the right number. The mannequin is watching.
   Eastgate holds four: a **treehouse** you cannot see the deck of from the
   street, a **fallout shelter** under a garden shed stocked by somebody who
@@ -511,8 +549,9 @@ src/rendering/      renderer, texture pipeline, billboards, HUD (console bar +
                     materials, effects
 src/audio/          WebAudio synthesis (all sounds)
 src/world/          terrain, buildings, props, vegetation, zones, nav, secrets,
-                    anomalies (cosmic-horror layer + dynamic props), companion
-                    cube, scarecrow (aware animated set piece), sky
+                    anomalies (cosmic-horror layer + dynamic props and
+                    surfaces), companion cube, scarecrow (aware animated set
+                    piece, its easter-egg chain and the crash site), sky
 src/systems/        score/win condition, waves, spawning, savable-citizen
                     director, game state, inventory
 src/engine/Shell.js desktop-shell bridge (detects the Electron launcher)
@@ -621,7 +660,14 @@ front door in the district has to have a **carriageway actually out in front of
 it** (walk out from each threshold along its own normal and look), no building
 may stand in one (sampled off the rendered road surface, because the bounding
 box of a curving road is far fatter than the road), and the planting and props
-have to be animated rather than merely present. It is what found the market
+have to be animated rather than merely present. Anything that moves without a
+moving part behind it is checked by driving the animator and watching the
+material, not by counting registry entries — a screen that quietly stops
+playing looks exactly like one that was never registered. The scarecrow's
+easter-egg chain is walked end to end in the same pass: its hat is shot off,
+dropped, landed and left until it goes back on by itself, and three touches
+have to leave its head holding the bearing to a wreck that is really out there
+with a weapon in it. It is what found the market
 stall parked in a doorway, the house standing on top of the filling station,
 the chapel's bell tower built over its own front door, the eight-metre slot you
 could walk through from Eastgate into Downtown without earning it, and the

@@ -895,10 +895,12 @@ const cit = await page.evaluate(async () => {
   }
   out.waveTwoAlways = waveTwoHits === 50 && !g.citizens.unlocked;
 
-  // ...and wave 2 is the ONLY exemption: every other wave is still gated, so
-  //    the guarantee is a scripted introduction and not an open door.
+  // ...and waves 1 and 2 are the ONLY exemptions: every other wave is still
+  //    gated, so the guarantee is a scripted introduction and not an open door.
+  //    (Wave 1 was added to that pair in src/systems/CitizenSystem.js — it
+  //    delivers one inside the player's own starting district.)
   let otherWaveHits = 0;
-  for (const w of [1, 3, 4, 5, 12, 30]) {
+  for (const w of [3, 4, 5, 12, 30]) {
     for (let i = 0; i < 50; i++) {
       g.citizens.reset();
       if (g.citizens._maybeSpawn(w)) otherWaveHits++;
@@ -907,12 +909,15 @@ const cit = await page.evaluate(async () => {
   out.otherWavesStillGated = otherWaveHits === 0;
 
   // ...driven through the real 'wave:start' event the wave director emits, so
-  //    the wiring is covered and not just the method.
+  //    the wiring is covered and not just the method. Wave 1 must land in the
+  //    starting district; wave 2 may be anywhere unlocked.
   g.citizens.reset();
   g.events.emit('wave:start', { wave: 1, size: 11 });
   const afterWave1 = g.citizens.citizen;
+  out.waveOneViaEvent = !!afterWave1 && afterWave1.building.spec.zone === g.citizens.spawnZone;
+  g.citizens.reset();
   g.events.emit('wave:start', { wave: 2, size: 14 });
-  out.waveTwoViaEvent = afterWave1 === null && !!g.citizens.citizen;
+  out.waveTwoViaEvent = afterWave1 !== null && !!g.citizens.citizen;
   out.waveTwoIsIndoors = !!g.citizens.citizen
     && inFootprint(g.citizens.citizen.building.spec, g.citizens.citizen.position.x, g.citizens.citizen.position.z);
 
@@ -950,7 +955,8 @@ check('"spawn citizen" reports which building she landed in', cit.consoleReports
 check('"spawn citizen" refuses to stack a second captive', cit.consoleNoStacking);
 check('citizen is listed among the spawnable types', cit.consoleListsCitizen);
 check('wave 2 ALWAYS spawns a citizen, kill gate or not', cit.waveTwoAlways);
-check('every other wave stays behind the kill gate', cit.otherWavesStillGated);
+check('every wave after the scripted pair stays behind the kill gate', cit.otherWavesStillGated);
+check('wave 1 spawns her in the starting district via wave:start', cit.waveOneViaEvent);
 check('wave 2 spawns her through the real wave:start event', cit.waveTwoViaEvent);
 check('the guaranteed wave-2 citizen is inside a building', cit.waveTwoIsIndoors);
 

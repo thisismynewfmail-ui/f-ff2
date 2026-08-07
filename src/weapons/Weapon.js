@@ -14,9 +14,11 @@ export class Weapon {
     this.reloadDuration = config.reloadTime ?? 1; // length of the current reload
     this.tactical = false;                        // quick-tap (mag not empty) variant
     this.bloom = 0;
+    this._charge = 0;                             // energy cells: partial recharge
   }
 
   get isMelee() { return this.config.melee; }
+  get isEnergy() { return !!this.config.energy; }
 
   update(dt) {
     if (this.cooldown > 0) this.cooldown -= dt;
@@ -25,6 +27,25 @@ export class Weapon {
       if (this.reloadLeft <= 0) this.finishReload();
     }
     this.bloom = Math.max(0, this.bloom - dt * 3);
+    // An energy cell has no magazine to swap: it fills itself back up, and it
+    // does it FASTER THE EMPTIER IT IS. That curve is the whole feel of the
+    // weapon — dumping the cell leaves you disarmed for a moment but back in
+    // business quickly, while topping off the last charge takes its time.
+    if (this.isEnergy && this.mag < this.config.magSize) {
+      const empty = 1 - this.mag / this.config.magSize;
+      this._charge += dt * (0.55 + empty * 0.9) / this.config.rechargeInterval;
+      while (this._charge >= 1 && this.mag < this.config.magSize) {
+        this._charge -= 1;
+        this.mag++;
+      }
+    } else {
+      this._charge = 0;
+    }
+  }
+
+  /** 0..1 through the next cell — the HUD draws this as a charge line. */
+  get chargeFrac() {
+    return this.isEnergy && this.mag < this.config.magSize ? Math.min(1, this._charge) : 0;
   }
 
   canFire() {
@@ -48,7 +69,8 @@ export class Weapon {
   }
 
   canReload() {
-    return !this.isMelee && !this.reloading && this.mag < this.config.magSize && this.reserve > 0;
+    if (this.isMelee || this.isEnergy) return false;   // nothing to swap on a cell
+    return !this.reloading && this.mag < this.config.magSize && this.reserve > 0;
   }
 
   startReload() {

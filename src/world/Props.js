@@ -643,6 +643,15 @@ export class PropKit {
     return { group: g, collide: [1.2, 0.9, 1.2] };
   }
 
+  /**
+   * A campfire that is still going.
+   *
+   * The fire is two nested additive cones — an orange body and a hotter core —
+   * over the flat ground glow that was here before. Nothing about the shape is
+   * clever; what sells it is that the two cones flex on different beats and
+   * the light flexes with them, so the shadows in the ring of trees never sit
+   * still. Returns its moving parts for World to register.
+   */
   campfire() {
     const g = new THREE.Group();
     for (let i = 0; i < 5; i++) {
@@ -654,11 +663,35 @@ export class PropKit {
     const stones = new THREE.Mesh(new THREE.TorusGeometry(0.7, 0.12, 5, 9), this.mat('rock'));
     stones.rotation.x = Math.PI / 2;
     stones.position.y = 0.08;
-    const glow = new THREE.Mesh(new THREE.CircleGeometry(0.4, 8), new THREE.MeshBasicMaterial({ color: 0xff7830 }));
+    const glowMat = new THREE.MeshBasicMaterial({ color: 0xff7830 });
+    const glow = new THREE.Mesh(new THREE.CircleGeometry(0.4, 8), glowMat);
     glow.rotation.x = -Math.PI / 2;
     glow.position.y = 0.16;
     g.add(stones, glow);
-    return { group: g };
+    // Three tiers on five and four sides rather than one smooth cone: at these
+    // segment counts the silhouette is a ragged spike, and because each tier
+    // turns at its own rate the ragged edge never repeats. A single smooth cone
+    // reads as a traffic cone lit from inside; this reads as a fire.
+    const flames = [];
+    for (const [r, h, seg, color, op] of [
+      [0.46, 0.42, 6, 0xff5614, 0.5],    // the fat, dull base sitting on the logs
+      [0.31, 0.98, 5, 0xff8c28, 0.55],   // the body, tallest
+      [0.15, 0.6, 4, 0xffe08a, 0.8],     // the bright core inside it
+    ]) {
+      const cone = new THREE.Mesh(new THREE.ConeGeometry(r, h, seg, 1, true),
+        new THREE.MeshBasicMaterial({
+          color, transparent: true, opacity: op, depthWrite: false,
+          blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
+        }));
+      cone.position.y = 0.14 + h / 2;
+      cone.renderOrder = 3;
+      g.add(cone);
+      flames.push(cone);
+    }
+    const light = new THREE.PointLight(0xff8a3a, 9, 13);
+    light.position.y = 0.8;
+    g.add(light);
+    return { group: g, flames, light, glowMat };
   }
 
   /** Sagging utility wire strung between two world points (visual only). */
@@ -816,7 +849,19 @@ export class PropKit {
     const phone = this.box(0.3, 0.45, 0.12, this.colorMat(0x1a1d21));
     phone.position.set(0, 1.5, -0.38);
     g.add(phone);
-    return { group: g, collide: [0.55, 1.25, 0.55] };
+    // The handset hangs on its cradle; the roof lamp is dead until the thing
+    // rings, and Anomalies drives both (it is the one that knows when it does).
+    const hook = new THREE.Group();
+    hook.position.set(-0.19, 1.55, -0.32);
+    const handset = this.box(0.09, 0.26, 0.09, this.colorMat(0x101215));
+    handset.position.y = -0.13;
+    hook.add(handset);
+    g.add(hook);
+    const lampMat = new THREE.MeshBasicMaterial({ color: 0x1a1a18 });
+    const lamp = this.box(0.6, 0.05, 0.5, lampMat);
+    lamp.position.y = 2.44;
+    g.add(lamp);
+    return { group: g, collide: [0.55, 1.25, 0.55], hook, lampMat };
   }
 
   /** Playground swing set. Returns the two swing pivots for animation. */
