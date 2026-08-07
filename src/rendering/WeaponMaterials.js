@@ -277,6 +277,10 @@ const PALETTES = {
   bronzePatina: P({ seed: 73, color: [128, 106, 58], rough: 0.52, wear: 0.9, grainV: 24, rivets: 5, grimeAmt: 0.6, edgeBright: 1.0, wearTint: [88, 134, 110] }),
   hammeredIron: P({ seed: 74, color: [54, 52, 54], rough: 0.6, wear: 0.7, grain: 2.4, grainU: 12, grainV: 12, edgeBright: 0.9 }),
   ivory:        P({ seed: 75, color: [216, 204, 178], style: 'wood', metal: 0, rough: 0.3, normalStr: 0.8, grimeAmt: 0.35 }),
+  // --- the artefact: nothing in this town is finished like this. No rivets,
+  //     no panel lines, no wear pattern that reads as a tool somebody serviced.
+  alienAlloy:   P({ seed: 81, color: [126, 138, 146], aSize: 1024, normalStr: 0.7, rough: 0.18, wear: 0.08, grimeAmt: 0.12, rivets: 0, panels: 0, polish: 1.7, edgeBright: 1.3 }),
+  alienDark:    P({ seed: 82, color: [38, 46, 52], rough: 0.3, wear: 0.1, grimeAmt: 0.15, rivets: 0, panels: 0, polish: 1.2 }),
   // --- machine-pistol family: matte phosphate body, chipped caution banding ---
   parkerized:   P({ seed: 81, color: [82, 78, 70], rough: 0.58, wear: 0.65, grain: 1.5, grainU: 10, grainV: 14, panels: 4, edgeBright: 1.2, grimeAmt: 0.45 }),
   hazardEnamel: P({ seed: 82, color: [206, 158, 22], color2: [26, 24, 22], style: 'hazard', metal: 0.25, rough: 0.52, normalStr: 1.9, bands: 7, skew: 1.5, edgeBright: 1.5, grimeAmt: 0.5 }),

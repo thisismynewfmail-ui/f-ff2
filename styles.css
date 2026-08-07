@@ -428,6 +428,8 @@ html, body {
   position: absolute; left: 0; bottom: 0; height: 3px; width: 0;
   background: #e0b840; box-shadow: 0 0 6px rgba(224,184,64,0.8);
 }
+/* an energy cell recharging reads in its own colour, not the reload amber */
+.cons-weapon-charge.cell { background: #63c8ff; box-shadow: 0 0 6px rgba(99,200,255,0.85); }
 .cons-weapon-mode {
   font-size: 15px; letter-spacing: 3px; color: #e8e2c8; font-weight: bold;
 }

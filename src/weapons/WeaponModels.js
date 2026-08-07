@@ -1084,6 +1084,189 @@ function buildBat() {
   };
 }
 
+/**
+ * The Alien Blaster — the one weapon in the game nobody in this town built.
+ *
+ * Deliberately off-register against the rest of the arsenal: no brass, no
+ * walnut, no rivets, no fasteners of any kind. A single seamless pressed
+ * shell in dull alloy over an emitter throat of stacked toroidal collars,
+ * with a live winding coiled around them and a fuel cell suspended in an
+ * open cradle underneath. Everything that glows is one material instance,
+ * because on this weapon the glow IS the ammo counter: it comes up as the
+ * cell refills itself and goes dark for a beat after you dump a shot.
+ *
+ * Its working parts are the emitter vanes (one revolution every three
+ * seconds at rest, four times that while the cell is refilling — the spin
+ * rate is a readout you learn to check without looking), the cell, which
+ * counter-rotates in its cradle and sinks as it empties, and the eye at the
+ * throat, which is the muzzle flash.
+ *
+ * It has no reload, because there is nothing to put in it.
+ */
+const BLASTER_IDLE = (Math.PI * 2) / 3;   // exactly one vane revolution per 3 s
+
+function buildBlaster() {
+  const g = new THREE.Group();
+  const shellMat = M.get('alienAlloy');
+  const darkMat = M.get('alienDark');
+  // Its own emissive instance, not a shared cached glow: this material's colour
+  // and intensity ARE the charge readout, and nothing else may ride them.
+  const glowMat = new THREE.MeshStandardMaterial({
+    color: 0x4db8ff, emissive: 0x4db8ff, emissiveIntensity: 1.6,
+    metalness: 0, roughness: 0.35,
+  });
+
+  // ---- shell: a smooth lozenge with a raised dorsal cowl, no seam anywhere
+  const body = sphere(0.075, shellMat, 24);
+  body.scale.set(1.5, 0.85, 2.6);
+  body.position.set(0, 0.01, 0.02);
+  g.add(body);
+  const cowl = sphere(0.05, shellMat, 18);
+  cowl.scale.set(0.7, 0.6, 2.2);
+  cowl.position.set(0, 0.058, 0.03);
+  g.add(cowl);
+  const tail = sphere(0.045, darkMat, 14);       // the blunt rear, a shade darker
+  tail.scale.set(1.1, 0.9, 0.9);
+  tail.position.set(0, 0.012, 0.15);
+  g.add(tail);
+  // heat comb across the back of the cowl
+  for (let i = 0; i < 7; i++) {
+    const fin = box(0.052 - Math.abs(i - 3) * 0.006, 0.016, 0.006, darkMat, 0, 0.078, 0.09 + i * 0.011);
+    g.add(fin);
+  }
+
+  // ---- throat: stacked toroidal collars narrowing toward the mouth, with a
+  //      live winding running the length of them
+  const throat = new THREE.Group();
+  g.add(throat);
+  for (let i = 0; i < 6; i++) {
+    const r = 0.05 - i * 0.005;
+    const collar = ring(r, 0.008 - i * 0.0006, i % 2 ? darkMat : shellMat, 8, 20);
+    collar.position.set(0, 0.005, -0.155 - i * 0.031);
+    throat.add(collar);
+  }
+  const winding = coil(0.041, 0.0045, 0.185, 5.5, glowMat, 14, 6);
+  winding.position.set(0, 0.005, -0.15);         // the helix helper already runs -Z
+  throat.add(winding);
+  const shroud = tube(0.026, 0.2, darkMat, 18, 0, 0.005, -0.25);
+  throat.add(shroud);
+
+  // ---- emitter head: six vanes and the eye they surround. This is what spins.
+  const vanes = anim(new THREE.Group());
+  vanes.position.set(0, 0.005, -0.325);
+  for (let i = 0; i < 6; i++) {
+    const a = (i / 6) * Math.PI * 2;
+    const blade = box(0.011, 0.046, 0.05, i % 2 ? darkMat : shellMat, 0, 0, 0);
+    blade.position.set(Math.cos(a) * 0.036, Math.sin(a) * 0.036, 0);
+    blade.rotation.z = -a;
+    vanes.add(blade);
+    const spur = mesh(new THREE.ConeGeometry(0.006, 0.022, 8), glowMat,
+      Math.cos(a) * 0.036, Math.sin(a) * 0.036, -0.032);
+    spur.rotation.x = -Math.PI / 2;
+    vanes.add(spur);
+  }
+  const hub = ring(0.036, 0.005, shellMat, 8, 22);
+  vanes.add(hub);
+  const eye = sphere(0.019, glowMat, 14);
+  vanes.add(eye);
+  g.add(vanes);
+
+  // ---- cell: slung under the body in an open cradle, counter-rotating, its
+  //      internal winding visible straight through the casing
+  const cradle = new THREE.Group();
+  cradle.position.set(0, -0.05, -0.02);
+  for (const sx of [-1, 1]) {
+    const arm = box(0.008, 0.05, 0.075, shellMat, sx * 0.036, 0.02, 0);
+    cradle.add(arm);
+    const claw = ring(0.014, 0.005, shellMat, 6, 14);
+    claw.position.set(sx * 0.036, 0, 0);
+    claw.rotation.y = Math.PI / 2;
+    cradle.add(claw);
+  }
+  const cell = anim(new THREE.Group());
+  const core = cyl(0.026, 0.026, 0.085, glowMat, 18, 0, 0, 0);
+  core.rotation.x = Math.PI / 2;
+  cell.add(core);
+  const filament = coil(0.017, 0.0035, 0.07, 3.5, glowMat, 14, 6);
+  filament.position.z = 0.035;
+  cell.add(filament);
+  for (const cz of [0.038, -0.038]) {
+    const collar = ring(0.03, 0.007, darkMat, 8, 18);
+    collar.position.z = cz;
+    cell.add(collar);
+  }
+  cradle.add(cell);
+  g.add(cradle);
+
+  // ---- grip: a swept organic hook rather than a pistol grip, inside a
+  //      knuckle loop that grows out of the shell instead of being bolted to it
+  const grip = box(0.038, 0.14, 0.05, shellMat, 0, -0.095, 0.075);
+  grip.rotation.x = -0.24;
+  g.add(grip);
+  const palm = sphere(0.028, shellMat, 12);
+  palm.scale.set(0.9, 1.5, 1.0);
+  palm.position.set(0, -0.13, 0.062);
+  g.add(palm);
+  const loop = ring(0.045, 0.007, shellMat, 8, 22);
+  loop.position.set(0, -0.06, 0.038);
+  loop.rotation.set(-0.3, Math.PI / 2, 0);
+  g.add(loop);
+  g.add(box(0.02, 0.03, 0.018, darkMat, 0, -0.028, 0.03));    // trigger spur
+  // glow slots down the flanks, so it reads as lit from inside
+  for (const sx of [-1, 1]) {
+    const slot = box(0.006, 0.012, 0.16, glowMat, sx * 0.055, 0.012, 0.01);
+    g.add(slot);
+    const fin = box(0.005, 0.03, 0.07, darkMat, sx * 0.062, 0.004, -0.06);
+    fin.rotation.z = sx * 0.2;
+    g.add(fin);
+  }
+
+  const muzzle = new THREE.Object3D();
+  muzzle.position.set(0, 0.005, -0.355);
+  g.add(muzzle);
+
+  return {
+    group: g, muzzle, parts: { vanes, cell, eye, glow: glowMat },
+    rest: { position: [0.175, -0.155, -0.5], rotation: [0.05, 0.25, 0.11], scale: 0.74 },
+    fireDuration: 0.26,
+    /** Read the live weapon each frame: the cell's brightness IS its charge. */
+    sync(weapon) {
+      const frac = weapon ? weapon.mag / weapon.config.magSize : 1;
+      this._charge = frac;
+    },
+    idle(t, p) {
+      const frac = this._charge ?? 1;
+      // Every part is a pure function of t on one three-second beat, so the
+      // whole idle closes exactly: the vanes turn once, the cell turns twice
+      // the other way, and the breathing rides the same period.
+      const w = BLASTER_IDLE * (1 + (1 - frac) * 3);   // spins up hard while refilling
+      p.vanes.rotation.z = w * t;
+      p.vanes.position.z = p.vanes.userData.baseP.z;
+      p.cell.rotation.z = -w * 2 * t;
+      // the cell sinks in its cradle as it empties, and breathes when charged
+      const breath = Math.sin(t * BLASTER_IDLE);
+      p.cell.position.y = p.cell.userData.baseP.y - (1 - frac) * 0.018 + breath * 0.002 * frac;
+      const pulse = 0.55 + frac * 0.45 + breath * 0.06 * frac;
+      p.glow.emissiveIntensity = pulse * 1.6;
+      p.glow.color.setRGB(0.30 * pulse, 0.72 * pulse, 1.0 * pulse);
+      p.eye.scale.setScalar(0.85 + frac * 0.3 + breath * 0.04);
+    },
+    fire(f, p) {
+      // the throat kicks back, the vanes snap round, the eye blows out white
+      const k = f < 0.2 ? f / 0.2 : Math.max(0, 1 - (f - 0.2) / 0.8);
+      p.vanes.position.z = p.vanes.userData.baseP.z + k * 0.045;
+      p.vanes.rotation.z += k * 0.5;
+      const flash = 1 - f;
+      p.eye.scale.setScalar(0.9 + flash * 1.7);
+      p.glow.emissiveIntensity = 1.6 + flash * 4.5;
+      p.glow.color.setRGB(0.55 + flash * 0.45, 0.85 + flash * 0.15, 1.0);
+      p.cell.position.y = p.cell.userData.baseP.y - 0.02 - k * 0.01;
+    },
+    /** Nothing goes in it and nothing comes out of it. The cell refills itself. */
+    reload() {},
+  };
+}
+
 /* ---------------- registry ---------------- */
 
 const BUILDERS = {
@@ -1092,6 +1275,7 @@ const BUILDERS = {
   rifle: buildRifle,
   sniper: buildSniper,
   bat: buildBat,
+  blaster: buildBlaster,
 };
 
 /** Build the rig for a weapon id (pistol/shotgun/rifle/sniper/bat). */

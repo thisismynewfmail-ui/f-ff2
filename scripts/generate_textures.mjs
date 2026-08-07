@@ -1915,16 +1915,46 @@ panelDoor('door_green.png', [[28, 54, 40], [38, 70, 52], [48, 86, 64], [60, 102,
   save('pallet.png', img);
 }
 
-{ // dead CRT screen — grey static with a faint rolling band
-  const img = new Img(64, 64);
-  const rng = mulberry32(4905);
-  for (let y = 0; y < 64; y++) for (let x = 0; x < 64; x++) {
-    const band = Math.sin(y * 0.19) * 0.12;
-    const v = 0.22 + rng() * 0.5 + band;
-    img.set(x, y, pick([[14, 16, 18], [30, 34, 36], [52, 58, 58], [80, 88, 86], [120, 128, 124]], v));
+{ // dead CRT screen — a 4x4 sheet of 16 static FRAMES, played back in code
+  //
+  // A single noise tile cannot be animated: scrolling it slides the tube mask
+  // off the screen and reads as a photograph being dragged, not as static. So
+  // this ships as a flipbook — CRTs.forEach draws one complete 64x64 screen,
+  // and src/world/World.js steps the shared texture's offset through the grid
+  // at ~12 fps, which is exactly how a dead set behaves.
+  //
+  // Frame 11 is not noise. There is a figure in it, about a quarter-tone above
+  // the grain, on screen for one twelfth of a second at a time. You are meant
+  // to fail to be sure about it.
+  const CELL = 64, GRID = 4;
+  const img = new Img(CELL * GRID, CELL * GRID);
+  const pal = [[14, 16, 18], [30, 34, 36], [52, 58, 58], [80, 88, 86], [120, 128, 124]];
+  for (let f = 0; f < GRID * GRID; f++) {
+    const ox = (f % GRID) * CELL, oy = Math.floor(f / GRID) * CELL;
+    const rng = mulberry32(4905 + f * 977);
+    const roll = (f * 9) % CELL;              // vertical-hold band, drifting down
+    for (let y = 0; y < CELL; y++) {
+      const dy = Math.min(Math.abs(y - roll), CELL - Math.abs(y - roll));
+      const bright = Math.max(0, 1 - dy / 5) * 0.34;
+      for (let x = 0; x < CELL; x++) {
+        const v = 0.2 + rng() * 0.52 + bright + Math.sin((y + f * 3) * 0.19) * 0.08;
+        img.set(ox + x, oy + y, pick(pal, v));
+      }
+    }
+    if (f === 11) {                            // the one that is not static
+      for (let y = 14; y < CELL - 4; y++) {
+        const half = y < 24 ? 5 : 9 + Math.floor((y - 24) / 9);   // head, then shoulders
+        for (let x = -half; x <= half; x++) tintPixel(img, ox + 32 + x, oy + y, [10, 12, 16], 0.3);
+      }
+    }
+    for (let y = f % 2; y < CELL; y += 2) for (let x = 0; x < CELL; x++) {
+      tintPixel(img, ox + x, oy + y, [8, 10, 12], 0.35);          // scanlines, interlaced
+    }
+    for (let x = 6; x < CELL - 6; x++) {                          // tube mask, fixed
+      img.set(ox + x, oy + 3, [10, 12, 14]);
+      img.set(ox + x, oy + CELL - 4, [10, 12, 14]);
+    }
   }
-  for (let y = 0; y < 64; y += 2) for (let x = 0; x < 64; x++) tintPixel(img, x, y, [8, 10, 12], 0.35); // scanlines
-  for (let x = 6; x < 58; x++) { img.set(x, 3, [10, 12, 14]); img.set(x, 60, [10, 12, 14]); } // tube mask
   save('tv_static.png', img);
 }
 

@@ -810,6 +810,23 @@ export class HUD {
         ctx.strokeStyle = brassSh; ctx.lineWidth = 1;                  // lanyard ring
         ctx.beginPath(); ctx.arc(0.9, 21.4, 1.7, 0, Math.PI * 2); ctx.stroke();
         break;
+      case 'blaster': { // the artefact: a seamless alloy lozenge with a lit cell
+        const alloy = '#7f8b93', alloyHi = '#a7b3ba', alloySh = '#4e575d';
+        const cyan = '#63c8ff', cyanHi = '#c8ecff';
+        poly([[9, 17], [16, 11.4], [36, 9.8], [48, 12.4], [52, 15.4], [52, 18.6],
+          [48, 21.6], [36, 24.2], [16, 22.6], [9, 17]], alloy);
+        poly([[16, 11.4], [36, 9.8], [48, 12.4], [46, 13.6], [36, 11.6], [17, 13]], alloyHi);
+        poly([[17, 21], [36, 22.4], [46, 20.4], [48, 21.6], [36, 24.2], [16, 22.6]], alloySh);
+        rect(24, 15.4, 18, 1.6, cyan);                       // the flank light slot
+        for (let i = 0; i < 4; i++) rect(52 + i * 2.4, 13.6 + i * 0.3, 1.7, 7 - i * 0.6, i % 2 ? alloySh : alloy);
+        dot(62, 17, 2.1, cyan); dot(62, 17, 1.1, cyanHi);    // the emitter eye
+        rect(22, 22.6, 13, 4.2, alloySh);                    // the cell in its cradle
+        rect(23.4, 23.4, 10.2, 2.6, cyan);
+        rect(23.4, 23.4, 10.2, 1, cyanHi);
+        poly([[15, 21], [21, 21.6], [19.6, 30], [13.6, 29.4]], alloy);   // the swept grip
+        poly([[15, 21], [21, 21.6], [20.6, 23.4], [14.8, 22.8]], alloyHi);
+        break;
+      }
       default:
         rect(10, 13, 44, 8, brass);
     }
@@ -1010,7 +1027,11 @@ export class HUD {
     this.weaponMode.classList.toggle('warn', cur.reloading);
     this.weaponMode.classList.toggle('empty', cur.mag === 0 && cur.reserve === 0 && cur.id !== 'bat');
     // reload charge line under the silhouette (mirrors the CHARGE tube ramp)
-    this.weaponCharge.style.width = cur.reloading ? (cur.reloadFrac * 100).toFixed(1) + '%' : '0%';
+    // The charge line serves both: a reload filling a magazine, and an energy
+    // cell filling itself. Same readout, same meaning — how long until it works.
+    const charge = cur.reloading ? cur.reloadFrac : (cur.energy ? cur.chargeFrac : 0);
+    this.weaponCharge.style.width = (charge * 100).toFixed(1) + '%';
+    this.weaponCharge.classList.toggle('cell', !!cur.energy && !cur.reloading);
 
     // --- console: ARMS grid (persistent 6-slot armoury) ---
     if (!this.armsSlots.length) {
@@ -1022,15 +1043,16 @@ export class HUD {
         const rsv = this._el('div', null, slot, 'arms-rsv');
         this.armsSlots.push({ slot, rsv });
       });
-      // pad to a 6th decorative empty bay to match the reference grid
-      const empty = this._el('div', null, this.armsGrid, 'arms-slot empty');
-      empty.innerHTML = '<div class="arms-key">6</div>';
     }
     d.weapons.forEach((w, i) => {
       const s = this.armsSlots[i];
-      s.slot.classList.toggle('active', w.active);
-      s.slot.classList.toggle('dry', w.mag === 0 && w.reserve === 0 && w.id !== 'bat');
-      const rsv = w.mag === Infinity ? '∞' : w.reserve === Infinity ? '∞' : w.reserve;
+      // A bay for a weapon the run has not found yet reads EMPTY — no glyph,
+      // no counter, just the slot number. Finding it fills the bay in.
+      s.slot.classList.toggle('empty', !!w.locked);
+      s.slot.classList.toggle('active', w.active && !w.locked);
+      s.slot.classList.toggle('dry', !w.locked && w.mag === 0 && w.reserve === 0 && w.id !== 'bat');
+      if (w.locked) { s.rsv.textContent = ''; return; }
+      const rsv = w.mag === Infinity ? '∞' : w.energy ? '∞' : w.reserve === Infinity ? '∞' : w.reserve;
       const mag = w.mag === Infinity ? '·' : w.mag;
       s.rsv.textContent = `${mag}·${rsv}`;
     });

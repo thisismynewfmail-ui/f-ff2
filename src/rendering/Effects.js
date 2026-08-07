@@ -108,6 +108,67 @@ class FlashPool {
   }
 }
 
+/**
+ * Stretched additive quads laid along a ray — an energy bolt, not a puff.
+ * Each one is scaled to the distance the shot actually travelled and rolled
+ * to face the camera about its own axis, so it reads as a bar of light from
+ * every angle without ever being a billboard.
+ */
+class BoltPool {
+  constructor(scene, texture, count, color) {
+    this.items = [];
+    for (let i = 0; i < count; i++) {
+      const mat = new THREE.MeshBasicMaterial({
+        map: texture, color, transparent: true, depthWrite: false,
+        blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
+      });
+      const mesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), mat);
+      mesh.visible = false;
+      mesh.frustumCulled = false;
+      scene.add(mesh);
+      this.items.push({ mesh, mat, age: 0, life: 0.1, active: false, len: 1 });
+    }
+    this.cursor = 0;
+    this._m = new THREE.Matrix4();
+    this._up = new THREE.Vector3(0, 1, 0);
+  }
+
+  spawn(from, dir, dist) {
+    const it = this.items[this.cursor];
+    this.cursor = (this.cursor + 1) % this.items.length;
+    it.active = true; it.age = 0; it.life = 0.11; it.len = dist;
+    // sit the quad's centre halfway along the ray and aim its +Y down it
+    const cx = from.x + dir.x * dist * 0.5;
+    const cy = from.y + dir.y * dist * 0.5;
+    const cz = from.z + dir.z * dist * 0.5;
+    it.mesh.position.set(cx, cy, cz);
+    const d = new THREE.Vector3(dir.x, dir.y, dir.z).normalize();
+    it.mesh.quaternion.setFromUnitVectors(this._up, d);
+    it.mesh.visible = true;
+  }
+
+  update(dt, camPos) {
+    for (const it of this.items) {
+      if (!it.active) continue;
+      it.age += dt;
+      const t = it.age / it.life;
+      if (t >= 1) { it.active = false; it.mesh.visible = false; continue; }
+      it.mesh.scale.set(0.34 * (1 - t * 0.5), it.len, 1);
+      it.mat.opacity = 1 - t * t;
+      // roll about the bolt's own axis to keep its face toward the camera
+      const p = it.mesh.position;
+      const look = new THREE.Vector3(camPos.x - p.x, camPos.y - p.y, camPos.z - p.z);
+      const axis = new THREE.Vector3(0, 1, 0).applyQuaternion(it.mesh.quaternion);
+      const flat = look.projectOnPlane(axis);
+      if (flat.lengthSq() > 1e-6) {
+        const q = new THREE.Quaternion().setFromUnitVectors(
+          new THREE.Vector3(0, 0, 1).applyQuaternion(it.mesh.quaternion), flat.normalize());
+        it.mesh.quaternion.premultiply(q);
+      }
+    }
+  }
+}
+
 export class Effects {
   constructor(events, scene, texLib, player) {
     this.events = events;
@@ -125,6 +186,12 @@ export class Effects {
     this.fire = new ParticlePool(scene, texLib.get('smoke'), 240,
       { size: 0.7, color: 0xffb050, gravity: -3.5, drag: 0.1, blending: THREE.AdditiveBlending });
     this.flash = new FlashPool(scene, texLib.get('muzzleFlash'), 6, 0xffa838);
+    // Energy bolts get their own pool: unlike a muzzle flash these are drawn
+    // ALONG the ray, stretched from the muzzle to whatever stopped them, so
+    // you watch the shot cross the street instead of inferring it.
+    this.bolts = new BoltPool(scene, texLib.get('muzzleFlash'), 10, 0x63c8ff);
+    this.boltLight = new THREE.PointLight(0x54b4ff, 0, 16);
+    scene.add(this.boltLight);
 
     this.shake = 0;
     this.muzzleLight = new THREE.PointLight(0xffc860, 0, 14);
@@ -197,6 +264,15 @@ export class Effects {
       this.npcMuzzleLight.intensity = 9;
     });
     events.on('impact', ({ pos }) => this.dust.spawn(pos, 4, 1.4, 1.4, 0.5));
+    events.on('weapon:bolt', ({ from, dir, dist }) => {
+      this.bolts.spawn(from, dir, Math.max(1.5, dist));
+      this.boltLight.position.set(from.x + dir.x * 1.5, from.y + dir.y * 1.5, from.z + dir.z * 1.5);
+      this.boltLight.intensity = 12;
+      // a cold spark where it lands, in the bolt's own colour
+      this.spark.spawn(
+        { x: from.x + dir.x * dist, y: from.y + dir.y * dist, z: from.z + dir.z * dist },
+        10, 3.4, 0.8, 0.4);
+    });
     events.on('secret:rubble', (pos) => this.dust.spawn(pos, 30, 3, 1.2, 1.2));
     events.on('weapon:fire', ({ weapon }) => {
       this.addShake(weapon.config.kick * 0.012);
@@ -236,7 +312,8 @@ export class Effects {
     this.dust.update(dt);
     this.spark.update(dt);
     this.fire.update(dt);
-    if (camPos) this.flash.update(dt, camPos);
+    if (camPos) { this.flash.update(dt, camPos); this.bolts.update(dt, camPos); }
+    this.boltLight.intensity = Math.max(0, this.boltLight.intensity - dt * 120);
     this.shake = Math.max(0, this.shake - dt * 0.35);
     this.muzzleLight.intensity = Math.max(0, this.muzzleLight.intensity - dt * 220);
     this.npcMuzzleLight.intensity = Math.max(0, this.npcMuzzleLight.intensity - dt * 90);

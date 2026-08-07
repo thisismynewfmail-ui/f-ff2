@@ -21,11 +21,25 @@ export class WeaponManager {
     this.player = player;
     this.renderer = renderer;
     this.weapons = WEAPON_CONFIGS.map((c) => new Weapon(c));
+    // A locked weapon is not in the run yet: it cannot be selected by key or
+    // wheel and its ARMS bay reads empty. Found weapons announce themselves.
+    this.unlocked = new Set(WEAPON_CONFIGS.filter((c) => !c.locked).map((c) => c.id));
     this.index = 0;
     this.switchTimer = 0;
     this.scoped = false;
     this._burstLeft = 0; // rifle alt-fire burst counter
     this.zombies = null; // wired by Game
+
+    events.on('weapon:unlock', ({ id }) => {
+      if (this.unlocked.has(id)) return;
+      this.unlocked.add(id);
+      const i = this.weapons.findIndex((w) => w.config.id === id);
+      if (i >= 0) {
+        this.weapons[i].mag = this.weapons[i].config.magSize;
+        this.switchTo(i);
+        this.events.emit('weapon:menu:poke', { index: i });
+      }
+    });
 
     events.on('pickup', ({ type, amount }) => {
       for (const w of this.weapons) {
@@ -39,8 +53,13 @@ export class WeaponManager {
 
   get current() { return this.weapons[this.index]; }
 
+  has(i) {
+    const w = this.weapons[i];
+    return !!w && this.unlocked.has(w.config.id);
+  }
+
   switchTo(i) {
-    if (i === this.index || i < 0 || i >= this.weapons.length) return;
+    if (i === this.index || i < 0 || i >= this.weapons.length || !this.has(i)) return;
     this.current.cancelReload();
     this.setScope(false);
     this._burstLeft = 0;
@@ -65,11 +84,21 @@ export class WeaponManager {
 
     // switching (number keys + wheel). Poke the weapon menu into view on any
     // slot input, even when the selection doesn't change.
-    for (let i = 0; i < 5; i++) {
-      if (input.wasPressed('Digit' + (i + 1))) { this.switchTo(i); this.events.emit('weapon:menu:poke', { index: i }); }
+    for (let i = 0; i < this.weapons.length; i++) {
+      if (input.wasPressed('Digit' + (i + 1)) && this.has(i)) {
+        this.switchTo(i);
+        this.events.emit('weapon:menu:poke', { index: i });
+      }
     }
     if (input.wheelDelta !== 0) {
-      this.switchTo((this.index + (input.wheelDelta > 0 ? 1 : -1) + this.weapons.length) % this.weapons.length);
+      // step over anything not found yet rather than stalling on it
+      const step = input.wheelDelta > 0 ? 1 : -1;
+      let next = this.index;
+      for (let n = 0; n < this.weapons.length; n++) {
+        next = (next + step + this.weapons.length) % this.weapons.length;
+        if (this.has(next)) break;
+      }
+      this.switchTo(next);
       this.events.emit('weapon:menu:poke', { index: this.index });
     }
 
@@ -136,7 +165,9 @@ export class WeaponManager {
       range: w.config.range,
       knockback: (w.config.knockback ?? 0) * (a?.knockbackMul ?? 1),
       arc: (w.config.arc ?? 0) * (a?.arcMul ?? 1),
+      bolt: !!w.config.energy,
     };
+    if (a?.pierce) eff.pierce = a.pierce;
     if (w.isMelee) this._swing(w, eff);
     else this._shoot(w, spread, eff);
     const noise = a?.noise ?? w.config.noise;
@@ -152,6 +183,19 @@ export class WeaponManager {
 
     for (let p = 0; p < eff.pellets; p++) {
       const dir = coneSpread(baseDir, spreadDeg);
+      // An energy weapon's shot is a thing you watch cross the street: the
+      // resolution is still hitscan, but the bolt is drawn along the ray it
+      // actually took, out to whatever it actually stopped on.
+      if (eff.bolt) {
+        const stop = Math.min(eff.range,
+          this.world.collision.raycast(origin, dir, eff.range),
+          this._terrainRay(origin, dir, eff.range));
+        this.events.emit('weapon:bolt', {
+          from: { x: origin.x, y: origin.y, z: origin.z },
+          dir: { x: dir.x, y: dir.y, z: dir.z },
+          dist: Math.min(stop, eff.range),
+        });
+      }
       const hit = this._resolveRay(origin, dir, eff);
       if (hit) anyHit = true;
     }
@@ -289,6 +333,10 @@ export class WeaponManager {
       magSize: w.config.magSize,
       reloading: w.reloading,
       reloadFrac: w.reloading ? 1 - w.reloadLeft / w.config.reloadTime : 0,
+      // an energy cell shows its refill on the same line a reload uses
+      energy: w.isEnergy,
+      chargeFrac: w.chargeFrac,
+      locked: !this.unlocked.has(w.config.id),
     }));
   }
 }

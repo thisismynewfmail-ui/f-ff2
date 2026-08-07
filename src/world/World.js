@@ -101,6 +101,9 @@ export class World {
     // Anomalies with a distance cull, and each carries the world position it
     // was placed at so a pivot buried inside a group can still be culled.
     this.animProps = [];         // {node, kind, x, z, speed, amp, phase, axis}
+    // And one for surfaces that move without anything moving: screens playing
+    // to nobody, a fluorescent tube that never got the message, a fire.
+    this.matAnims = [];          // {mat, kind, ...}
   }
 
   /**
@@ -121,6 +124,43 @@ export class World {
     };
     this.animProps.push(e);
     return e;
+  }
+
+  /**
+   * Register a material that animates in place. `kind`:
+   *   flip    step a texture through a sprite-sheet flipbook (TV static)
+   *   tube    a gas tube striking, holding and dropping out (vending, arcade)
+   *   ember   a fire: colour rides two beats, and an optional light with it
+   *
+   * Materials are shared, so this animates every mesh drawn with one — which
+   * is the point for static (noise has no phase to give away) and the reason
+   * screens that share a room are handed DIFFERENT materials, so a row of
+   * arcade cabinets never blinks as one machine.
+   */
+  _animateMat(mat, kind, opts = {}) {
+    if (!mat && !opts.map) return null;
+    const e = { mat, kind, t: 0, phase: this.matAnims.length * 1.31, ...opts };
+    this.matAnims.push(e);
+    return e;
+  }
+
+  /**
+   * Every screen in town, and the one thing that is still burning.
+   *
+   * The televisions share one texture, so this is a single flipbook driving
+   * every set in every house plus the lit upstairs window in Eastgate — and
+   * that is correct: static has no phase, so nothing gives away that they are
+   * the same playback. The arcade and the vending machines are handed their
+   * own materials in Interiors.js precisely because they DO have a phase.
+   */
+  _dynamicSurfaces() {
+    // TV static: a 4x4 flipbook (see scripts/generate_textures.mjs), stepped
+    // at roughly twelve frames a second with an occasional dropped beat.
+    const snow = this.texLib.get('tvStatic');
+    snow.repeat.set(0.25, 0.25);
+    snow.offset.set(0, 0.75);
+    snow.needsUpdate = true;
+    this._animateMat(null, 'flip', { map: snow, cols: 4, rows: 4, rate: 1 / 12, frame: 0 });
   }
 
   /** Give the world (and its secrets/anomalies) access to the live game. */
@@ -155,6 +195,7 @@ export class World {
     }).build();
     this.nav.bake();
     this._spawnGrid();
+    this._dynamicSurfaces();
     this.secrets = new Secrets(this);
     this.anomalies = new Anomalies(this);
     this.companionCube = new CompanionCube(this);
@@ -178,8 +219,12 @@ export class World {
     this.surfaces.push({ minX, maxX, minZ, maxZ, surface });
   }
 
+  /** Register a bullet target. Returns the entry, so a caller that can put its
+   *  target back (the scarecrow's hat) has a handle to re-arm. */
   addShootable(s) {
-    this.shootables.push({ active: true, ...s });
+    const e = { active: true, ...s };
+    this.shootables.push(e);
+    return e;
   }
 
   /**
@@ -1275,11 +1320,18 @@ export class World {
     this._prop(P.doghouse(), 212, 74, { yaw: 0.7 });
     anim(P.bicycle(0x6b3a32), 199, 91, { yaw: 2.1 }, 'spin', { axis: 'z', speed: 0.34 });
 
-    // --- porch swings, on the two porches deep enough to take one
-    for (const [name, ox, oz] of [['house09', 112.4, -38.7], ['house27', 114, 73.3]]) {
-      if (!this.built.get(name)) continue;
+    // --- porch swings, hung under the canopy of the two deepest porches.
+    // Seated off the BUILDING's pad rather than off the terrain under it: the
+    // deck is at spec.y + 0.36 whatever the ground is doing, and hanging the
+    // swing from the ground instead is what pushed its chains up through the
+    // porch roof. Offset sideways so it never stands in its own front door.
+    for (const [name, side] of [['house09', 1.5], ['house27', 1.5]]) {
+      const b = this.built.get(name);
+      if (!b) continue;
+      const s = b.spec;
+      const ox = s.x + side, oz = s.z + s.d / 2 + 1.0;   // on the deck, clear of the door
       const sw = P.porchSwing();
-      this.props.place(sw.group, ox, oz, { lift: 0.36 });
+      sw.group.position.set(ox, s.y + 0.36, oz);
       this.group.add(sw.group);
       this._animate(sw.pivot, 'swing', ox, oz, { axis: 'x', amp: 0.16, speed: 0.62 });
     }
@@ -1718,7 +1770,11 @@ export class World {
       this.veg.tree(this.group, -200 + Math.cos(a) * 11, -40 + Math.sin(a) * 11, 1.2);
     }
     this._prop(P.tent(), -202, -42, { yaw: 0.6 });
-    this._prop(P.campfire(), -197, -38);
+    // Nobody has been at this camp for a year and the fire is still burning.
+    // That is the whole of the joke and none of it is explained.
+    const fire = P.campfire();
+    this._prop(fire, -197, -38);
+    this._animateMat(fire.glowMat, 'ember', { nodes: fire.flames, light: fire.light, x: -197, z: -38 });
     this._prop(P.crateStack(2), -204, -36);
     // Reeds and scrub along the pond margin, set from the MEASURED shoreline
     // rather than a guessed radius — the bank is not a circle, and reeds
@@ -1939,6 +1995,7 @@ export class World {
     const booth = P.phoneBooth();
     this._prop(booth, -86, -76, { yaw: Math.PI });
     this.phoneBoothPos = { x: -86, y: this.terrain.heightAt(-86, -76), z: -76 };
+    this.phoneBoothParts = booth;
 
     // forecourt furniture along the corporate row
     for (const [x, z] of [[-96, -228], [-58, -228], [-24, -228]]) this._prop(P.lamppost(), x, z);

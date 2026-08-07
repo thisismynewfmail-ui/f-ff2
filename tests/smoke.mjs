@@ -895,10 +895,12 @@ const cit = await page.evaluate(async () => {
   }
   out.waveTwoAlways = waveTwoHits === 50 && !g.citizens.unlocked;
 
-  // ...and wave 2 is the ONLY exemption: every other wave is still gated, so
-  //    the guarantee is a scripted introduction and not an open door.
+  // ...and waves 1 and 2 are the ONLY exemptions: every other wave is still
+  //    gated, so the guarantee is a scripted introduction and not an open door.
+  //    (Wave 1 was added to that pair in src/systems/CitizenSystem.js — it
+  //    delivers one inside the player's own starting district.)
   let otherWaveHits = 0;
-  for (const w of [1, 3, 4, 5, 12, 30]) {
+  for (const w of [3, 4, 5, 12, 30]) {
     for (let i = 0; i < 50; i++) {
       g.citizens.reset();
       if (g.citizens._maybeSpawn(w)) otherWaveHits++;
@@ -907,12 +909,15 @@ const cit = await page.evaluate(async () => {
   out.otherWavesStillGated = otherWaveHits === 0;
 
   // ...driven through the real 'wave:start' event the wave director emits, so
-  //    the wiring is covered and not just the method.
+  //    the wiring is covered and not just the method. Wave 1 must land in the
+  //    starting district; wave 2 may be anywhere unlocked.
   g.citizens.reset();
   g.events.emit('wave:start', { wave: 1, size: 11 });
   const afterWave1 = g.citizens.citizen;
+  out.waveOneViaEvent = !!afterWave1 && afterWave1.building.spec.zone === g.citizens.spawnZone;
+  g.citizens.reset();
   g.events.emit('wave:start', { wave: 2, size: 14 });
-  out.waveTwoViaEvent = afterWave1 === null && !!g.citizens.citizen;
+  out.waveTwoViaEvent = afterWave1 !== null && !!g.citizens.citizen;
   out.waveTwoIsIndoors = !!g.citizens.citizen
     && inFootprint(g.citizens.citizen.building.spec, g.citizens.citizen.position.x, g.citizens.citizen.position.z);
 
@@ -950,7 +955,8 @@ check('"spawn citizen" reports which building she landed in', cit.consoleReports
 check('"spawn citizen" refuses to stack a second captive', cit.consoleNoStacking);
 check('citizen is listed among the spawnable types', cit.consoleListsCitizen);
 check('wave 2 ALWAYS spawns a citizen, kill gate or not', cit.waveTwoAlways);
-check('every other wave stays behind the kill gate', cit.otherWavesStillGated);
+check('every wave after the scripted pair stays behind the kill gate', cit.otherWavesStillGated);
+check('wave 1 spawns her in the starting district via wave:start', cit.waveOneViaEvent);
 check('wave 2 spawns her through the real wave:start event', cit.waveTwoViaEvent);
 check('the guaranteed wave-2 citizen is inside a building', cit.waveTwoIsIndoors);
 
@@ -1016,6 +1022,62 @@ const victoryVisible = await page.evaluate(() => {
 });
 check('victory screen displayed with stats', victoryVisible === true, String(victoryVisible));
 if (takeScreens) await page.screenshot({ path: join(SCREEN_DIR, 'shot_victory.png') });
+
+// --- mouse-look spike rejection -----------------------------------------
+// The view used to snap at random because every pointer-locked mousemove was
+// added straight onto the camera, including the delta pointer lock reports on
+// acquisition and Chromium's occasional stale-coordinate outlier. Drive the
+// real Input with synthetic events and check what survives.
+const look = await page.evaluate(() => {
+  const input = window.__game.input;
+  const out = {};
+  const feed = (moves) => {
+    input.mouseDX = 0; input.mouseDY = 0;
+    for (const [dx, dy] of moves) {
+      document.dispatchEvent(new MouseEvent('mousemove', { movementX: dx, movementY: dy }));
+    }
+    return input.mouseDX;
+  };
+  input.pointerLocked = true;
+  input.suppressed = false;
+
+  // 1. the acquisition delta, however big, never reaches the camera
+  input._settleMouse();
+  out.duringSettle = feed([[900, 0], [-1400, 260]]);
+
+  // 2. ordinary play passes through untouched
+  input._lockedAt = 0; input._mouseBaseline = 8;
+  const gentle = [[6, 2], [9, -3], [12, 4], [7, 1], [11, -2]];
+  out.gentle = feed(gentle);
+  out.gentleWant = gentle.reduce((a, m) => a + m[0], 0);
+
+  // 3. an isolated jump in the middle of ordinary play is dropped, and the
+  //    ordinary events around it still land
+  input._lockedAt = 0; input._mouseBaseline = 8;
+  out.withSpike = feed([[8, 0], [1800, -900], [10, 0]]);
+
+  // 4. a genuine hard flick is NOT eaten: every event of it is accepted, which
+  //    is what separates this from a blunt clamp
+  input._lockedAt = 0; input._mouseBaseline = 8;
+  const flick = [[260, 0], [300, 0], [280, 0]];
+  out.flick = feed(flick);
+  out.flickWant = flick.reduce((a, m) => a + m[0], 0);
+
+  // 5. one frame can never turn the view by more than the backstop
+  input._lockedAt = 0; input._mouseBaseline = 8;
+  out.clamped = feed(Array.from({ length: 40 }, () => [400, 0]));
+  input.pointerLocked = false;
+  input.mouseDX = 0; input.mouseDY = 0;
+  return out;
+});
+check('pointer-lock acquisition delta never moves the view', look.duringSettle === 0,
+  `${look.duringSettle}px got through`);
+check('ordinary mouse motion passes through untouched', look.gentle === look.gentleWant,
+  `${look.gentle} vs ${look.gentleWant}`);
+check('an isolated movement spike is rejected', look.withSpike === 18, `${look.withSpike}px`);
+check('a genuine hard flick is not eaten as a spike', look.flick === look.flickWant,
+  `${look.flick} vs ${look.flickWant}`);
+check('one frame cannot turn the view without limit', look.clamped <= 1430, `${look.clamped}px`);
 
 check('no console errors across the whole run', errors.length === 0, errors.slice(0, 3).join(' | '));
 

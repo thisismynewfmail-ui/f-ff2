@@ -215,6 +215,21 @@ export class AudioManager {
         this._tone('sine', 66, 0.14, 0.5, 0.32, 0, 38);            // iron slam
         this._noise(0.07, 'lowpass', 420, 1, 0.5, 0.33);           // clank
         break;
+      case 'blaster': // the artefact: no powder, no mechanism. A rising whine
+        // collapsing into a short bright discharge, and a tail that rings.
+        this._tone('sawtooth', 340, 0.05, 0.22, 0, 0, 1750);
+        this._tone('square', 1750, 0.09, 0.16, 0.03, 0, 420);
+        this._tone('sine', 2600, 0.16, 0.09, 0.03, 0, 900);
+        this._noise(0.09, 'bandpass', 3400, 3.5, 0.16, 0.02);
+        this._tone('sine', 118, 0.2, 0.16, 0, 0, 62);        // the body of it
+        break;
+      case 'blasterCharged': // overcharge: four cells at once, and it hurts it
+        this._tone('sawtooth', 220, 0.13, 0.3, 0, 0, 1400);
+        this._tone('square', 1400, 0.2, 0.22, 0.08, 0, 260);
+        this._tone('sine', 2100, 0.34, 0.12, 0.08, 0, 620);
+        this._noise(0.22, 'bandpass', 2600, 2.6, 0.2, 0.05);
+        this._tone('sine', 84, 0.4, 0.24, 0, 0, 44);
+        break;
       case 'bat': break; // primary swing carried by whoosh()/thud()
     }
   }
@@ -463,6 +478,14 @@ export class AudioManager {
         break;
       case 'creak': // door hinges (honest direction, more or less)
         this._noise(0.7, 'bandpass', 700, 8, 0.1, 0, pan, 300);
+        break;
+      case 'piano': // an upright, struck once. Hammer thud, a minor chord, and
+        // a tail that outlasts the room it is standing in.
+        this._noise(0.05, 'lowpass', 900, 1, 0.09 * v, 0, pan);
+        for (const [f, gn] of [[220, 0.075], [261.6, 0.06], [329.6, 0.05], [440, 0.035], [523.3, 0.02]]) {
+          this._tone('triangle', f, 3.4, gn * v, 0, pan, f * 0.985);
+          this._tone('sine', f * 2, 1.6, gn * 0.3 * v, 0.01, pan);
+        }
         break;
       case 'chime': // wind chimes on a still afternoon. Five tubes, one scale,
         // struck in an order that is not random and is not a tune either.
