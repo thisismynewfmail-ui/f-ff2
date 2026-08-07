@@ -299,6 +299,21 @@ There is deliberately no command that touches the kill counter — the
   kill and flash at every 1,000-kill milestone, and a REMAINING nameplate. Run
   stats — accuracy, score, secrets, progress, time — live on the **pause screen
   as circular gauges**, not on the HUD.
+- **The NOTICE readout:** messages the world sends you — a district opening,
+  a secret giving something up, a thing you touched answering back — arrive on
+  their own instrument in the **top-right corner**, deliberately out of the
+  sight line rather than captioned across the middle of the screen. It is
+  built from the console bar's own parts (scratched gunmetal chassis, corner
+  screws, a stencil TRANSMISSION header with a live lamp, a green CRT inset
+  behind scanlines and a phosphor sweep) so a message reads as a device on the
+  rig doing something. Nothing about it just appears: the tube **strikes** —
+  a bright line that opens out to full height — the text **teletypes** in
+  under a blinking block cursor, the carrier bars run, and an amber
+  **depletion bar** drains for the full **ten seconds** the message holds,
+  going red for the last quarter. When the time is up the tube **collapses
+  back to a line and dies**. A second message replaces the first and restrikes:
+  this is one readout, not a stack. Every message also lands in the console
+  bar's permanent CRT log, so nothing is lost if you were looking elsewhere.
 - **Waves:** **kill-driven** escalating hordes. Each wave sets a kill quota and
   clears the moment you hit it, so racking up kills is what advances the wave;
   then a short respite with a supply drop before the next, larger wave. Past
@@ -348,9 +363,13 @@ There is deliberately no command that touches the kill counter — the
   foundation and trim chosen together, the way a real building's materials
   were. Brick gets a stone plinth and a stone belt course; clapboard gets
   painted timber trim and rubble footings; a curtain-walled tower gets steel
-  channel and poured concrete. Twenty-two sets, and two passes guarantee **no
+  channel and poured concrete. Twenty-five sets, and two passes guarantee **no
   two neighbours share one** — the second runs on the *resolved* wall texture,
-  because weathering collapses distinct sets onto shared worn twins.
+  because weathering collapses distinct sets onto shared worn twins. Three of
+  the sets are **residential only** (painted clapboard, split cedar shakes,
+  dark clinker brick, with block skirting or porch lattice under them instead
+  of a civic stone plinth), so a street of houses can never be dressed out of
+  the commercial library.
 - **Spatial weathering:** every set names a weathered twin of its wall and
   roof — moss to the sill line, paint flaking off grey timber, render blown
   off the brick, water staining under every joint — and they swap in as a
@@ -361,8 +380,7 @@ There is deliberately no command that touches the kill counter — the
   tanks, masts and blinking aviation beacons, plus the **Meridian Tower**,
   the one skyscraper you can enter: a furnished lobby with a reception
   desk, a dead elevator bank (the call button works; listen), and a
-  maintenance room in the back. Eastgate gained a third wave of housing, a
-  playground and mailbox rows; the east flats hold working farmland —
+  maintenance room in the back. The east flats hold working farmland —
   crop-row fields, an orchard planted in ranks, and a windmill that turns
   without wind. Old Town keeps a market morning that never ended, and North
   Ave holds an abandoned checkpoint.
@@ -380,6 +398,36 @@ There is deliberately no command that touches the kill counter — the
   The **firehouse siren** and the **record-shop turntable** send the same
   noise signal a car alarm does: start one and leave down the alley behind it,
   and the block clears itself.
+- **Eastgate Residential** is the town's neighbourhood, and it is planned as
+  one rather than scattered. Two loops hang off Main St East with a **back
+  lane** (Beckon Row), a **cul-de-sac** (Quarrow Close), two connectors and a
+  west lane between them, and every lot exists because a street runs past it:
+  **the door is always on the wall that street can see**, four to eight metres
+  back behind a garden. Rows are paired across their gardens, so the ground
+  between streets is private — fences, hedges, washing lines, sheds, and
+  garages that open onto the back lane. Roofs are hipped or gabled with their
+  **ridge parallel to the road they front** and pitched steeply (this knoll is
+  the most exposed ground in town, and its roofs are built to drop a winter
+  rather than hold it); dormers look out over the street, porches sit on the
+  approach, and windows are laid out **bay by bay between the interior walls**,
+  so no pane ever has a partition down the middle of it and every room has its
+  own light. Beyond the houses: a **community hall** (the one clear span in the
+  district, and the only Eastgate interior worth fighting a wave inside), a
+  church with its graveyard, a corner shop, a filling station at the gate, a
+  glasshouse still growing, a playground, and **Eastgate Green** — the open
+  field inside the Wend Loop that nothing is ever planted on, kept clear so
+  there is one place with sight lines the whole way across.
+- **Nature runs through the streets, not beside them.** Trees force up through
+  the pavement at the junctions and break the slabs around them; ivy climbs the
+  north faces, which are the walls that never dry out; clipped hedges and
+  picket runs mark the property lines; flower beds still bloom either side of
+  every garden path; and the lots nobody ever built on have gone to **dense dry
+  weed**, which is the best cover on the block. **All of it moves.** Trees,
+  bushes, hedges, flowers and wall creepers sway object-by-object on the CPU
+  with a standing lean downwind, and the merged ground cover — thousands of
+  grass and weed blades in one draw call, where per-object rotation is off the
+  table — bends in a **vertex-shader patch driven by one shared clock**, so the
+  whole map leans together the way a field does, for one float a frame.
 - **Hollow Park** is the one place in town that still moves: a **carousel**
   that turns (push it and it runs faster), a **flag** that ripples, a **rope
   swing** that keeps its arc, reeds along the pond margin, a jetty and a
@@ -396,8 +444,20 @@ There is deliberately no command that touches the kill counter — the
   pond, a train the town has no tracks for, a toll from the visibly
   motionless chapel bell, knocking from inside the inner walls. One
   playground swing keeps moving; its twin hangs dead. Smoke stands over
-  the cold factory stack. An opened grave on Chapel Ridge. None of it
-  breaks gameplay flow; all of it is slightly off.
+  the cold factory stack. An opened grave on Chapel Ridge. In Eastgate: an
+  upstairs television that plays whenever you are too far away to see into the
+  room, in a town with no power; a front garden where every plant leans at the
+  house; a row of mailboxes whose flags are all up; wind chimes that start
+  again in your hand; a parish roll in one handwriting ending in your name.
+  None of it breaks gameplay flow; all of it is slightly off.
+- **Things that move because nobody is moving them.** A weather vane turning
+  in still air, a pinwheel spinning, a lawn sprinkler sweeping with no water in
+  it, a bicycle wheel still going round where it was dropped, washing on a line
+  drifting the way the grass is not, a porch swing keeping its arc, a garden
+  gate on the swing, a roof dish creeping round over minutes, and a paddling
+  pool nobody has touched in a year whose surface will not hold still. Every
+  one is registered in a single distance-culled registry and costs nothing
+  until you are within ninety metres of it.
 - **The scarecrow (`src/world/Scarecrow.js`):** an aware, animated set piece
   on the east farm. Textured from canvas sources — woven burlap sacking, a
   stitched cross-eyed face, tattered flannel plaid, straw wisps — it sways in
@@ -412,8 +472,14 @@ There is deliberately no command that touches the kill counter — the
   reference — pale chamfered corners, magenta seams, a pink heart plate on
   every face — waiting in a back room somewhere high-rise adjacent, throwing
   no light of its own. Take it; it stows in the satchel and stays with you.
-- **Secrets:** ten of them, found by shooting, interacting, standing,
+- **Secrets:** fourteen of them, found by shooting, interacting, standing,
   looking, or killing exactly the right number. The mannequin is watching.
+  Eastgate holds four: a **treehouse** you cannot see the deck of from the
+  street, a **fallout shelter** under a garden shed stocked by somebody who
+  knew, **three houses on the same kerb that are one house** (same paint, same
+  plan, same fallen chair, same pinwheel in the same place — and you can only
+  ever see two of them at once), and a **garden gnome** that is never in the
+  garden you left it in and is always facing you when you find it again.
 
 ## Repository layout
 
@@ -538,10 +604,16 @@ gaps in the world barrier
 — including walking the player hard into the wall from eight directions to
 confirm it holds. It also **floods the nav grid from the spawn** and asserts
 that no locked district is reachable on foot, which is the check that catches a
-border wall stopping short of the map edge. It is what found the market stall
-parked in a doorway, the house standing on top of the filling station, the
-chapel's bell tower built over its own front door, and the eight-metre slot you
-could walk through from Eastgate into Downtown without earning it.
+border wall stopping short of the map edge. Eastgate gets its own group: every
+front door in the district has to have a **carriageway actually out in front of
+it** (walk out from each threshold along its own normal and look), no building
+may stand in one (sampled off the rendered road surface, because the bounding
+box of a curving road is far fatter than the road), and the planting and props
+have to be animated rather than merely present. It is what found the market
+stall parked in a doorway, the house standing on top of the filling station,
+the chapel's bell tower built over its own front door, the eight-metre slot you
+could walk through from Eastgate into Downtown without earning it, and the
+third of Eastgate's front doors that used to open onto open grass.
 
 `smoke.mjs` drives the real game headless: boot without errors, movement, town
 structure, wave spawning, ammo consumption, an end-to-end gunfire kill, zone

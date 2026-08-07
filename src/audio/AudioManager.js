@@ -464,6 +464,13 @@ export class AudioManager {
       case 'creak': // door hinges (honest direction, more or less)
         this._noise(0.7, 'bandpass', 700, 8, 0.1, 0, pan, 300);
         break;
+      case 'chime': // wind chimes on a still afternoon. Five tubes, one scale,
+        // struck in an order that is not random and is not a tune either.
+        for (const [i, f] of [1245, 1661, 1108, 1864, 1396].entries()) {
+          this._tone('sine', f, 1.4, 0.05 * v, i * 0.19 + Math.random() * 0.05, pan);
+          this._tone('sine', f * 2.76, 0.5, 0.012 * v, i * 0.19, pan);
+        }
+        break;
     }
   }
 

@@ -2011,5 +2011,388 @@ panelDoor('door_green.png', [[28, 54, 40], [38, 70, 52], [48, 86, 64], [60, 102,
   save('wall_rampart.png', img);
 }
 
+/* ------------------------------------------------------------------ */
+/* Eastgate Residential: the suburban material family                  */
+/* ------------------------------------------------------------------ */
+/*
+ * A residential district cannot be dressed out of the commercial texture
+ * library. Downtown is brick, render and glass; a street of houses is
+ * painted clapboard, cedar shakes, shuttered sashes, block skirting and
+ * lattice under the porch — with its own trim colours and its own roofs.
+ * Everything below exists so Eastgate reads as a DIFFERENT KIND OF PLACE
+ * at a glance, not as downtown with smaller footprints.
+ */
+
+/* --- walls ---------------------------------------------------------- */
+
+sidingWall('wall_siding_yellow.png',
+  [[128, 112, 62], [150, 132, 76], [172, 154, 92], [194, 176, 110]], 3011);
+
+{ // cedar shake siding: staggered courses of split shingles, silvering off
+  const img = new Img(128, 128);
+  const pal = [[86, 68, 48], [102, 82, 58], [118, 98, 70], [134, 114, 84], [148, 130, 100]];
+  const rng = mulberry32(3012);
+  const courseH = 16;
+  for (let row = 0; row < 128 / courseH; row++) {
+    const off = (row % 2 ? 7 : 0) + Math.floor(rng() * 4);
+    let sx = -12;
+    while (sx < 128) {
+      const wdt = 9 + Math.floor(rng() * 6);
+      const tone = (rng() - 0.5) * 0.42;      // every shake weathered its own way
+      for (let y = 0; y < courseH; y++) for (let x = 0; x < wdt; x++) {
+        const px = sx + off + x, py = row * courseH + y;
+        let v = 0.5 + tone + (y / courseH) * 0.18;
+        if (x >= wdt - 1) v = 0.05;           // the split between shakes
+        else if (y >= courseH - 2) v = 0.1;   // the shadow the course above casts
+        else if (y < 2) v = Math.min(0.95, v + 0.2);
+        img.set(px, py, pick(pal, dither(v, px, py, 0.16)));
+      }
+      sx += wdt;
+    }
+  }
+  const grain = makeNoise(128, 5, 3013);
+  for (let y = 0; y < 128; y++) for (let x = 0; x < 128; x++) {
+    if (grain(x * 4, y) > 0.78) tintPixel(img, x, y, [70, 58, 44], 0.3);
+  }
+  save('wall_shake_cedar.png', img);
+  // ...and the same wall after twenty wet winters on its north face
+  const worn = new Img(128, 128);
+  worn.d.set(img.d);
+  waterStains(worn, 3014, 11, [52, 52, 46]);
+  mossOverlay(worn, 3015, { reach: 0.8, bias: 0.5, greens: [[52, 66, 40], [66, 82, 48], [82, 98, 58]] });
+  save('wall_shake_moss.png', worn);
+}
+
+brickWall('wall_brick_clinker.png',
+  [[52, 40, 40], [72, 52, 48], [96, 62, 52], [126, 84, 62]], [148, 140, 126], 3016);
+
+/* --- roofs ---------------------------------------------------------- */
+
+{ // brown asphalt shingle: the cheap suburban roof, tabs staggered
+  const img = new Img(128, 128);
+  const pal = [[56, 42, 30], [70, 54, 38], [84, 66, 46], [98, 80, 56]];
+  const rng = mulberry32(3021);
+  const rowH = 16, tabW = 24;
+  for (let row = 0; row < 128 / rowH; row++) {
+    const off = row % 2 ? tabW / 2 : 0;
+    for (let x = -tabW; x < 128 + tabW; x++) {
+      const tab = Math.floor((x - off) / tabW);
+      const tone = (mulberry32(3022 + row * 31 + tab)() - 0.5) * 0.3;
+      for (let y = 0; y < rowH; y++) {
+        const py = row * rowH + y;
+        let v = 0.55 + tone - (y / rowH) * 0.14;
+        if (((x - off) % tabW + tabW) % tabW === 0) v = 0.08;   // the slot between tabs
+        if (y >= rowH - 3) v = 0.14;                            // course shadow line
+        img.set(x, py, pick(pal, dither(v, x, py, 0.16)));
+      }
+    }
+  }
+  const grit = mulberry32(3023);
+  for (let i = 0; i < 520; i++) {   // mineral grit catching the light
+    img.set(Math.floor(grit() * 128), Math.floor(grit() * 128), [116, 98, 74]);
+  }
+  save('roof_shingle_brown.png', img);
+}
+
+{ // split wood shakes: the steep, deep-pitched roof that sheds snow
+  const img = new Img(128, 128);
+  const pal = [[64, 52, 38], [80, 66, 48], [96, 80, 58], [112, 96, 72]];
+  const rng = mulberry32(3024);
+  const rowH = 21;
+  for (let row = 0; row < Math.ceil(128 / rowH); row++) {
+    let sx = -14;
+    const off = Math.floor(rng() * 9);
+    while (sx < 128) {
+      const wdt = 11 + Math.floor(rng() * 8);
+      const tone = (rng() - 0.5) * 0.46;
+      for (let y = 0; y < rowH; y++) for (let x = 0; x < wdt; x++) {
+        const px = sx + off + x, py = row * rowH + y;
+        let v = 0.5 + tone + (rng() - 0.5) * 0.05;
+        if (x >= wdt - 1) v = 0.04;
+        else if (y >= rowH - 3) v = 0.1;
+        img.set(px, py, pick(pal, dither(v, px, py, 0.18)));
+      }
+      sx += wdt;
+    }
+  }
+  save('roof_shake_wood.png', img);
+}
+
+/* --- doors ---------------------------------------------------------- */
+
+panelDoor('door_red.png', [[74, 28, 26], [96, 38, 32], [118, 50, 40], [140, 64, 50]], 3031);
+
+{ // screen door: a timber frame over insect mesh, the room behind it dark
+  const img = new Img(64, 128);
+  img.rect(0, 0, 64, 128, [96, 86, 68]);
+  const n = makeNoise(64, 9, 3032);
+  for (let y = 0; y < 128; y++) for (let x = 0; x < 64; x++) {
+    img.set(x, y, pick([[78, 68, 52], [92, 82, 64], [106, 96, 76], [120, 110, 88]],
+      dither(0.5 + n(x, y) * 0.34, x, y, 0.12)));
+  }
+  for (const [py, ph] of [[10, 62], [80, 40]]) {   // the two mesh panels
+    for (let y = 0; y < ph; y++) for (let x = 0; x < 44; x++) {
+      const px = 10 + x, qy = py + y;
+      const wire = (px % 2 === 0) || (qy % 2 === 0);
+      img.set(px, qy, wire ? [56, 54, 48] : [26, 26, 26]);
+    }
+    img.rectC(10, py, 44, 1, [58, 50, 38]);
+    img.rectC(10, py + ph - 1, 44, 1, [58, 50, 38]);
+  }
+  img.rectC(0, 0, 64, 3, [58, 50, 38]); img.rectC(0, 125, 64, 3, [58, 50, 38]);
+  img.rectC(0, 0, 3, 128, [58, 50, 38]); img.rectC(61, 0, 3, 128, [58, 50, 38]);
+  img.rectC(48, 62, 10, 4, [162, 156, 140]);        // sprung pull handle
+  const rng = mulberry32(3033);
+  for (let i = 0; i < 30; i++) {                    // the mesh has been pushed through
+    const x = 18 + Math.floor(rng() * 26), y = 20 + Math.floor(rng() * 40);
+    img.set(x, y, [14, 14, 14]); img.set(x + 1, y, [14, 14, 14]);
+  }
+  save('door_screen.png', img);
+}
+
+/* --- windows -------------------------------------------------------- */
+
+{ // shuttered sash: painted timber shutters flanking a curtained pane
+  const img = new Img(64, 64);
+  img.rect(0, 0, 64, 64, [130, 124, 110]);
+  img.rectC(14, 3, 36, 58, [46, 38, 30]);
+  for (let y = 5; y < 59; y++) for (let x = 16; x < 48; x++) {   // curtained glass
+    const v = 0.3 + (x - 16) / 90 + (y % 9 === 0 ? 0.22 : 0);
+    img.set(x, y, pick([[42, 40, 44], [58, 54, 54], [76, 70, 66], [96, 88, 80]], dither(v, x, y, 0.14)));
+  }
+  img.rectC(30, 5, 3, 54, [58, 50, 40]);            // meeting stile
+  img.rectC(16, 30, 32, 3, [58, 50, 40]);           // sash rail
+  for (const sx of [1, 51]) {                       // louvred shutters, hung open
+    img.rectC(sx, 3, 12, 58, [58, 78, 62]);
+    for (let y = 6; y < 58; y += 4) img.rectC(sx + 1, y, 10, 2, [42, 58, 46]);
+    img.rectC(sx, 3, 12, 2, [78, 100, 80]);
+    img.rectC(sx, 58, 12, 3, [40, 54, 42]);
+  }
+  img.rectC(12, 58, 40, 4, [150, 144, 130]);        // the sill
+  save('window_shutters.png', img);
+}
+
+/* --- foundations ---------------------------------------------------- */
+
+{ // concrete block skirting: the crawlspace wall under a timber house
+  const img = new Img(128, 64);
+  const pal = [[126, 124, 116], [140, 138, 128], [152, 150, 140], [164, 162, 150]];
+  const rng = mulberry32(3041);
+  const bw = 42, bh = 21;
+  for (let row = 0; row < 4; row++) {
+    const off = row % 2 ? bw / 2 : 0;
+    for (let col = -1; col < 5; col++) {
+      const tone = (rng() - 0.5) * 0.26;
+      for (let y = 0; y < bh; y++) for (let x = 0; x < bw; x++) {
+        const px = col * bw + off + x, py = row * bh + y;
+        if (y >= bh - 2 || x >= bw - 2) { img.set(px, py, [104, 102, 96]); continue; }
+        img.set(px, py, pick(pal, dither(0.5 + tone, px, py, 0.2)));
+      }
+    }
+  }
+  for (let i = 0; i < 3; i++) crack(img, rng, [88, 86, 80], 40);
+  mossOverlay(img, 3042, { reach: 0.5, bias: 0.62 });
+  save('foundation_block.png', img);
+}
+
+{ // porch lattice: crossed timber battens over the dark under-floor
+  const img = new Img(128, 64);
+  img.rect(0, 0, 128, 64, [22, 20, 18]);
+  const slat = [[104, 88, 64], [122, 104, 76], [138, 120, 90]];
+  for (let y = 0; y < 64; y++) for (let x = 0; x < 128; x++) {
+    const a = ((x + y) % 16 + 16) % 16, b = ((x - y) % 16 + 16) % 16;
+    if (a < 4) img.set(x, y, pick(slat, dither(0.7 - a * 0.1, x, y, 0.14)));
+    else if (b < 4) img.set(x, y, pick(slat, dither(0.4 - b * 0.06, x, y, 0.14)));
+  }
+  const rng = mulberry32(3043);
+  for (let i = 0; i < 60; i++) {   // weeds and dirt piled against the skirt
+    const x = Math.floor(rng() * 128), y = 48 + Math.floor(rng() * 16);
+    tintPixel(img, x, y, [46, 58, 34], 0.5 + rng() * 0.4);
+  }
+  img.rectC(0, 0, 128, 3, [92, 78, 58]);            // the trim board capping it
+  save('foundation_lattice.png', img);
+}
+
+/* --- trim ----------------------------------------------------------- */
+
+{ // painted green trim board (the second-most common porch colour in town)
+  const img = new Img(64, 32);
+  const pal = [[36, 56, 42], [46, 70, 52], [56, 84, 62], [68, 98, 74]];
+  noiseFill(img, pal, 3051, { baseCell: 12, ditherAmp: 0.14 });
+  for (let x = 0; x < 64; x++) { img.set(x, 0, [78, 108, 84]); img.set(x, 31, [26, 42, 32]); }
+  const rng = mulberry32(3052);
+  for (let i = 0; i < 22; i++) {   // paint gone at the corners, bare wood under
+    const x = Math.floor(rng() * 64), y = Math.floor(rng() * 32);
+    img.set(x, y, [116, 100, 74]);
+  }
+  save('trim_wood_green.png', img);
+}
+
+/* --- nature: the residential planting palette ----------------------- */
+
+// A clipped boundary hedge: denser, flatter and darker than a wild bush, so a
+// property line reads as a property line rather than as scrub.
+foliage('hedge.png', 64, [[28, 52, 26], [36, 64, 30], [44, 76, 36], [54, 88, 42]], 260,
+  (a) => 0.9 - Math.max(0, Math.sin(a)) * 0.06, 3061);
+
+{ // garden flowers: a low mound of leaf with colour scattered through it
+  const img = new Img(64, 64, [0, 0, 0, 0]);
+  const rng = mulberry32(3062);
+  const greens = [[42, 72, 34], [54, 88, 40], [66, 102, 48]];
+  for (let i = 0; i < 150; i++) {
+    const a = rng() * Math.PI * 2;
+    const r = Math.sqrt(rng()) * 26 * (0.7 - Math.max(0, Math.sin(a)) * 0.34);
+    const x = Math.round(32 + Math.cos(a) * r), y = Math.round(44 + Math.sin(a) * r * 0.9);
+    const rad = 2 + rng() * 2;
+    for (let j = -rad; j <= rad; j++) for (let k = -rad; k <= rad; k++) {
+      if (j * j + k * k > rad * rad || rng() < 0.3) continue;
+      const px = Math.round(x + k), py = Math.round(y + j);
+      if (px >= 0 && py >= 4 && px < 64 && py < 64) img.set(px, py, greens[Math.floor(rng() * 3)]);
+    }
+  }
+  const blooms = [[178, 62, 66], [196, 152, 62], [156, 106, 174], [206, 198, 188]];
+  for (let i = 0; i < 34; i++) {   // heads, still open, months after anyone watered them
+    const x = 8 + Math.floor(rng() * 48), y = 12 + Math.floor(rng() * 34);
+    if (img.get(x, y)[3] === 0) continue;
+    const c = blooms[Math.floor(rng() * blooms.length)];
+    img.disc(x, y, 1.6, c);
+    img.set(x, y - 1, [c[0] + 24 > 255 ? 255 : c[0] + 24, c[1] + 24, c[2] + 24]);
+  }
+  img.outline([16, 28, 16, 255]);
+  save('flowers.png', img);
+}
+
+{ // dry ragged weeds — what comes up through a pavement crack, not lawn
+  const img = new Img(64, 64, [0, 0, 0, 0]);
+  const rng = mulberry32(3063);
+  const pal = [[92, 96, 52], [110, 112, 60], [128, 128, 72], [142, 138, 92]];
+  for (let s = 0; s < 26; s++) {
+    const x0 = 6 + rng() * 52, h = 22 + rng() * 34;
+    const lean = (rng() - 0.5) * 0.9;
+    const c = pal[Math.floor(rng() * pal.length)];
+    for (let t = 0; t < h; t++) {
+      const x = Math.round(x0 + lean * t * (t / h));
+      const y = 63 - t;
+      if (x < 0 || x > 63) continue;
+      img.set(x, y, c);
+      if (t > h * 0.55 && rng() < 0.35) img.set(x + (rng() < 0.5 ? 1 : -1), y, c);
+      if (t > h * 0.86) img.set(x, y, [166, 158, 118]);   // seed head gone over
+    }
+  }
+  img.outline([32, 34, 20, 255]);
+  save('weeds.png', img);
+}
+
+{ // ivy: a dense creeper mat for a north-facing wall, leaves overlapping
+  const img = new Img(64, 128, [0, 0, 0, 0]);
+  const rng = mulberry32(3064);
+  const greens = [[24, 48, 26], [32, 62, 32], [42, 76, 38], [54, 92, 46]];
+  for (let v = 0; v < 6; v++) {   // the runners first, climbing and branching
+    let x = 6 + rng() * 52, y = 127;
+    const drift = (rng() - 0.5) * 0.6;
+    while (y > 4) {
+      img.set(Math.round(x), y, [56, 44, 30]);
+      x += drift + (rng() - 0.5) * 0.8;
+      y -= 1;
+      if (x < 2) x = 2; if (x > 61) x = 61;
+    }
+  }
+  for (let i = 0; i < 420; i++) {   // then the leaf mass, thickest at the foot
+    const y = Math.round(127 - Math.pow(rng(), 0.62) * 124);
+    const x = Math.round(2 + rng() * 60);
+    const rad = 1.5 + rng() * 2.2;
+    const c = greens[Math.floor(rng() * greens.length)];
+    for (let j = -rad; j <= rad; j++) for (let k = -rad; k <= rad; k++) {
+      if (j * j + k * k > rad * rad || rng() < 0.22) continue;
+      const px = Math.round(x + k), py = Math.round(y + j);
+      if (px >= 0 && py >= 0 && px < 64 && py < 128) img.set(px, py, c);
+    }
+  }
+  img.outline([12, 22, 14, 255]);
+  save('ivy.png', img);
+}
+
+/* --- residential props ---------------------------------------------- */
+
+{ // White picket fence: a CUTOUT, so you can see the garden through it. The
+  // panel maps this once over its height, which is what lets the pickets have
+  // pointed tops and lets the two rails sit at real heights.
+  const img = new Img(64, 64, [0, 0, 0, 0]);
+  const pal = [[150, 146, 134], [176, 172, 160], [196, 192, 180], [214, 210, 198]];
+  const rng = mulberry32(3071);
+  const pitch = 16, wdt = 10;
+  for (let p = 0; p < 4; p++) {
+    const x0 = p * pitch + 2;
+    const tone = (rng() - 0.5) * 0.3;
+    const tip = 8 + Math.floor(rng() * 3);          // the point at the top
+    for (let y = 2; y < 64; y++) for (let x = 0; x < wdt; x++) {
+      // the picket narrows to a point over its top `tip` pixels
+      const inset = y < 2 + tip ? Math.round((1 - (y - 2) / tip) * (wdt / 2)) : 0;
+      if (x < inset || x >= wdt - inset) continue;
+      let v = 0.55 + tone;
+      if (x === 0 || x === wdt - 1) v = 0.18;       // shadowed edges give it depth
+      img.set(x0 + x, y, pick(pal, dither(v, x0 + x, y, 0.14)));
+    }
+  }
+  for (const [ry, rh] of [[20, 5], [46, 5]]) {      // the two rails behind them
+    for (let y = ry; y < ry + rh; y++) for (let x = 0; x < 64; x++) {
+      if (img.get(x, y)[3] > 0) continue;           // pickets stay in front
+      img.set(x, y, pick(pal, dither(0.34, x, y, 0.12)));
+    }
+  }
+  for (let i = 0; i < 70; i++) {                    // paint flaking to grey timber
+    const x = Math.floor(rng() * 64), y = 4 + Math.floor(rng() * 58);
+    if (img.get(x, y)[3] === 0) continue;
+    img.set(x, y, [122, 114, 100]);
+  }
+  save('fence_picket.png', img);
+}
+
+{ // blue polythene tarpaulin, taut over whatever nobody came back for
+  const img = new Img(64, 64);
+  const pal = [[28, 54, 86], [38, 70, 108], [48, 86, 128], [62, 104, 148]];
+  noiseFill(img, pal, 3073, { baseCell: 16, ditherAmp: 0.16 });
+  const rng = mulberry32(3074);
+  for (let i = 0; i < 9; i++) {        // creases catching the light
+    let x = rng() * 64, y = rng() * 64;
+    const dir = rng() * Math.PI * 2;
+    for (let t = 0; t < 50; t++) {
+      img.set(Math.round(x), Math.round(y), [86, 130, 172]);
+      img.set(Math.round(x), Math.round(y) + 1, [22, 42, 68]);
+      x += Math.cos(dir) + (rng() - 0.5) * 0.4;
+      y += Math.sin(dir) + (rng() - 0.5) * 0.4;
+    }
+  }
+  for (const [ex, ey] of [[3, 3], [60, 3], [3, 60], [60, 60]]) img.disc(ex, ey, 2, [150, 150, 146]); // eyelets
+  save('tarp_blue.png', img);
+}
+
+{ // hopscotch chalked on a pavement. Ten squares. Count them.
+  const img = new Img(64, 64, [0, 0, 0, 0]);
+  const chalk = [232, 226, 210, 220];
+  const line = (x0, y0, x1, y1) => {
+    const n = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0));
+    for (let i = 0; i <= n; i++) {
+      const x = Math.round(x0 + (x1 - x0) * (i / n)), y = Math.round(y0 + (y1 - y0) * (i / n));
+      if ((x * 7 + y * 3) % 5 === 0) continue;   // chalk skips on rough concrete
+      img.set(x, y, chalk);
+    }
+  };
+  let y = 60;
+  for (const pair of [0, 0, 1, 0, 1, 0]) {       // singles and doubles up the court
+    const h = 9;
+    if (pair) {
+      line(10, y, 31, y); line(10, y - h, 31, y - h); line(10, y, 10, y - h);
+      line(31, y, 31, y - h); line(21, y, 21, y - h);
+      line(31, y, 53, y); line(31, y - h, 53, y - h); line(53, y, 53, y - h);
+    } else {
+      line(21, y, 42, y); line(21, y - h, 42, y - h);
+      line(21, y, 21, y - h); line(42, y, 42, y - h);
+    }
+    y -= h;
+  }
+  save('chalk_hopscotch.png', img);
+}
+
 console.log(`Wrote ${files.length} textures to ${OUT_DIR}:`);
 for (const f of files) console.log('  ' + f);

@@ -161,9 +161,13 @@ const combat = await page.evaluate(async () => {
   const g = window.__game;
   const p = g.player;
   const killsBefore = g.score.kills;
-  p.teleport(150, g.world.groundHeightFor(150, 90, 1e9), 90); // open knoll field
+  // Eastgate Green (World.EASTGATE_GREEN): the field inside the Wend Loop
+  // that the district deliberately keeps clear of planting and building, so
+  // this line of sight is a promise the world keeps rather than a coordinate
+  // that happens to be empty. It slopes, which is the point.
+  p.teleport(158, g.world.groundHeightFor(158, 55, 1e9), 55);
   const z = g.spawner.spawnOne('walker', p) ?? g.spawner.zombies[0];
-  z.placeAt(150, 65); // 25 m north, different elevation on the knoll
+  z.placeAt(158, 30); // 25 m north, different elevation on the knoll
   const aim = () => {
     const eye = p.eyePosition();
     const dx = z.position.x - eye.x;
@@ -244,7 +248,7 @@ const sprint = await page.evaluate(() => {
   input.isDown = () => false;
   input.wasActionPressed = () => false;
   p.noclip = false;
-  p.teleport(150, g.world.groundHeightFor(150, 90, 1e9), 90); // open knoll field
+  p.teleport(158, g.world.groundHeightFor(158, 55, 1e9), 55); // Eastgate Green
   p.stamina = p.staminaMax;
   p.winded = false;
 
@@ -491,7 +495,7 @@ const spit = await page.evaluate(async () => {
   let fires = 0;
   g.events.on('spitter:fire', () => { fires++; });
 
-  const PX = 150, PZ = 90; // the open knoll field (confirmed clear sightlines)
+  const PX = 158, PZ = 48; // Eastgate Green — kept clear of planting by design
   const setup = (sp, d) => {
     player.teleport(PX, groundAt(PX, PZ), PZ); player.alive = true; player.health = 100;
     player.invulnTime = 0; player.godMode = false;

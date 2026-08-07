@@ -18,6 +18,13 @@ import { WorldBarrier } from './Boundary.js';
 const DOOR_NORMAL = { N: [0, -1], S: [0, 1], E: [1, 0], W: [-1, 0] };
 const DOOR_APPROACH = 3.4;
 const DOOR_LANE_HALF = 1.6;
+/**
+ * Eastgate Green: the open field inside the Wend Loop that nothing is ever
+ * planted on. Exported because it is a promise about the world — clear ground
+ * with clear sight lines — and tests/smoke.mjs stages its ranged-combat checks
+ * on it rather than on a coordinate that happens to be empty today.
+ */
+export const EASTGATE_GREEN = { x: 158, z: 42, r: 20 };
 // How much two solid footprints may overlap before it reads as a mistake.
 // Small enough to catch a stall clipping a wall, loose enough that props
 // deliberately tucked against something aren't refused.
@@ -32,6 +39,7 @@ const FAMILY_FOR_USE = {
   library: 'civic', townhall: 'civic', clinic: 'civic', school: 'civic',
   office: 'civic', towerLobby: 'tower', museum: 'civic', firehouse: 'civic',
   church: 'church',
+  hall: 'civic', garage: 'house', shed: 'farm', greenhouse: 'block',
   warehouse: 'industrial', warehouseMezz: 'industrial', factory: 'industrial',
   machineShop: 'industrial', substation: 'industrial',
   barn: 'farm', boathouse: 'farm',
@@ -62,7 +70,7 @@ export class World {
     this.terrain = new Terrain();
     this.collision = new CollisionWorld();
     this.nav = new NavGrid(this.terrain);
-    this.kit = new BuildingKit(texLib, this.collision, this.nav);
+    this.kit = new BuildingKit(texLib, this.collision, this.nav, this.terrain);
     this.props = new PropKit(texLib, this.collision, this.nav, this.terrain);
     this.veg = new Vegetation(texLib, this.collision, this.nav, this.terrain);
 
@@ -84,10 +92,35 @@ export class World {
     this.spinners = [];          // {node, speed} — carousel decks
     this.flags = [];             // {strips[], phase} — rippling cloth
     this.ropeSwings = [];        // pivots that keep an arc nobody started
-    this.waterSurfaces = [];     // {mat, u, v} — sheets whose UVs drift
+    this.waterSurfaces = [];     // {mat, u, v} — the pond's own sheets
+    this.uvDrifts = [];          // {mat, u, v} — any other surface that crawls
     this.groundMeshes = [];      // {kind, mesh} — everything draped on the ground
     this.alarmCars = [];         // {x, y, z, lights[]} — shootable car alarms
     this.phoneBoothPos = null;
+    // One registry for every small prop that moves. Entries are ticked by
+    // Anomalies with a distance cull, and each carries the world position it
+    // was placed at so a pivot buried inside a group can still be culled.
+    this.animProps = [];         // {node, kind, x, z, speed, amp, phase, axis}
+  }
+
+  /**
+   * Register a moving part. `kind`:
+   *   spin   constant rotation (vanes, pinwheels, sprinklers, dish, wheels)
+   *   swing  pendulum on a slow beat (swings, gates, chimes)
+   *   sway   two-frequency drift (hanging laundry, nets)
+   *
+   * The phase is seeded from where the thing stands, so nothing in the town
+   * ever beats in time with anything else — which is exactly what stops a
+   * street of moving props reading as one animation played twice.
+   */
+  _animate(node, kind, x, z, opts = {}) {
+    if (!node) return null;
+    const e = {
+      node, kind, x, z, axis: 'x', speed: 1, amp: 0.3,
+      phase: (x * 0.37 + z * 0.71) % (Math.PI * 2), ...opts,
+    };
+    this.animProps.push(e);
+    return e;
   }
 
   /** Give the world (and its secrets/anomalies) access to the live game. */
@@ -381,45 +414,152 @@ export class World {
     S({ x: 28, z: 26, w: 8, d: 6, h: 4.0, mat: 'tanBrickDeco', roof: 'flat', door: 'W', name: 'postOffice', use: 'postOffice', zone: 0 });
     S({ x: 34, z: -30, w: 7, d: 6, h: 3.6, mat: 'clapboardGreen', roof: 'gable', door: 'W', chimney: true, partitions: housePartitions(7, 6, 'W'), name: 'cottage', use: 'house', zone: 0 });
 
-    // --- Eastgate Residential (zone 1): neighbourhoods along shared streets.
-    // Doors face the road each row fronts; material sets rotate so no two
-    // neighbours match; density thins toward the map edge.
-    const houseSets = [
-      'redbrickWalkup', 'clapboardBlue', 'stuccoTanVilla', 'plasterTownhouse',
-      'clapboardGreen', 'weatheredPlank', 'clapboardCream', 'timberFramed',
-      'boardBattenRed', 'brownBrickTenement',
+    // --- Eastgate Residential (zone 1): a neighbourhood, laid out lot by lot.
+    //
+    // This district used to be a loop over a coordinate list: one footprint
+    // formula, one roof type, one floor plan, and doors that faced whichever
+    // way the list said — a third of them onto open grass. It is now planned
+    // the way a suburb is planned, and three rules do all the work:
+    //
+    //  1. EVERY HOUSE FRONTS A STREET. A lot exists because a road runs past
+    //     it, the door is on the wall that road can see, and the front garden
+    //     between the two is four to eight metres deep. Nothing opens onto
+    //     nothing. (tests/world.mjs enforces this for the whole district.)
+    //  2. BACKS FACE BACKS. Rows are paired across their gardens, so the
+    //     spaces between streets are private ground — fences, sheds, washing
+    //     lines, the odd garage onto the back lane — rather than more frontage.
+    //  3. THE STREET DECIDES THE HOUSE. Ridge lines run parallel to the road
+    //     they front (so dormers face the street and both slopes shed to the
+    //     side), porches sit on the sunny approach, and the roofs are pitched
+    //     steep: this knoll is the most exposed ground in the town and its
+    //     roofs are built to drop a winter rather than hold it.
+    //
+    // Street names, west to east: Main St East (the spine), Larkspur Lane,
+    // the Wend Loop (south), the Aldergate Loop (north), Beckon Row (the back
+    // lane), Quarrow Close (the cul-de-sac), Marrow Way and Sable Lane.
+    const EG_SETS = [
+      'clapboardYellow', 'cedarShake', 'clinkerBrick', 'clapboardBlue',
+      'clapboardGreen', 'clapboardCream', 'boardBattenRed', 'timberFramed',
+      'stuccoTanVilla', 'plasterTownhouse', 'redbrickWalkup', 'weatheredPlank',
     ];
-    const houses = [
-      // Main St row (fronting the z≈0 road)
-      [70, -14, 'S', 0], [92, -16, 'S', 1], [116, -15, 'S', 2], [142, -18, 'S', 3],
-      [72, 24, 'N', 2], [95, 18, 'N', 3], [120, 60, 'W', 1, true], [145, 16, 'N', 0],
-      // north loop (x=100/x=168 ring)
-      [92, -48, 'E', 1], [92, -74, 'E', 0], [128, -78, 'S', 2], [162, -48, 'W', 3],
-      // south loop
-      [110, 42, 'S', 4], [140, 68, 'N', 1], [172, 40, 'W', 2], [190, -20, 'S', 3, true],
-      // second wave: loop infill + spread-out outskirt places
-      [110, -32, 'W', 4], [134, -44, 'N', 5], [152, -30, 'E', 6],
-      [98, 52, 'W', 7], [126, 90, 'N', 4], [170, 92, 'N', 6],
-      [206, 60, 'W', 5], [208, -44, 'W', 7],
-      // third wave: the west lanes near Foundry Rd, the far-east outskirts and
-      // the back row above the south loop — the neighbourhood finally reads full
-      [60, 44, 'E', 3], [60, 78, 'E', 6], [100, 72, 'S', 1], [160, 96, 'N', 5],
-      [196, 82, 'N', 2], [216, 20, 'W', 0], [228, -18, 'W', 4], [186, -58, 'S', 7],
+    // [name, x, z, w, d, h, door, opts]
+    const eastgateHouses = [
+      // --- Main St East, north side: the oldest, deepest lots in the district
+      ['house01', 84, -11, 10, 8, 4.2, 'S', { porch: true, dormers: 2 }],
+      ['house02', 112, -11, 11, 9, 4.9, 'S', { porch: true, hip: true }],
+      ['house03', 186, -12, 10, 8, 4.4, 'S', { porch: true, dormers: 1 }],
+      ['house04', 222, -17, 9, 8, 4.0, 'S', { solid: true, derelict: 0.85 }],
+      // --- Main St East, south side
+      ['house05', 136, 20, 9, 9, 4.0, 'N', { porch: true, ridge: 'x' }],
+      ['house06', 158, 18, 10, 8, 4.3, 'N', { hip: true }],
+      ['house07', 192, 16, 9, 8, 3.9, 'N', { porch: true, dormers: 1 }],
+      ['house08', 222, 12, 10, 8, 4.1, 'N', { hip: true }],
+      // --- Beckon Row, north side (the back lane's own frontage)
+      ['house09', 110, -44, 10, 8, 4.3, 'S', { porch: true, dormers: 2 }],
+      ['house11', 154, -45, 10, 9, 4.5, 'S', { hip: true }],
+      ['house12', 192, -44, 9, 8, 4.1, 'S', { porch: true }],
+      // --- the Aldergate Loop
+      ['house13', 88, -24, 9, 8, 4.0, 'E', { porch: true, dormers: 1 }],
+      ['house16', 180, -22, 10, 8, 4.3, 'W', { hip: true }],
+      ['house17', 180, -46, 9, 8, 4.1, 'W', { porch: true }],
+      // --- above the loop, either side of the church
+      ['house18', 112, -72, 10, 8, 4.2, 'S', { porch: true, dormers: 1 }],
+      ['house41', 192, -72, 10, 8, 4.4, 'E', { hip: true }],
+      // --- Larkspur Lane, west side
+      ['house25', 54, 34, 9, 8, 4.0, 'E', { porch: true }],
+      // --- the three on the Wend Loop's west kerb. Look at them twice.
+      ['house20', 78, 30, 9, 8, 4.1, 'E', { porch: true, dormers: 1 }],
+      ['house21', 78, 54, 9, 8, 4.1, 'E', { porch: true, dormers: 1, twin: 'house20' }],
+      ['house22', 78, 76, 9, 8, 4.1, 'E', { porch: true, dormers: 1, twin: 'house20' }],
+      // --- inside the Wend Loop
+      ['house23', 104, 30, 10, 8, 4.2, 'W', { hip: true }],
+      ['house24', 104, 54, 9, 8, 4.0, 'W', { porch: true }],
+      // --- the Wend Loop's south leg
+      ['house27', 112, 68, 10, 8, 4.3, 'S', { porch: true, dormers: 2 }],
+      ['house28', 152, 68, 9, 8, 4.0, 'S', { hip: true }],
+      ['house29', 170, 68, 10, 8, 4.2, 'S', { porch: true }],
+      ['house30', 104, 94, 9, 8, 4.0, 'N', { solid: true, derelict: 0.85 }],
+      ['house33', 168, 94, 10, 8, 4.2, 'N', { porch: true, dormers: 1 }],
+      // --- Quarrow Close, the cul-de-sac
+      ['house34', 126, 92, 9, 8, 4.0, 'E', { porch: true }],
+      ['house35', 146, 92, 9, 8, 4.2, 'W', { hip: true }],
+      // --- Marrow Way and the Wend Loop's east leg
+      ['house36', 192, 32, 9, 8, 4.1, 'W', { porch: true }],
+      ['house43', 192, 54, 9, 8, 4.1, 'N', { hip: true }],
+      ['house37', 192, 66, 10, 8, 4.3, 'W', { porch: true, dormers: 1 }],
+      ['house42', 192, 86, 9, 8, 4.0, 'E', { hip: true }],
+      // --- Sable Lane, the far-east outskirts: bigger lots, longer views
+      ['house38', 218, -56, 10, 8, 4.2, 'W', { porch: true, dormers: 1 }],
+      ['house40', 218, 66, 10, 8, 4.3, 'W', { hip: true }],
     ];
+    this.eastgateTwins = [];
     let hi = 0;
-    for (const [hx, hz, door, style, solid] of houses) {
-      const w = 9 + (hi % 3), d = 7 + ((hi + 1) % 2) * 2;
-      S({ x: hx, z: hz, w, d, h: 3.8 + (hi % 2) * 0.5, mat: houseSets[(style + hi) % houseSets.length],
-          roof: 'gable', door, chimney: true,
-          solid: !!solid, partitions: solid ? undefined : housePartitions(w, d, door), name: 'house' + hi, use: 'house', zone: 1 });
+    for (const [name, hx, hz, w, d, h, door, o] of eastgateHouses) {
+      const sideDoor = door === 'E' || door === 'W';
+      S({
+        x: hx, z: hz, w, d, h, door, name, use: 'house', zone: 1,
+        mat: EG_SETS[(hi * 5 + 3) % EG_SETS.length],
+        // Ridge parallel to the street the house fronts: both slopes shed
+        // sideways onto its own ground, and the dormers look out over the road.
+        roof: o.hip ? 'hip' : 'gable', ridge: o.ridge ?? (sideDoor ? 'z' : 'x'),
+        // A steep pitch is not a style choice on this hill — it is how the
+        // roof survives February.
+        roofPitch: 0.44, roofCap: 3.4,
+        chimney: true, porch: o.porch, dormers: o.dormers,
+        windowPitch: 3.2, derelict: o.derelict, variant: hi % 3,
+        solid: !!o.solid,
+        partitions: o.solid ? undefined : housePartitions(w, d, door),
+      });
+      if (o.twin) this.eastgateTwins.push([name, o.twin]);
       hi++;
     }
-    S({ x: 150, z: -70, w: 10, d: 16, h: 6, mat: 'coursedStone', roof: 'gable', door: 'S', name: 'church', use: 'church', zone: 1 });
-    S({ x: 105, z: 30, w: 9, d: 7, h: 4, mat: 'glazedTileShop', roof: 'flat', door: 'N', shopfront: true, awning: true, name: 'cornerShop', use: 'store', zone: 1 });
-    S({ x: 70, z: 13, w: 7, d: 6, h: 3.6, mat: 'officeConcrete', roof: 'shed', roofTex: 'roofMetal', floor: 'floorTile', door: 'W', doorTex: 'doorShop', name: 'gasEast', use: 'gasShop', zone: 1 });
+
+    // --- Eastgate's shared buildings ------------------------------------
+    // The church stands clear of the loop road with its own forecourt; the
+    // graveyard is on the open ground east of it.
+    S({ x: 149, z: -76, w: 11, d: 17, h: 6.5, mat: 'coursedStone', roof: 'gable', ridge: 'z',
+        roofPitch: 0.42, roofCap: 3.6, door: 'S', name: 'church', use: 'church', zone: 1 });
+    // The corner shop on the Main St / Aldergate corner: the district's one
+    // stocked counter, and the fallback everybody walks to.
+    S({ x: 110, z: 17, w: 10, d: 8, h: 4.2, mat: 'glazedTileShop', roof: 'flat', door: 'N',
+        shopfront: true, awning: true, name: 'cornerShop', use: 'store', zone: 1 });
+    // Eastgate Community Hall: the one big clear span in the district, and the
+    // only Eastgate interior worth fighting a wave inside.
+    S({ x: 146, z: -13, w: 16, d: 11, h: 5.6, mat: 'clinkerBrick', family: 'civic', roof: 'hip',
+        ridge: 'x', roofPitch: 0.34, roofCap: 3.0, floor: 'floorWood', door: 'S',
+        name: 'hall', use: 'hall', zone: 1 });
+    S({ x: 74, z: 13, w: 7, d: 6, h: 3.6, mat: 'officeConcrete', roof: 'shed', roofTex: 'roofMetal',
+        floor: 'floorTile', door: 'W', doorTex: 'doorShop', name: 'gasEast', use: 'gasShop', zone: 1 });
+    // Back-lane garages: they open onto Beckon Row, not onto the gardens they
+    // stand at the bottom of, which is the whole reason a back lane exists.
+    for (const [gn, gx, gz, gw, gd, gh] of [
+      ['garage01', 118, -23, 6.4, 6, 3.0], ['garage02', 150, -23.5, 7, 6, 3.2],
+      ['garage03', 192, -23, 6.4, 6, 3.0],
+    ]) {
+      S({ x: gx, z: gz, w: gw, d: gd, h: gh, roof: 'shed', shedTo: 'S', roofPitch: 0.26,
+          door: 'N', doorW: 2.8, doorTex: 'doorGarage', floor: 'concrete',
+          name: gn, use: 'garage', zone: 1 });
+    }
+    // Garden sheds. Tiny, but real: a door, a floor, a window and something
+    // inside worth the detour.
+    for (const [sn, sx, sz, sdoor] of [
+      ['shed01', 79, -20, 'S'], ['shed02', 160, -20, 'S'],
+      ['shed03', 120, 60, 'S'], ['shed04', 210, 78, 'W'],
+    ]) {
+      S({ x: sx, z: sz, w: 3.4, d: 2.8, h: 2.4, mat: 'weatheredPlank', roof: 'shed',
+          roofPitch: 0.3, door: sdoor, floor: 'floorWood', trim: false,
+          name: sn, use: 'shed', zone: 1 });
+    }
+    // The nursery: somebody's back-garden glasshouse, still growing.
+    S({ x: 122, z: 46, w: 6, d: 4.5, h: 3.0, mat: 'curtainGlass', family: 'block', roof: 'shed',
+        shedTo: 'S', roofPitch: 0.3, roofTex: 'window', wall: 'window', windowTex: 'window',
+        door: 'S', doorTex: 'doorScreen', floor: 'concrete', foundation: false, trim: false,
+        windows: false, name: 'greenhouse', use: 'greenhouse', zone: 1 });
     // The hollow cottage: an ordinary house from the street. Its interior
     // (see Interiors._hollow) is walled almost a metre inside its exterior.
-    S({ x: 82, z: 96, w: 8, d: 7, h: 3.9, mat: 'plasterTownhouse', roof: 'gable', door: 'S', chimney: true, name: 'hollowCottage', use: 'hollow', zone: 1 });
+    S({ x: 76, z: 90, w: 8, d: 7, h: 3.9, mat: 'plasterTownhouse', roof: 'gable', ridge: 'z',
+        roofPitch: 0.44, roofCap: 3.4, door: 'W', chimney: true,
+        name: 'hollowCottage', use: 'hollow', zone: 1 });
 
     // --- Downtown (zone 2): blocks between streets x=-100,-50,0 / z=-70,-120,-170,-220
     const blocks = [
@@ -544,6 +684,34 @@ export class World {
     S({ x: -168, z: -170, w: 8, d: 6, h: 3.6, mat: 'plasterTownhouse', roof: 'gable', door: 'W', name: 'caretaker', zone: 5, solid: true });
 
     this._assignMaterials();
+    this._matchTwins();
+  }
+
+  /**
+   * Three houses on the Wend Loop's west kerb are the same house.
+   *
+   * Not the same style — the same house: identical footprint, identical
+   * pitch, identical paint down to the weathering, and (see Interiors._house)
+   * identical furniture in identical places, including the chair that fell
+   * over. They stand twenty metres apart on the same side of the same road,
+   * so you can only ever see two at once, which is why it takes a second pass
+   * to notice. `_assignMaterials` has already given them three different sets
+   * by then, so the copy has to happen after it — and it is safe, because the
+   * no-two-neighbours-alike rule only governs buildings within six metres of
+   * each other and these are not.
+   */
+  _matchTwins() {
+    const byName = new Map(this.buildingSpecs.map((s) => [s.name, s]));
+    for (const [name, twinOf] of this.eastgateTwins ?? []) {
+      const a = byName.get(name), b = byName.get(twinOf);
+      if (!a || !b) continue;
+      Object.assign(a, {
+        mat: b.mat, wall: b.wall, roofTex: b.roofTex, doorTex: b.doorTex,
+        windowTex: b.windowTex, foundationTex: b.foundationTex, trimTex: b.trimTex,
+        chimneyTex: b.chimneyTex, derelict: b.derelict, weather: b.weather,
+        variant: b.variant,
+      });
+    }
   }
 
   _constructBuildings() {
@@ -587,11 +755,19 @@ export class World {
     // Old town cross
     this._road([[-45, 0], [-20, 0], [20, 0], [45, 0]], 'roadLine', 7);
     this._road([[0, -45], [0, -20], [0, 20], [0, 45]], 'roadLine', 7);
+    // --- Eastgate. Two loops hung off one spine, with a back lane, a pair of
+    // connectors and a cul-de-sac threaded between them. Every lot in the
+    // district is on one of these; the layout of the houses follows from the
+    // layout of the streets and not the other way round.
     // Main St East: curves over the knoll
     this._road([[45, 0], [90, 3], [140, 7], [190, 2], [232, -5]], 'roadLine', 7);
-    // Eastgate loops
-    this._road([[100, 0], [100, -30], [100, -60], [135, -62], [168, -60], [168, -30], [168, 0]], 'road', 5.5);
-    this._road([[90, 5], [90, 45], [90, 80], [135, 82], [180, 80], [180, 40], [180, 8]], 'road', 5.5);
+    this._road([[100, 0], [100, -30], [100, -61], [135, -61], [168, -61], [168, -30], [168, 0]], 'road', 5.5); // Aldergate Loop
+    this._road([[90, 5], [90, 45], [90, 81], [135, 81], [180, 81], [180, 40], [180, 8]], 'road', 5.5);         // Wend Loop
+    this._road([[66, 2], [66, 40], [66, 96]], 'road', 5);            // Larkspur Lane
+    this._road([[204, -80], [204, -31], [204, 43], [204, 96]], 'road', 5);  // Sable Lane
+    this._road([[100, -31], [150, -31], [204, -31]], 'road', 4.6);   // Beckon Row (the back lane)
+    this._road([[180, 43], [204, 43]], 'road', 4.6);                 // Marrow Way
+    this._road([[136, 81], [136, 98]], 'road', 5);                   // Quarrow Close
     // North Ave into downtown
     this._road([[0, -45], [0, -80], [-2, -120], [-2, -180], [0, -232]], 'roadLine', 8);
     // Downtown grid (the z=-120 cross street runs east to serve the school)
@@ -627,7 +803,10 @@ export class World {
     this._patch(-50, -145, 10, 8, 'sidewalk', 'concrete', 8);
     this._patch(30, 190, 90, 45, 'gravel', 'dirt', 40);        // industrial yard
     this._patch(30, 122, 12, 9, 'concrete', 'concrete', 8);    // gas station apron (south)
-    this._patch(61, 12, 11, 6.5, 'concrete', 'concrete', 8);   // gas station apron (Eastgate)
+    this._patch(55, 12, 10, 6, 'concrete', 'concrete', 8);     // gas station apron (Eastgate)
+    this._patch(136, 100.5, 6.5, 4.5, 'road', 'road', 6);      // Quarrow Close turning head
+    this._patch(146, -5.5, 8, 2.4, 'sidewalk', 'concrete', 8); // community hall forecourt
+    this._patch(149, -65, 4, 2.6, 'gravel', 'dirt', 4);        // church path off the loop
     this._patch(27, -228, 12, 6, 'concrete', 'concrete', 8);   // gas station apron (downtown)
     this._patch(-42, -134, 4.5, 7.5, 'road', 'road', 6);       // midtown parking lot
     this._patch(-75, -212, 8, 5, 'road', 'road', 6);           // department-store lot
@@ -836,54 +1015,427 @@ export class World {
     this._zoneSpawns(0, 10, 26, 40);
   }
 
+  /**
+   * The frame every Eastgate lot is dressed in: the outward normal of a
+   * building's door side, the axis running along that facade, and how far the
+   * facade reaches each way. Everything from the garden path to the mailbox to
+   * the front fence is expressed in this frame, which is why none of them has
+   * to be checked by hand against the doorway — offsetting sideways by more
+   * than the door lane is provably clear of it.
+   */
+  _front(s) {
+    const n = DOOR_NORMAL[s.door] ?? [0, 1];
+    const out = n[0] ? s.w / 2 : s.d / 2;          // wall face to building centre
+    const half = n[0] ? s.d / 2 : s.w / 2;         // how far the facade runs
+    return {
+      nx: n[0], nz: n[1], tx: -n[1], tz: n[0], out, half,
+      // a point `f` metres in front of the door and `t` metres to its side
+      at: (f, t = 0) => [s.x + n[0] * (out + f) - n[1] * t, s.z + n[1] * (out + f) + n[0] * t],
+      yaw: Math.atan2(n[0], n[1]),
+    };
+  }
+
+  /** Is this segment clear of every building footprint? */
+  _lineClear(x1, z1, x2, z2, pad = 0.4) {
+    const n = Math.max(2, Math.ceil(Math.hypot(x2 - x1, z2 - z1) / 1.2));
+    for (let i = 0; i <= n; i++) {
+      const t = i / n;
+      const x = x1 + (x2 - x1) * t, z = z1 + (z2 - z1) * t;
+      for (const s of this.buildingSpecs) {
+        if (Math.abs(x - s.x) < s.w / 2 + pad && Math.abs(z - s.z) < s.d / 2 + pad) return false;
+      }
+    }
+    return true;
+  }
+
+  /** A boundary run — picket fence or clipped hedge — but only if it is clear. */
+  _boundary(kind, x1, z1, x2, z2) {
+    if (!this._lineClear(x1, z1, x2, z2)) return false;
+    if (kind === 'hedge') this.veg.hedge(this.group, x1, z1, x2, z2);
+    else this.props.picketFence(x1, z1, x2, z2, this.group);
+    return true;
+  }
+
+  /**
+   * Eastgate Residential.
+   *
+   * A district is not a set of buildings, it is what people left in the
+   * spaces between them, so this reads outward: the streets first, then each
+   * lot as a lot (path, gate, fence, planting, the north wall's ivy), then
+   * the back gardens, then the things the whole neighbourhood shared.
+   *
+   * Nothing here is scattered at random except the trees on the open knoll.
+   */
   _eastgate() {
+    this._eastgateStreets();
+    this._eastgateLots();
+    this._eastgateGardens();
+    this._eastgateCommon();
+    this._eastgateNature();
+    this._zoneSpawns(1, 20, 60, 190);
+    // The ones you do not see coming: behind the hedge line, in the lee of the
+    // garages, down the side of the hall, in the long grass of the empty lots.
+    this._concealedSpawns(1, [
+      [96, -14, 0, 1], [140, -33, -1, 0], [163, 4, 0, 1], [200, -14, 1, 0],
+      [96, 44, -1, 0], [128, 58, 0, 1], [160, 84, 0, -1], [210, 46, 1, 0],
+      [70, 66, -1, 0], [186, -60, 0, -1],
+    ]);
+  }
+
+  /** The public realm: kerbs, lighting, signage, services, and what has grown
+   *  up through all of it since the last time anybody swept a street. */
+  _eastgateStreets() {
     const P = this.props;
+    // Footways down both sides of Main St East, which is the one street in the
+    // district anybody would have walked the length of.
+    this._road([[52, -5.2], [90, -2.2], [140, 1.8], [190, -3.2], [228, -10]], 'sidewalk', 2.4, 'concrete');
+    this._road([[52, 5.2], [90, 8.2], [140, 12.2], [190, 7.2], [228, 0]], 'sidewalk', 2.4, 'concrete');
+    // Kerbside services. Hydrants sit at the junctions, where they were put.
+    for (const [x, z] of [[95, -6], [141, 12], [174, -4], [208, 8], [96, -37], [184, 76]]) {
+      this._prop(P.hydrant(), x, z);
+    }
+    for (const [x, z] of [[70, 7], [104, -6], [148, 12], [179, -6], [208, -37], [94, 76], [140, 87]]) {
+      this._prop(P.lamppost(), x, z);
+    }
+    for (const [x, z, c] of [
+      [95.5, -5.5, 0x6b7280], [172.5, -5.5, 0x7a3b30], [95.5, 10.5, 0x39586b],
+      [186, 10, 0x6b7280], [199, -37, 0x7a3b30], [131, 87, 0x39586b], [199, 37, 0x6b7280],
+    ]) this._prop(P.signPost(c), x, z);
+    this._prop(P.busStop(), 50, -7, { yaw: 0 });
+    // Wheelie bins put out on a collection day that never came.
+    for (const [x, z] of [[104, -35.5], [122, -35.5], [156, -35.5], [198, -35.5], [116, 76], [156, 76]]) {
+      this._prop(P.trashCan(), x, z, { nav: false });
+    }
+    // Overhead services follow Main St over the knoll and turn down Sable Lane.
+    this._poleLine([[62, -6], [88, -4], [116, -1], [146, 2], [176, 0], [200, -6]]);
+    this._poleLine([[208, -34], [208, -8], [208, 20], [208, 46]]);
+    for (const [x, z] of [[94, 24], [140, 58], [70, 84]]) this._prop(P.utilityPole(), x, z);
+    // The filling station at the district gate, where you come in from the plaza.
+    P.gasStation(55, 12, this.group);
+    // Cars left where they stopped. The two on Main St are the cover you use
+    // on the way in; the third has been on the verge long enough to be planted.
     const rng = mulberry32(11);
-    // Fenced yards between neighbouring houses on the main row
-    for (const [x1, z1, x2, z2] of [[64, -8, 64, -22], [104, -8, 104, -24], [130, -8, 130, -24], [82, 10, 82, 26], [132, 10, 132, 26]]) {
-      this.props.fenceRun(x1, z1, x2, z2, this.group);
+    for (const [x, z, yaw] of [[92, -7.5], [166, 12.5, 0.42], [131, -36.5, 1.55]]) {
+      this._prop(P.wreckedCar([0x5a3b34, 0x39465e, 0x4c5548][Math.floor(rng() * 3)]), x, z, { yaw: yaw ?? 0.1 });
     }
-    for (const [x, z, yaw] of [[80, -4, 0.1], [125, 4, -0.15], [160, -6, 0.5], [96, 60, 1.2]]) {
-      this._prop(P.wreckedCar([0x5a3b34, 0x39465e, 0x4c5548][Math.floor(rng() * 3)]), x, z, { yaw });
+    // Nature is taking the junctions back first: every intersection has a
+    // tree up through its pavement and a crown of weeds round the break.
+    for (const [x, z] of [[100.5, 4.5], [167, -66], [104.5, -66], [186, 47], [70.5, 84], [199, 92]]) {
+      this.veg.tree(this.group, x, z, 0.8 + (x % 3) * 0.14);
+      this._decal('rubble', x, z, 3.0, (x * 0.7) % 3);   // the slabs it broke on the way up
+      const ring = [];
+      for (let a = 0; a < Math.PI * 2; a += 0.55) {
+        ring.push([x + Math.cos(a) * (1.5 + (a % 0.4)), z + Math.sin(a) * (1.5 + (a % 0.4))]);
+      }
+      this.veg.weedField(this.group, ring);
     }
-    // wired pole line follows Main St over the knoll; spurs stay bare
-    this._poleLine([[60, -8], [85, -7], [110, -8], [135, -7], [160, 8]]);
-    for (const [x, z] of [[92, 34], [150, 60]]) this._prop(P.utilityPole(), x, z);
-    for (const [x, z] of [[75, -10], [98, 12], [138, -12], [118, 52]]) this._prop(P.mailbox(), x, z);
-    this._prop(P.busStop(), 55, 6, { yaw: Math.PI });
-    // the Eastgate filling station on Main St
-    P.gasStation(58, 12, this.group);
-    // street signs at the loop-road corners, hydrants along the mains
-    for (const [x, z, c] of [[97, -3, 0x6b7280], [165, -3, 0x7a3b30], [93, 42, 0x39586b], [177, 44, 0x6b7280]]) {
-      this._prop(P.signPost(c), x, z);
+  }
+
+  /**
+   * Every lot, dressed as a lot.
+   *
+   * Driven off the building specs themselves rather than a coordinate list, so
+   * a house that moves takes its path, gate, fence, planting and mailbox with
+   * it — and so none of them can drift into the doorway, because they are all
+   * placed in the door's own frame.
+   */
+  _eastgateLots() {
+    const P = this.props;
+    let i = 0;
+    for (const s of this.buildingSpecs) {
+      if (s.zone !== 1 || s.use !== 'house') continue;
+      const f = this._front(s);
+      const rng = mulberry32(Math.floor(s.x * 13 + s.z * 7) & 0x7fffffff);
+      // the path from the street to the door, and the gate in the front fence
+      const [px, pz] = f.at(1.9);
+      this._patch(px, pz, f.nx ? 2.0 : 1.0, f.nx ? 1.0 : 2.0, 'sidewalk', 'concrete', 3);
+      // front fence: two runs with a gate gap on the path. Set back beyond the
+      // door approach so it can never be the thing standing in your way in.
+      const fd = 3.9;
+      const [ax, az] = f.at(fd, -(f.half + 0.8));
+      const [bx, bz] = f.at(fd, -1.1);
+      const [cx, cz] = f.at(fd, 1.1);
+      const [dx, dz] = f.at(fd, f.half + 0.8);
+      const kind = i % 3 === 2 ? 'hedge' : 'picket';
+      this._boundary(kind, ax, az, bx, bz);
+      this._boundary(kind, cx, cz, dx, dz);
+      if (kind === 'picket') {
+        const gate = P.gardenGate();
+        const [gx, gz] = f.at(fd);
+        this.props.place(gate.group, gx, gz, { yaw: f.yaw + Math.PI / 2 });
+        this.group.add(gate.group);
+        this._animate(gate.pivot, 'swing', gx, gz, { axis: 'y', amp: 0.22, speed: 0.5 });
+      }
+      // planting: something in flower either side of the path, a shrub at the
+      // corner of the house, and long grass where the lawn stopped being one
+      this.veg.flowers(this.group, ...f.at(2.6, -1.9), 0.9 + rng() * 0.3);
+      this.veg.flowers(this.group, ...f.at(2.4, 2.0), 0.9 + rng() * 0.3);
+      this.veg.bush(this.group, ...f.at(0.9, f.half - 0.9), 0.85 + rng() * 0.4);
+      const lawn = [];
+      for (let k = 0; k < 14; k++) {
+        lawn.push(f.at(1.0 + rng() * 2.6, (rng() - 0.5) * 2 * (f.half + 0.6)));
+      }
+      this.veg.tuftField(this.group, lawn);
+      // the mailbox stands at the kerb end of the path, on the near side
+      this._prop(P.mailbox(), ...f.at(fd + 0.5, f.half * 0.55));
+      // Ivy on the north face. It is the wall that never dries out, so it is
+      // the wall that goes green first — and only where a door is not.
+      if (s.door !== 'N' && i % 2 === 0) {
+        for (let k = 0; k < 2; k++) {
+          this.veg.ivy(this.group, s.x - s.w / 4 + k * (s.w / 2), s.y + 0.2, s.z - s.d / 2 - 0.07,
+            Math.PI, 2.2, Math.min(3.6, s.h - 0.6));
+        }
+      }
+      i++;
     }
-    for (const [x, z] of [[72, -5], [118, -4], [152, 10]]) this._prop(P.hydrant(), x, z);
-    // Playground on the gravel lot between the loop roads. One of the swings
-    // keeps moving. There is no wind today.
+  }
+
+  /**
+   * The back gardens, and the ones facing the street that got used hardest.
+   *
+   * These are hand-placed because a back garden is a portrait of whoever kept
+   * it: the one with the trampoline is not the one with the vegetable beds.
+   * Everything with a moving part is registered here, and the moving parts are
+   * the point — a street where four separate things turn, swing and sway with
+   * nobody in it is much worse than a street where nothing does.
+   */
+  _eastgateGardens() {
+    const P = this.props;
+    const anim = (maker, x, z, opts, kind, aopts) => {
+      const g = this._prop(maker, x, z, opts);
+      if (g) this._animate(maker[kind === 'spin' ? 'rotor' : 'pivot'], kind, x, z, aopts);
+      return g;
+    };
+
+    // --- house01 / house13: the corner of Main St and the Aldergate loop
+    anim(P.weatherVane(2.1), 79.5, -6.5, {}, 'spin', { axis: 'y', speed: 0.19 });
+    this._prop(P.bbqGrill(), 83.5, -17.5);
+    this._prop(P.lawnMower(), 87.5, -16.5, { yaw: 0.9 });
+    // Washing lines carry no collider: you walk under a line, and a five-metre
+    // box laid across a garden on the wrong axis is worse than nothing.
+    const line1 = P.clothesLine(5);
+    this._prop(line1, 93, -14, { yaw: 1.55, collide: null });
+    for (const sheet of line1.sheets) this._animate(sheet, 'sway', 93, -14, { axis: 'z', amp: 0.16, speed: 0.9 });
+
+    // --- house02's drive: the hoop, the bike, and the ball nobody caught
+    this._prop(P.basketballHoop(), 119.5, -6.5, { yaw: Math.PI });
+    anim(P.bicycle(0x39586b), 103, -4, { yaw: 0.6 }, 'spin', { axis: 'z', speed: 0.55 });
+    this._prop(P.doghouse(), 105.5, -16.5, { yaw: 2.3 });
+
+    // --- the community hall's flank: bins, a tarped something, a dish above
+    this._prop(P.tarpPile(2.0, 1.1, 1.4), 157, -12, { yaw: 0.4 });
+    {
+      const dish = P.satelliteDish();
+      this.props.place(dish.group, 152, -8.4, { lift: 5.9 });
+      this.group.add(dish.group);
+      this._animate(dish.rotor, 'spin', 152, -8.4, { axis: 'y', speed: 0.035 });
+    }
+
+    // --- the three identical houses on the Wend Loop's west kerb.
+    // Identical gardens too, down to the pinwheel. That is the tell.
+    for (const gz of [30, 54, 76]) {
+      const pin = P.pinwheel();
+      this._prop(pin, 72.4, gz - 3.2);
+      this._animate(pin.rotor, 'spin', 72.4, gz - 3.2, { axis: 'z', speed: 1.15 });
+      this._prop(P.bbqGrill(), 70.8, gz + 3.2);
+    }
+
+    // --- house23 / house24, inside the Wend loop: the family gardens
+    this._prop(P.sandbox(), 112.5, 24, { yaw: 0.3 });
+    const pool = P.paddlingPool();
+    this._prop(pool, 110.5, 38.5);
+    // The water in it has not been touched in a year and will not hold still.
+    this.uvDrifts.push({ mat: pool.water.material, u: 0.004, v: -0.006 });
+    anim(P.sprinkler(), 99, 44, {}, 'spin', { axis: 'y', speed: 0.42 });
+    this._prop(P.wheelbarrow(), 98, 60, { yaw: 1.2 });
+    const line2 = P.clothesLine(4.5);
+    this._prop(line2, 110, 60, { yaw: 0.1, collide: null });
+    for (const sheet of line2.sheets) this._animate(sheet, 'sway', 110, 60, { axis: 'z', amp: 0.19, speed: 1.15 });
+
+    // --- the nursery's beds, still in flower against every reasonable odds
+    for (const [x, z] of [[117, 43], [127, 43], [117, 49.5], [127, 49.5]]) {
+      this.veg.flowers(this.group, x, z, 1.15);
+    }
+    this._prop(P.wheelbarrow(), 128, 47, { yaw: 2.4 });
+
+    // --- Quarrow Close: the cul-de-sac children. The swing keeps its arc.
+    {
+      this.veg.tree(this.group, 131.5, 100.5, 1.5);
+      const swing = P.tireSwing(2.9);
+      this.props.place(swing.group, 131.9, 101.4, { yaw: 0.3 });
+      this.group.add(swing.group);
+      this._animate(swing.pivot, 'swing', 131.9, 101.4, { axis: 'x', amp: 0.3, speed: 0.86 });
+      this._decal('chalkHopscotch', 137.5, 96, 4.0, 0.05);
+    }
+    this._prop(P.sandbox(), 141, 100, { yaw: 1.1 });
+
+    // --- Sable Lane, the far east: room for the things nobody else had room for
+    anim(P.weatherVane(2.3), 212, -49, {}, 'spin', { axis: 'y', speed: 0.13 });
+    this._prop(P.tarpPile(2.4, 1.2, 1.7), 226.5, -49, { yaw: 1.1 });
+    this._prop(P.doghouse(), 212, 74, { yaw: 0.7 });
+    anim(P.bicycle(0x6b3a32), 199, 91, { yaw: 2.1 }, 'spin', { axis: 'z', speed: 0.34 });
+
+    // --- porch swings, on the two porches deep enough to take one
+    for (const [name, ox, oz] of [['house09', 112.4, -38.7], ['house27', 114, 73.3]]) {
+      if (!this.built.get(name)) continue;
+      const sw = P.porchSwing();
+      this.props.place(sw.group, ox, oz, { lift: 0.36 });
+      this.group.add(sw.group);
+      this._animate(sw.pivot, 'swing', ox, oz, { axis: 'x', amp: 0.16, speed: 0.62 });
+    }
+
+    // --- the birdhouse, the treehouse and the gnome all live in _eastgateCommon
+  }
+
+  /** What the neighbourhood shared: the playground, the churchyard, the empty
+   *  lots, and the two things in the district you can put your hands on. */
+  _eastgateCommon() {
+    const P = this.props;
+    // Playground on the gravel lot inside the loops. One of the swings keeps
+    // moving. There is no wind today.
     const swings = P.swingSet();
     this._prop(swings, 132, 31, { yaw: 0.12 });
     this.playgroundSwings = swings.swings;
     this._prop(P.slide(), 138, 35, { yaw: -0.4 });
     this._prop(P.bench(), 127, 36, { yaw: 0.9 });
     this._prop(P.bench(), 139, 29, { yaw: -2.1 });
-    // mailboxes for the new back rows
-    for (const [x, z] of [[212, 24], [192, 86], [66, 46]]) this._prop(P.mailbox(), x, z);
-    // Church graveyard
-    for (let i = 0; i < 8; i++) {
-      const gx = 138 + (i % 4) * 3.2, gz = -84 - Math.floor(i / 4) * 3;
-      const stone = P.box(0.7, 1.0, 0.18, 'brickGray');
-      const g = new THREE.Group(); g.add(stone); stone.position.y = 0.5;
-      this._prop({ group: g }, gx, gz);
+    this._prop(P.trashCan(), 128, 29);
+    this.veg.tree(this.group, 142, 30, 1.1);
+    this.veg.tree(this.group, 126, 39, 0.95);
+
+    // The ice-cream van, parked at the playground with its battery still good.
+    // Setting the chimes off is a tool, not a joke: everything in earshot goes
+    // to the van instead of to you.
+    const van = P.van(0xcfd2c4);
+    this._prop(van, 145, 24, { yaw: 1.6 });
+    const horn = P.box(0.5, 0.34, 0.34, 'metalRust');
+    horn.position.set(145, this.terrain.heightAt(145, 24) + 2.5, 24);
+    this.group.add(horn);
+    const vanPos = { x: 145, y: this.terrain.heightAt(145, 24) + 1.4, z: 24 };
+    this.addInteractable({
+      x: 143.6, z: 24, y: vanPos.y, radius: 2.6,
+      prompt: 'Start the chimes [E]',
+      onInteract: () => {
+        this.events.emit('noise', { pos: vanPos, radius: 95 });
+        this.events.emit('car:alarm', { pos: vanPos });
+        this.events.emit('subtitle', { text: 'Eight notes, and then the same eight notes. The street starts moving.' });
+      },
+    });
+
+    // Churchyard: a low wall, the stones inside it, and the yews that were
+    // planted the year the church was.
+    const cs = this.built.get('church')?.spec;
+    if (cs) {
+      for (let i = 0; i < 12; i++) {
+        const gx = 157 + (i % 4) * 2.4, gz = -72 - Math.floor(i / 4) * 3.4;
+        const stone = P.box(0.7, 0.95 + (i % 3) * 0.12, 0.18, 'brickGray');
+        const g = new THREE.Group(); g.add(stone); stone.position.y = 0.5;
+        this._prop({ group: g }, gx, gz, { yaw: ((i * 7) % 5 - 2) * 0.06 });
+      }
+      this._boundary('hedge', 155.2, -68, 155.2, -84);
+      this._boundary('hedge', 155.2, -84, 166, -84);
+      this.veg.tree(this.group, 141, -66.5, 1.25);
+      this.veg.tree(this.group, 157, -66.5, 1.25);
+      this._prop(P.bench(), 154, -66.4, { yaw: Math.PI });
+      this._prop(P.noticeBoard(), 145.5, -66.4, { yaw: 0.1 });
+      this.addInteractable({
+        x: 145.5, z: -66.4, y: this.terrain.heightAt(145.5, -66.4), radius: 2.2,
+        prompt: 'Read the board [E]',
+        onInteract: () => this.events.emit('subtitle', {
+          text: 'PARISH ROLL — every name on it is in the same handwriting, and the last one is yours.',
+        }),
+      });
     }
-    // Trees + bushes over the knoll
-    for (let i = 0; i < 38; i++) {
+
+    // The birdhouse at the bottom of a back garden. Whatever is in it is not
+    // a bird. (Off the Green: that ground stays clear, see EASTGATE_GREEN.)
+    this._prop(P.birdhouse(), 170, 60);
+    this.addInteractable({
+      x: 170, z: 60, y: this.terrain.heightAt(170, 60), radius: 1.9,
+      prompt: 'Listen at the birdhouse [E]',
+      onInteract: () => {
+        this.events.emit('anomaly:sound', { kind: 'knock', pos: { x: 170, y: 2, z: 60 } });
+        this.events.emit('whisper', { intensity: 0.6 });
+        this.events.emit('subtitle', { text: 'Something inside stops moving until you do.' });
+      },
+    });
+
+    // A wind chime under the corner shop's awning, and a reason to touch it.
+    const chime = P.windChime();
+    this.props.place(chime.group, 106.4, 12.3, { lift: 1.9 });
+    this.group.add(chime.group);
+    this._animate(chime.pivot, 'swing', 106.4, 12.3, { axis: 'x', amp: 0.13, speed: 1.35 });
+    this.addInteractable({
+      x: 106.4, z: 12.3, y: this.terrain.heightAt(106.4, 12.3), radius: 2.0,
+      prompt: 'Still the chimes [E]',
+      onInteract: () => {
+        this.events.emit('anomaly:sound', { kind: 'chime', pos: { x: 106.4, y: 2.2, z: 12.3 } });
+        this.events.emit('subtitle', { text: 'You hold them until they are quiet. They start again in your hand.' });
+        this.events.emit('whisper', { intensity: 0.55 });
+      },
+    });
+
+    // Give the playground swing a push, the way the carousel takes one.
+    this.addInteractable({
+      x: 132, z: 33.6, y: this.terrain.heightAt(132, 33.6), radius: 2.4,
+      prompt: 'Push the swing [E]',
+      onInteract: () => this.events.emit('subtitle', {
+        text: 'It goes higher, and comes back exactly as fast as it left.',
+      }),
+    });
+  }
+
+  /**
+   * Planting across the whole district: the boundary hedges between the back
+   * gardens, the derelict lots gone to seed, and the knoll's own trees.
+   *
+   * The rule is that nothing here is a wilderness zone — the greenery runs
+   * through the streets rather than beside them, so every one of these lines
+   * either marks a property or fills a plot that has been empty long enough
+   * to stop being one.
+   */
+  _eastgateNature() {
+    const rng = mulberry32(11);
+    // back-garden boundaries: the lines between the paired rows
+    for (const [x1, z1, x2, z2, kind] of [
+      [95, -18, 95, -8, 'hedge'], [124, -18, 124, -6, 'picket'],
+      [163, -19, 163, -8, 'hedge'], [200, -18, 200, -8, 'picket'],
+      [111, 24, 111, 36, 'hedge'], [111, 48, 111, 60, 'picket'],
+      [70.5, 24, 70.5, 36, 'picket'], [70.5, 48, 70.5, 60, 'hedge'],
+      [122, 62, 122, 74, 'hedge'], [162, 62, 162, 74, 'picket'],
+      [116, 88, 116, 99, 'picket'], [158, 88, 158, 99, 'hedge'],
+      [204, -66, 212, -66, 'hedge'], [204, 58, 212, 58, 'picket'],
+    ]) this._boundary(kind, x1, z1, x2, z2);
+
+    // The lots that never got built on, and the one whose house came down.
+    // Dense weed, not lawn: this is what an abandoned plot in a lived-in
+    // street actually looks like, and it is the best cover on the block.
+    for (const [cx, cz, hx, hz] of [[140, -20.5, 7, 5], [66, 62, 7, 8], [206, 12, 6, 9], [148, 46, 8, 7]]) {
+      const pts = [];
+      for (let k = 0; k < 46; k++) {
+        const x = cx + (rng() - 0.5) * 2 * hx, z = cz + (rng() - 0.5) * 2 * hz;
+        if (this._nearBuilding(x, z, 1.5) || this.surfaceAt(x, z) !== 'grass') continue;
+        pts.push([x, z]);
+      }
+      if (pts.length) this.veg.weedField(this.group, pts);
+      this.veg.bush(this.group, cx + hx * 0.6, cz - hz * 0.5, 1.15);
+      this.veg.bush(this.group, cx - hx * 0.5, cz + hz * 0.6, 0.95);
+    }
+
+    // Trees over the open knoll, thinning where the streets are — but never
+    // on the GREEN. Every neighbourhood keeps one piece of ground nobody built
+    // on and nobody planted, and Eastgate's is the field inside the Wend Loop:
+    // forty metres of open grass with clear sight lines the whole way across,
+    // which makes it the one place in the district you can fight at range and
+    // the one place a horde can see you coming from as far as you can see it.
+    for (let i = 0; i < 34; i++) {
       const x = 55 + rng() * 175, z = -100 + rng() * 200;
       if (this._nearBuilding(x, z, 6) || this.surfaceAt(x, z) !== 'grass') continue;
-      if (rng() < 0.65) this.veg.tree(this.group, x, z, 0.8 + rng() * 0.5);
+      if (Math.hypot(x - EASTGATE_GREEN.x, z - EASTGATE_GREEN.z) < EASTGATE_GREEN.r) continue;
+      if (rng() < 0.62) this.veg.tree(this.group, x, z, 0.8 + rng() * 0.5);
       else this.veg.bush(this.group, x, z, 0.8 + rng() * 0.5);
     }
     this._sprinkleTufts(140, 0, 95, 100, 70);
-    this._zoneSpawns(1, 20, 60, 190, 0, 0);
   }
 
   _downtown() {
@@ -1380,8 +1932,8 @@ export class World {
     this._prop(plazaCar, 20, 6.5, { yaw: 0.05 });
     this._registerAlarmCar(plazaCar, 20, 6.5);
     const stationCar = P.parkedCar(0x39465e);
-    this._prop(stationCar, 53, 17, { yaw: 0.2 });
-    this._registerAlarmCar(stationCar, 53, 17);
+    this._prop(stationCar, 48, 16, { yaw: 0.2 });
+    this._registerAlarmCar(stationCar, 48, 16);
 
     // the phone booth outside the library (Anomalies gives it its voice)
     const booth = P.phoneBooth();

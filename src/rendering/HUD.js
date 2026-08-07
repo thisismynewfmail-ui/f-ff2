@@ -4,13 +4,18 @@ import { hudTextures } from './HudTextures.js';
 import { TitleMenu } from './TitleMenu.js';
 import { SettingsPanel } from './SettingsPanel.js';
 
+/** How long a posted notice holds on screen, and how fast it teletypes in. */
+const NOTICE_TIME = 10;
+const NOTICE_CPS = 46;
+
 /**
  * Retro survival-horror HUD, rendered as a DOM overlay.
  *
  * Everything lives in a bottom INSTRUMENT DOCK: the main CONSOLE BAR flanked
  * by two SIDE HUDs (WAVE on the left, CONFIRMED KILLS on the right), kept
  * separate by the dock's gaps and scaled together to fit any window width
- * (see _layoutDock). No readouts sit at the top of the screen.
+ * (see _layoutDock). The one readout above the dock is the NOTICE panel in
+ * the top-right corner, deliberately out of the sight line.
  *
  * The centrepiece is the CONSOLE BAR, modelled on the reference Fallout-style
  * interface (see the provided images) but housed like the side devices: a
@@ -44,7 +49,8 @@ import { SettingsPanel } from './SettingsPanel.js';
  * is the CONFIRMED KILLS tally (mechanical odometer, needle + teal bar =
  * progress toward 250,000, red bar = progress through the current 1,000,
  * blue bar = accuracy, lamps = kill blip / 1k-milestone / power). Free-
- * floating over the scene: the fly-in ARMORY names, subtitles, damage
+ * floating over the scene: the fly-in ARMORY names, the top-right NOTICE
+ * readout (an instrument in its own right — see _buildNotice), damage
  * vignette, scope overlay and the menu/pause/death/victory screens. Run
  * stats stay on the pause screen as circular gauges (never on the HUD).
  *
@@ -59,7 +65,9 @@ export class HUD {
     this.events = events;
     this.root = root;
     this.actions = actions;
-    this._subtitleTimer = 0;
+    this._noticeTimer = 0;
+    this._noticeText = '';
+    this._noticeTyped = 0;
     this._vignette = 0;
     this._heal = 0;
     this._alarm = 0;        // red lamp glow (fades after damage)
@@ -114,7 +122,7 @@ export class HUD {
     this.menuSlots = this._el('div', null, this.weaponMenu, 'wm-slots');
     this.slotEls = [];
 
-    this.subtitleEl = this._el('div', 'subtitle');
+    this._buildNotice();
     this.promptEl = this._el('div', 'prompt');
     this.bannerEl = this._el('div', 'banner');
 
@@ -595,7 +603,7 @@ export class HUD {
     });
 
     const on = this.events.on.bind(this.events);
-    on('subtitle', ({ text }) => { this.subtitle(text); this.logMsg(text); });
+    on('subtitle', ({ text }) => { this.notify(text); this.logMsg(text); });
     on('player:damage', ({ amount }) => {
       this._vignette = Math.min(1, this._vignette + amount / 40 + 0.25);
       this._alarm = 1;
@@ -608,7 +616,7 @@ export class HUD {
       this.logMsg(`SECRET (${count}/${total}) — ${label}.`, 'gold');
     });
     on('zone:unlock', ({ zone }) => {
-      this.subtitle(`The way into ${zone.name} is clear.`);
+      this.notify(`The way into ${zone.name} is clear.`);
       this.logMsg(`The way into ${zone.name} is clear.`, 'gold');
     });
     on('wave:start', ({ wave }) => { this.banner('WAVE ' + wave); this.logMsg(`Wave ${wave}. They are coming.`, 'warn'); });
@@ -808,9 +816,53 @@ export class HUD {
     ctx.restore();
   }
 
-  subtitle(text) {
-    this.subtitleEl.textContent = text;
-    this._subtitleTimer = 4.5;
+  /**
+   * The incoming-transmission readout, top right.
+   *
+   * Built out of the console bar's own parts — gunmetal chassis, corner
+   * screws, stencil header, green CRT inset — so a message arriving reads as
+   * a device on the rig doing something rather than as a caption laid over
+   * the game. The CRT texture and the chassis wear come from the same bake
+   * every other panel uses, which is what keeps them the same object.
+   */
+  _buildNotice() {
+    const el = this._el('div', 'notice');
+    el.style.backgroundImage = `url(${this._tex.device})`;
+    for (const c of ['tl', 'tr', 'bl', 'br']) this._el('div', null, el, 'screw ' + c);
+
+    const head = this._el('div', null, el, 'notice-head');
+    this._el('span', null, head, 'notice-lamp');
+    this._el('span', null, head, 'notice-title').textContent = 'TRANSMISSION';
+    this._el('span', null, head, 'notice-carrier').textContent = '▬▬▬';
+
+    const crt = this._el('div', null, el, 'notice-crt');
+    crt.style.backgroundImage = `url(${this._tex.inset})`;
+    const line = this._el('div', null, crt, 'notice-line');
+    this._el('span', null, line, 'notice-bullet').textContent = '▪';
+    this.noticeBody = this._el('span', null, line, 'notice-body');
+    this._el('span', null, line, 'notice-cursor').textContent = '█';
+
+    this.noticeBar = this._el('i', null, this._el('div', null, el, 'notice-timer'));
+    this.noticeEl = el;
+  }
+
+  /**
+   * Post a message. It holds for NOTICE_TIME seconds, and it does not simply
+   * appear: the tube strikes, the text teletypes in under a blinking block
+   * cursor, the carrier dots run, and the depletion bar drains for as long as
+   * the message has left. A second message replaces the first and restrikes —
+   * this is one readout, not a stack.
+   */
+  notify(text) {
+    this._noticeText = text;
+    this._noticeTimer = NOTICE_TIME;
+    this._noticeTyped = 0;
+    this.noticeBody.textContent = '';
+    this.noticeBar.style.width = '100%';
+    const el = this.noticeEl;
+    el.classList.remove('on', 'off', 'typed', 'expiring');
+    void el.offsetWidth;                 // restart the strike animation
+    el.classList.add('on');
   }
 
   banner(text) {
@@ -1066,12 +1118,21 @@ export class HUD {
       this.promptEl.style.display = 'none';
     }
 
-    // --- subtitle fade ---
-    if (this._subtitleTimer > 0) {
-      this._subtitleTimer -= dt;
-      this.subtitleEl.style.opacity = Math.min(1, this._subtitleTimer / 0.6);
-    } else {
-      this.subtitleEl.style.opacity = 0;
+    // --- notice: teletype in, drain, sign off ---
+    if (this._noticeTimer > 0) {
+      this._noticeTimer -= dt;
+      const full = this._noticeText;
+      if (this._noticeTyped < full.length) {
+        this._noticeTyped = Math.min(full.length, this._noticeTyped + dt * NOTICE_CPS);
+        this.noticeBody.textContent = full.slice(0, Math.floor(this._noticeTyped));
+        if (this._noticeTyped >= full.length) this.noticeEl.classList.add('typed');
+      }
+      this.noticeBar.style.width = `${Math.max(0, this._noticeTimer / NOTICE_TIME) * 100}%`;
+      this.noticeEl.classList.toggle('expiring', this._noticeTimer < NOTICE_TIME * 0.25);
+      if (this._noticeTimer <= 0) {      // the tube collapses to a line and dies
+        this.noticeEl.classList.remove('on');
+        this.noticeEl.classList.add('off');
+      }
     }
 
     // --- damage vignette + heal flash ---

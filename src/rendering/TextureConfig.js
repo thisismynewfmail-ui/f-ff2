@@ -56,6 +56,12 @@ export const TEXTURES = {
   curtainWall: 'wall_curtain.png',
   cinderblock: 'wall_cinderblock.png',
   timberFrame: 'wall_timber_frame.png',
+  // walls, residential family (Eastgate): painted clapboard, split cedar
+  // shakes and dark clinker brick — the materials a street of houses is made
+  // of, kept out of the commercial sets so the districts never read alike.
+  sidingYellow: 'wall_siding_yellow.png',
+  shakeCedar: 'wall_shake_cedar.png',
+  brickClinker: 'wall_brick_clinker.png',
   // weathered twins: the same material after years of rain. Buildings swap to
   // these as the maintenance gradient falls off toward the map rim.
   brickRedMoss: 'wall_brick_red_moss.png',
@@ -64,15 +70,19 @@ export const TEXTURES = {
   concreteStained: 'wall_concrete_stained.png',
   wallWoodRot: 'wall_wood_rot.png',
   cinderblockMoss: 'wall_cinderblock_moss.png',
+  shakeMoss: 'wall_shake_moss.png',
   // foundations (half-height tiles: the footing under every building)
   foundStone: 'foundation_stone.png',
   foundConcrete: 'foundation_concrete.png',
   foundBrick: 'foundation_brick.png',
+  foundBlock: 'foundation_block.png',
+  foundLattice: 'foundation_lattice.png',
   // trim bands (belt courses, cornices, shopfront sills)
   trimWoodWhite: 'trim_wood_white.png',
   trimStone: 'trim_stone.png',
   trimMetal: 'trim_metal.png',
   trimTileGreen: 'trim_tile_green.png',
+  trimWoodGreen: 'trim_wood_green.png',
   // openings
   doorWood: 'door_wood.png',
   doorMetal: 'door_metal.png',
@@ -82,6 +92,8 @@ export const TEXTURES = {
   doorApartment: 'door_apartment.png',
   doorGarage: 'door_garage.png',
   doorGlassDouble: 'door_double_glass.png',
+  doorRed: 'door_red.png',
+  doorScreen: 'door_screen.png',
   window: 'window.png',
   windowBroken: 'window_broken.png',
   windowBoarded: 'window_boarded.png',
@@ -90,6 +102,7 @@ export const TEXTURES = {
   windowOffice: 'window_office.png',
   windowLit: 'window_lit.png',
   windowArched: 'window_arched.png',
+  windowShutters: 'window_shutters.png',
   awning: 'awning.png',
   // roofs / floors
   roofShingle: 'roof_shingle.png',
@@ -101,6 +114,8 @@ export const TEXTURES = {
   roofShingleMoss: 'roof_shingle_moss.png',
   roofMetalRust: 'roof_metal_rust.png',
   roofMembrane: 'roof_membrane.png',
+  roofShingleBrown: 'roof_shingle_brown.png',
+  roofShakeWood: 'roof_shake_wood.png',
   floorWood: 'floor_wood.png',
   floorTile: 'floor_tile.png',
   carpetRed: 'carpet_red.png',
@@ -114,6 +129,12 @@ export const TEXTURES = {
   bush: 'bush.png',
   grassTuft: 'grass_tuft.png',
   vine: 'vine.png',
+  // residential planting: clipped boundary hedges, garden flowers, the dry
+  // weeds that come up through a pavement crack, and wall ivy
+  hedge: 'hedge.png',
+  flowers: 'flowers.png',
+  weeds: 'weeds.png',
+  ivy: 'ivy.png',
   // props
   crate: 'crate.png',
   metalRust: 'metal_rust.png',
@@ -132,6 +153,9 @@ export const TEXTURES = {
   signShop: 'sign_shop.png',
   fabricCouch: 'fabric_couch.png',
   rampart: 'wall_rampart.png',
+  picketFence: 'fence_picket.png',
+  tarpBlue: 'tarp_blue.png',
+  chalkHopscotch: 'chalk_hopscotch.png',
   // effects
   muzzleFlash: 'muzzle_flash.png', // used by the 3D weapon muzzle flash
   blood: 'blood.png',

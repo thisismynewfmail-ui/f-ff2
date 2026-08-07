@@ -1,13 +1,15 @@
 import * as THREE from '../../lib/three.module.js';
 
 /**
- * Ten hand-placed secrets. Discovery methods vary by design:
+ * Fourteen hand-placed secrets. Discovery methods vary by design:
  *  - shootable  (#1 cracked wall, #3 chapel bell)
- *  - interact   (#2 library bookshelf, #4 key + locked basement)
+ *  - interact   (#2 library bookshelf, #4 key + locked basement,
+ *                #11 the treehouse, #12 the shelter under the shed)
  *  - kill count (#5 the alley remembers, at exactly 666 kills)
  *  - stand/wait (#7 the odd manhole)
- *  - proximity  (#6 ceiling chair, #8 campsite, #9 wrong shadow)
- *  - gaze       (#10 the mannequin that watches back)
+ *  - proximity  (#6 ceiling chair, #8 campsite, #9 wrong shadow,
+ *                #13 the three houses that are one house)
+ *  - gaze       (#10 the mannequin that watches back, #14 the gnome)
  *
  * Atmospheric ones only whisper; loot ones emit 'loot:spawn' events.
  * All emit 'secret:found' exactly once.
@@ -17,7 +19,7 @@ export class Secrets {
     this.world = world;
     this.events = world.events;
     this.found = new Set();
-    this.total = 10;
+    this.total = 14;
     this.game = null;
     this.hasBasementKey = false;
     this._manholeTimer = 0;
@@ -35,6 +37,10 @@ export class Secrets {
     this._campsite();
     this._wrongShadow();
     this._mannequin();
+    this._treehouse();
+    this._shelter();
+    this._sameHouse();
+    this._gnome();
   }
 
   attach(game) { this.game = game; }
@@ -209,7 +215,7 @@ export class Secrets {
         this.events.emit('subtitle', { text: 'A rusty key. Something in Eastgate is still locked.' });
       }
     });
-    const house = [...w.built.values()].find((b) => b.spec.name === 'house6');
+    const house = w.built.get('house13');
     const hs = house.spec;
     // The hatch sits in the yard behind the boarded-up house; the room lies
     // beneath the foundations.
@@ -299,6 +305,104 @@ export class Secrets {
     w.group.add(this.mannequin);
   }
 
+  /* ---------------- Eastgate ---------------- */
+
+  // #11 The treehouse in the back garden off Quarrow Close. Somebody's whole
+  // world, three metres up, and the only thing in it that is not a toy is a
+  // cache. The climb is the puzzle: you cannot see the deck from the street.
+  _treehouse() {
+    const w = this.world;
+    const x = 178, z = 92;
+    w.veg.tree(w.group, x - 0.2, z + 0.4, 1.7);
+    const th = w.props.treehouse(3.2);
+    w.props.place(th.group, x, z);
+    w.group.add(th.group);
+    const y = w.terrain.heightAt(x, z);
+    const d = th.deck;
+    w.terrain.addPlatform(x - d.hx, x + d.hx, z - d.hz, z + d.hz, y + d.y);
+    w.collision.addBox(x - d.hx, y + d.y - 0.12, z - d.hz, x + d.hx, y + d.y, z + d.hz, 'wall');
+    this._treehousePos = { x, y: y + d.y, z };
+    w.addInteractable({
+      x, z: z + th.ladder.z, y, radius: 2.0,
+      prompt: () => (this.found.has('treehouse') ? 'Climb down [E]' : 'Climb the ladder [E]'),
+      onInteract: () => {
+        const p = this.game?.player;
+        if (!p) return;
+        if (p.position.y > y + d.y - 1) { this._teleport(x, z + th.ladder.z + 1.4, y); return; }
+        this._teleport(x, z, y + d.y + 0.1);
+        if (this.discover('treehouse', 'Nobody built this for you')) {
+          this._loot(x, y + d.y + 0.4, z, [['ammo_shotgun', 24, 0.5, 0.4], ['ammo_rifle', 60, -0.5, 0.2], ['health', 25, 0, -0.5]]);
+          this.events.emit('subtitle', { text: 'Crayon on the planks: a map of the street, and one house scribbled out.' });
+        }
+      },
+    });
+  }
+
+  // #12 The fallout shelter under the garden shed. A hatch in the floor,
+  // stocked the way somebody stocks a thing they expect to need, and dated.
+  _shelter() {
+    const w = this.world;
+    const shed = w.built.get('shed03');
+    if (!shed) return;
+    const s = shed.spec;
+    const hatch = { x: s.x + 2.6, z: s.z + 0.4 };
+    const room = this._undergroundRoom(s.x + 2.6, s.z - 4.4, s.y - 6, 3.2, hatch, 'shelter');
+    const lid = w.kit.box(1.4, 0.18, 1.4, 'doorMetal');
+    lid.position.set(hatch.x, w.terrain.heightAt(hatch.x, hatch.z) + 0.1, hatch.z);
+    lid.rotation.y = 0.2;
+    w.group.add(lid);
+    w.addInteractable({
+      x: hatch.x, z: hatch.z, y: s.y, radius: 1.8,
+      prompt: 'Lift the hatch [E]',
+      onInteract: () => {
+        if (this.discover('shelter', 'They were expecting something')) {
+          this._loot(room.x, room.y + 0.5, room.z, [
+            ['health', 25, -1, -0.6], ['health', 25, 0, -1.2], ['ammo_shotgun', 24, 1, 0],
+            ['ammo_rifle', 90, -1, 0.9], ['ammo_sniper', 10, 1, 1.0],
+          ]);
+          this.events.emit('subtitle', { text: 'Tinned food, water, a wall calendar. Every day of next month is already crossed off.' });
+          this.events.emit('whisper', { intensity: 0.7 });
+        }
+        this._teleport(room.x - 1.2, room.z, room.y);
+      },
+    });
+  }
+
+  // #13 Three houses on the Wend Loop's west kerb are the same house — same
+  // paint, same plan, same fallen chair, same pinwheel in the same place in
+  // the garden. You can only ever see two of them at once. Stand in the third.
+  _sameHouse() {
+    const w = this.world;
+    this._twinRooms = ['house20', 'house21', 'house22']
+      .map((n) => w.built.get(n)?.spec)
+      .filter(Boolean)
+      .map((s) => ({ x: s.x, y: s.y, z: s.z }));
+    this._twinsSeen = new Set();
+  }
+
+  // #14 A garden gnome. It is never in the garden you left it in.
+  _gnome() {
+    const w = this.world;
+    this._gnomeSpots = [[71.5, 27], [116, 96], [121, -8], [151.5, -66], [186, 74]]
+      .filter(([x, z]) => !w._nearBuilding(x, z, 0.9));
+    if (!this._gnomeSpots.length) return;
+    const g = w.props.gardenGnome();
+    w.props.place(g.group, this._gnomeSpots[0][0], this._gnomeSpots[0][1], { yaw: 0.4 });
+    w.group.add(g.group);
+    this._gnomeNode = g.group;
+    this._gnomeAt = 0;
+    this._gnomeSeen = new Set([0]);
+  }
+
+  /** Is a world point behind the player, or far enough away not to be watched? */
+  _unobserved(p, x, z) {
+    const dx = x - p.position.x, dz = z - p.position.z;
+    const dist = Math.hypot(dx, dz);
+    if (dist > 55) return true;
+    const look = p.lookDirection();
+    return (look.x * dx + look.z * dz) / (dist || 1) < 0.1;
+  }
+
   /* ---------------- per-frame ---------------- */
 
   update(dt) {
@@ -352,6 +456,56 @@ export class Secrets {
         Math.abs(p.position.y - this._chairPos.y) < 2.5) {
       this.events.emit('whisper', { intensity: 0.8 });
       this.discover('ceilingChair', 'Nothing is wrong with this room');
+    }
+
+    // #13 the three houses that are one house — stand inside all three
+    if (this._twinRooms && !this.found.has('sameHouse')) {
+      for (let i = 0; i < this._twinRooms.length; i++) {
+        const r = this._twinRooms[i];
+        if (Math.hypot(px - r.x, pz - r.z) < 3.2 && Math.abs(p.position.y - r.y) < 2.5) {
+          if (!this._twinsSeen.has(i)) {
+            this._twinsSeen.add(i);
+            if (this._twinsSeen.size === 2) {
+              this.events.emit('subtitle', { text: 'You have stood in this room before. Twenty metres north of here.' });
+            }
+          }
+        }
+      }
+      if (this._twinsSeen.size >= this._twinRooms.length) {
+        this.events.emit('whisper', { intensity: 1 });
+        this.events.emit('subtitle', { text: 'Three front doors. One house. The chair fell over the same way in all of them.' });
+        this.discover('sameHouse', 'Three doors, one room');
+      }
+    }
+
+    // #14 the gnome moves gardens, but only while nobody is looking at it
+    if (this._gnomeNode && this._gnomeSpots) {
+      const [gx, gz] = this._gnomeSpots[this._gnomeAt];
+      const near = Math.hypot(px - gx, pz - gz);
+      if (near < 26) this._gnomeSeen.add(this._gnomeAt);
+      if (near > 34 && this._unobserved(p, gx, gz)) {
+        // pick the garden furthest from where you are now: it is always the
+        // one you have just walked away from that it turns up in front of
+        let best = this._gnomeAt, bestD = -1;
+        for (let i = 0; i < this._gnomeSpots.length; i++) {
+          if (i === this._gnomeAt) continue;
+          const d = Math.hypot(px - this._gnomeSpots[i][0], pz - this._gnomeSpots[i][1]);
+          if (d > bestD && d < 150) { bestD = d; best = i; }
+        }
+        if (best !== this._gnomeAt) {
+          this._gnomeAt = best;
+          const [nx, nz] = this._gnomeSpots[best];
+          this._gnomeNode.position.set(nx, this.world.terrain.heightAt(nx, nz), nz);
+          this._gnomeNode.rotation.y = Math.atan2(px - nx, pz - nz);   // and it is facing you
+        }
+      }
+      if (!this.found.has('gnome') && this._gnomeSeen.size >= this._gnomeSpots.length) {
+        this.events.emit('whisper', { intensity: 0.85 });
+        this.events.emit('subtitle', { text: 'Every garden in Eastgate. The same gnome. It has been turning to watch you go.' });
+        this._loot(gx, this.world.terrain.heightAt(gx, gz) + 0.5, gz,
+          [['health', 25, 0.6, 0], ['ammo_sniper', 15, -0.6, 0.4]]);
+        this.discover('gnome', 'It was never the same garden');
+      }
     }
 
     // #10 mannequin gaze

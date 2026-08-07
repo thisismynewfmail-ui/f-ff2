@@ -104,6 +104,27 @@ export const MATERIAL_SETS = {
     chimney: 'brickRed', families: ['house', 'shop'],
   },
 
+  // --- the residential family (Eastgate) ------------------------------
+  // Three sets that exist so a street of houses cannot be dressed out of the
+  // commercial library. Each one names its own foundation — block skirting or
+  // porch lattice rather than a civic stone plinth — because what a house
+  // stands on is half of what makes it read as a house.
+  clapboardYellow: {
+    wall: 'sidingYellow', wallWorn: 'sidingPeel', roof: 'roofShingleBrown', roofWorn: 'roofShingleMoss',
+    door: 'doorRed', window: 'windowShutters', foundation: 'foundLattice', trim: 'trimWoodWhite',
+    chimney: 'brickRed', families: ['house'],
+  },
+  cedarShake: {
+    wall: 'shakeCedar', wallWorn: 'shakeMoss', roof: 'roofShakeWood', roofWorn: 'roofShingleMoss',
+    door: 'doorScreen', window: 'windowShutters', foundation: 'foundBlock', trim: 'trimWoodGreen',
+    chimney: 'brickBrown', families: ['house', 'farm'],
+  },
+  clinkerBrick: {
+    wall: 'brickClinker', wallWorn: 'brickRedMoss', roof: 'roofShingleBrown', roofWorn: 'roofMetalRust',
+    door: 'doorGreen', window: 'windowShutters', foundation: 'foundBlock', trim: 'trimWoodGreen',
+    chimney: 'brickClinker', families: ['house', 'civic', 'block'],
+  },
+
   // --- render --------------------------------------------------------
   stuccoTanVilla: {
     wall: 'stuccoTan', wallWorn: 'stuccoStained', roof: 'roofClay', roofWorn: 'roofShingleMoss',

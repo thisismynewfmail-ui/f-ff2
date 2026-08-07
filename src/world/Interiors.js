@@ -119,8 +119,12 @@ export class InteriorKit {
     const spec = built.spec;
     const c = this._canon(spec);
     const doorX = (spec.doorOffset ?? 0) * c.cw / 2;
+    // The entry lane is a fraction of the room, never most of it: a fixed
+    // 2.6 m lane is right for a shop and absurd inside a 2.8 m garden shed,
+    // where it would refuse every shelf and leave the building empty.
+    const lane = Math.min(DOOR_LANE, c.cd * 0.5);
     if (Math.abs(lx) > c.cw / 2 - 0.5 || Math.abs(lz) > c.cd / 2 - 0.5) return null;
-    if (Math.hypot(lx - doorX, lz - c.cd / 2) < 1.7) return null;
+    if (Math.hypot(lx - doorX, lz - c.cd / 2) < Math.min(1.7, c.cd * 0.42)) return null;
     const [mx, mz] = c.m(lx, lz);
     const p = local2world(spec, spec.rot || 0, mx, mz);
     const yaw = (opts.yaw ?? 0) + c.yaw - (spec.rot || 0) * Math.PI / 180;
@@ -134,7 +138,7 @@ export class InteriorKit {
       const q = Math.round((opts.yaw ?? 0) / (Math.PI / 2));
       if (Math.abs((opts.yaw ?? 0) - q * Math.PI / 2) < 0.2 && Math.abs(q) % 2 === 1) [fx, fz] = [fz, fx];
       const overlapsX = Math.abs(lx - doorX) < fx + DOOR_HALF;
-      const overlapsZ = lz + fz > c.cd / 2 - DOOR_LANE && lz - fz < c.cd / 2;
+      const overlapsZ = lz + fz > c.cd / 2 - lane && lz - fz < c.cd / 2;
       if (overlapsX && overlapsZ) return null;
     }
     const g = maker.group;
@@ -1028,6 +1032,155 @@ export class InteriorKit {
     return { group: g, collide: [3.2, 1.5, 1.2] };
   }
 
+  /* ---------------- residential outbuildings ---------------- */
+
+  /** Chairs stacked six high against a hall wall, as they were left. */
+  chairStack(n = 6) {
+    const g = new THREE.Group();
+    for (let i = 0; i < n; i++) {
+      const seat = this.P.box(0.44, 0.05, 0.44, this.P.colorMat(0x6b5334));
+      seat.position.set((i % 2) * 0.03, 0.36 + i * 0.11, (i % 3) * 0.02);
+      const back = this.P.box(0.44, 0.42, 0.05, this.P.colorMat(0x6b5334));
+      back.position.set((i % 2) * 0.03, 0.58 + i * 0.11, -0.2 + (i % 3) * 0.02);
+      g.add(seat, back);
+    }
+    for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+      const leg = this.P.box(0.04, 0.36, 0.04, this.P.colorMat(0x4a4038));
+      leg.position.set(sx * 0.18, 0.18, sz * 0.18);
+      g.add(leg);
+    }
+    return { group: g, collide: [0.28, 0.55, 0.28] };
+  }
+
+  /** Folding trestle table, one leaf still up. */
+  trestle(len = 2.4) {
+    const g = new THREE.Group();
+    const top = this.P.box(len, 0.05, 0.7, this.P.colorMat(0xb6a887));
+    top.position.y = 0.74;
+    g.add(top);
+    for (const s of [-1, 1]) {
+      for (const t of [-1, 1]) {
+        const leg = this.P.box(0.05, 0.74, 0.05, 'metalRust');
+        leg.position.set(s * (len / 2 - 0.25), 0.37, t * 0.28);
+        leg.rotation.z = -s * t * 0.06;
+        g.add(leg);
+      }
+    }
+    return { group: g, collide: [len / 2, 0.42, 0.36] };
+  }
+
+  /** Upright piano, lid closed. Nobody is going to open it. */
+  piano() {
+    const g = new THREE.Group();
+    const body = this.P.box(1.5, 1.15, 0.62, this.P.colorMat(0x2e2119));
+    body.position.y = 0.6;
+    const lid = this.P.box(1.56, 0.06, 0.68, this.P.colorMat(0x241a13));
+    lid.position.y = 1.2;
+    const fall = this.P.box(1.4, 0.14, 0.06, this.P.colorMat(0x120d09));
+    fall.position.set(0, 0.86, 0.33);
+    g.add(body, lid, fall);
+    const keys = this.P.box(1.32, 0.04, 0.24, this.P.colorMat(0xd8d2c0));
+    keys.position.set(0, 0.79, 0.44);
+    g.add(keys);
+    for (let i = 0; i < 9; i++) {
+      const black = this.P.box(0.05, 0.03, 0.15, this.P.colorMat(0x14110e));
+      black.position.set(-0.6 + i * 0.15, 0.82, 0.4);
+      g.add(black);
+    }
+    for (const s of [-1, 1]) {
+      const leg = this.P.box(0.12, 0.28, 0.55, this.P.colorMat(0x241a13));
+      leg.position.set(s * 0.62, 0.14, 0);
+      g.add(leg);
+    }
+    return { group: g, collide: [0.78, 0.6, 0.34] };
+  }
+
+  /** Potting bench with seed trays — the working surface of a glasshouse. */
+  pottingBench(len = 2.2) {
+    const g = new THREE.Group();
+    const top = this.P.box(len, 0.07, 0.62, 'wallWood');
+    top.position.y = 0.88;
+    const shelf = this.P.box(len, 0.05, 0.5, 'wallWood');
+    shelf.position.y = 0.3;
+    g.add(top, shelf);
+    for (const s of [-1, 1]) {
+      const leg = this.P.box(0.09, 0.88, 0.55, 'wallWood');
+      leg.position.set(s * (len / 2 - 0.1), 0.44, 0);
+      g.add(leg);
+    }
+    for (let i = 0; i * 0.55 < len - 0.5; i++) {
+      const tray = this.P.box(0.44, 0.09, 0.34, this.P.colorMat(0x4a3324));
+      tray.position.set(-len / 2 + 0.35 + i * 0.55, 0.96, 0.04);
+      const soil = this.P.box(0.4, 0.04, 0.3, 'dirt');
+      soil.position.set(-len / 2 + 0.35 + i * 0.55, 1.02, 0.04);
+      g.add(tray, soil);
+      const shoots = this.w.veg._cross(this.w.veg.bushMat, 0.32, 0.28);
+      shoots.position.set(-len / 2 + 0.35 + i * 0.55, 1.04, 0.04);
+      g.add(shoots);
+    }
+    for (let i = 0; i < 5; i++) {   // stacked pots underneath
+      const pot = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.08, 0.13, 7), this.P.colorMat(0x8a5238));
+      pot.position.set(-len / 2 + 0.4 + (i % 3) * 0.4, 0.42 + Math.floor(i / 3) * 0.14, -0.06);
+      g.add(pot);
+    }
+    return { group: g, collide: [len / 2, 0.5, 0.32] };
+  }
+
+  /** Grow bed: a timber frame of soil with something still coming up in it. */
+  growBed(len = 2.0) {
+    const g = new THREE.Group();
+    for (const [ox, oz, w, d] of [[0, -0.5, len, 0.1], [0, 0.5, len, 0.1],
+      [-len / 2, 0, 0.1, 1.0], [len / 2, 0, 0.1, 1.0]]) {
+      const board = this.P.box(w, 0.28, d, 'wallWood');
+      board.position.set(ox, 0.14, oz);
+      g.add(board);
+    }
+    const soil = this.P.box(len - 0.1, 0.2, 0.9, 'dirt');
+    soil.position.y = 0.14;
+    g.add(soil);
+    for (let i = 0; i < 5; i++) {
+      const plant = this.w.veg._cross(this.w.veg.bushMat, 0.42, 0.5);
+      plant.position.set(-len / 2 + 0.4 + i * (len - 0.8) / 4, 0.22, (i % 2) * 0.24 - 0.12);
+      g.add(plant);
+    }
+    return { group: g, collide: [len / 2, 0.2, 0.55] };
+  }
+
+  /** Wall of garden tools leaning in a corner: rakes, forks, a spade. */
+  toolLean() {
+    const g = new THREE.Group();
+    const cols = [0x6b5334, 0x4a4038, 0x7a6444];
+    for (let i = 0; i < 5; i++) {
+      const shaft = this.P.box(0.045, 1.5, 0.045, this.P.colorMat(cols[i % 3]));
+      shaft.position.set(-0.22 + i * 0.11, 0.75, 0.06 * (i % 2));
+      shaft.rotation.z = 0.1 - i * 0.045;
+      const head = this.P.box(0.16, 0.22, 0.05, 'metalRust');
+      head.position.set(-0.3 + i * 0.12, 0.09, 0.06 * (i % 2));
+      g.add(shaft, head);
+    }
+    return { group: g, collide: [0.35, 0.7, 0.2] };
+  }
+
+  /** A car hulk on axle stands, mid-repair. The garage's one real landmark. */
+  strippedCar() {
+    const g = new THREE.Group();
+    const body = this.P.box(1.7, 0.62, 3.5, this.P.colorMat(0x55504a));
+    body.position.y = 0.72;
+    const cabin = this.P.box(1.5, 0.5, 1.6, this.P.colorMat(0x4a4640));
+    cabin.position.set(0, 1.24, -0.2);
+    g.add(body, cabin);
+    for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+      const stand = this.P.box(0.24, 0.4, 0.24, 'metalRust');
+      stand.position.set(sx * 0.72, 0.2, sz * 1.3);
+      g.add(stand);
+    }
+    const bonnet = this.P.box(1.6, 0.06, 1.1, this.P.colorMat(0x55504a));
+    bonnet.position.set(0, 1.52, 1.35);
+    bonnet.rotation.x = -0.45;    // propped open on nothing
+    g.add(bonnet);
+    return { group: g, collide: [0.9, 0.7, 1.8] };
+  }
+
   /** Turnout gear on a rail: helmets, coats, boots, ready and never used. */
   gearRack(n = 4) {
     const g = new THREE.Group();
@@ -1195,39 +1348,57 @@ export class InteriorKit {
   /* ---------------- building layouts (canonical: door at +Z) ---------- */
 
   /**
-   * A lived-in house. The layout follows the daily round of the people who
-   * left it: you sleep behind the partition, you cook against the east wall,
-   * you eat in the middle of the room, and you sit in front of the television
-   * facing away from the door. Every one of those things is still here.
+   * A lived-in house.
+   *
+   * The layout follows the daily round of the people who left it: you sleep
+   * behind the partition, you cook against one wall, you eat in the middle of
+   * the room, and you sit in front of the television facing away from the
+   * door. Every one of those things is still here.
+   *
+   * Three plans, not one. A street where every front door opens onto the same
+   * furniture in the same places is the fastest way to make a neighbourhood
+   * read as generated, and the variant is picked from the spec so it is stable
+   * across a reload — and so three particular houses in Eastgate can be given
+   * the SAME one on purpose. Look at them.
    */
   _house(b) {
-    const c = this._canon(b.spec);
+    const s = b.spec;
+    const c = this._canon(s);
     const hw = c.cw / 2, hd = c.cd / 2;
+    const v = s.variant ?? (Math.abs(Math.round(s.x * 3 + s.z * 7)) % 3);
+    const m = v === 1 ? -1 : 1;          // variant 1 is the mirrored plan
     // --- bedroom, behind the partition at the far end
-    this._put(b, this.bed(), -hw + 0.75, -hd + 1.3);
-    this._put(b, this.nightstand(), -hw + 0.75, -hd + 2.6);
-    this._put(b, this.dresser(), 0.4, -hd + 0.6, { yaw: Math.PI, loot: [0, 0.9] });
-    this._put(b, this.wardrobe(), hw - 0.9, -hd + 0.9, { yaw: Math.PI, loot: [0, 1.0] });
-    this._put(b, this.picture(0.5, 0.4), -hw + 0.35, -hd + 1.9, { yaw: Math.PI / 2, collide: null });
-    // --- kitchen run against the east wall of the main room
-    this._put(b, this.kitchenRun(Math.min(2.4, c.cd - 5)), hw - 0.6, -hd + 4.6, { yaw: -Math.PI / 2 });
-    this._put(b, this.stove(), hw - 0.55, -hd + 3.4, { yaw: -Math.PI / 2 });
-    this._put(b, this.fridge(), hw - 0.55, hd - 1.6, { yaw: -Math.PI / 2, loot: [-0.9, 0] });
-    // --- dining set, west of the partition-gap corridor
-    const tx = -hw * 0.25, tz = hd * 0.28;
+    this._put(b, this.bed(), m * (-hw + 0.75), -hd + 1.3);
+    this._put(b, this.nightstand(), m * (-hw + 0.75), -hd + 2.6);
+    this._put(b, this.dresser(), m * 0.4, -hd + 0.6, { yaw: Math.PI, loot: [0, 0.9] });
+    this._put(b, this.wardrobe(), m * (hw - 0.9), -hd + 0.9, { yaw: Math.PI, loot: [0, 1.0] });
+    this._put(b, this.picture(0.5, 0.4), m * (-hw + 0.35), -hd + 1.9,
+      { yaw: m * Math.PI / 2, collide: null });
+    if (v === 2) {   // the family plan: somebody small slept in here too
+      this._put(b, this.cot(), m * (hw - 0.9), -hd + 2.6, { yaw: Math.PI });
+      this._decalAt(b, 'chalkHopscotch', m * (hw - 1.6), -hd + 1.6, 1.1, null);
+    }
+    // --- kitchen run against the side wall of the main room
+    this._put(b, this.kitchenRun(Math.min(2.4, c.cd - 5)), m * (hw - 0.6), -hd + 4.6, { yaw: -m * Math.PI / 2 });
+    this._put(b, this.stove(), m * (hw - 0.55), -hd + 3.4, { yaw: -m * Math.PI / 2 });
+    this._put(b, this.fridge(), m * (hw - 0.55), hd - 1.6, { yaw: -m * Math.PI / 2, loot: [-m * 0.9, 0] });
+    // --- dining set, off the partition-gap corridor
+    const tx = m * -hw * 0.25, tz = hd * 0.28;
     if (this._put(b, this.table(1.5, 0.95), tx, tz)) {
-      this._put(b, this.chair(), tx - 1.1, tz, { yaw: Math.PI / 2 });
-      this._put(b, this.tippedChair(), tx + 1.15, tz + 0.3);
+      this._put(b, this.chair(), tx - m * 1.1, tz, { yaw: m * Math.PI / 2 });
+      this._put(b, this.tippedChair(), tx + m * 1.15, tz + 0.3);
       this._meal(b, tx - 0.3, tz);
-      this._meal(b, tx + 0.35, tz - 0.15);
+      if (v !== 2) this._meal(b, tx + 0.35, tz - 0.15);
     }
     // --- living end: sofa, rug and a television nobody turned off
-    this._put(b, this.rug(2.0, 1.4), -hw + 1.5, hd - 2.0, { collide: null });
-    this._put(b, this.sofa(), -hw + 1.2, hd - 1.1, { yaw: Math.PI });
-    this._put(b, this.crtTv(), -hw + 1.4, hd - 3.4, { yaw: 0 });
-    this._put(b, this.shelf(1.5), -hw + 0.5, 0.6, { yaw: Math.PI / 2 });
+    this._put(b, this.rug(2.0, 1.4), m * (-hw + 1.5), hd - 2.0, { collide: null });
+    this._put(b, this.sofa(), m * (-hw + 1.2), hd - 1.1, { yaw: Math.PI });
+    this._put(b, this.crtTv(), m * (-hw + 1.4), hd - 3.4, { yaw: 0 });
+    if (v === 0) this._put(b, this.shelf(1.5), m * (-hw + 0.5), 0.6, { yaw: m * Math.PI / 2 });
+    if (v === 1) this._put(b, this.desk(), m * (-hw + 0.9), 0.4, { yaw: m * Math.PI / 2, loot: [m * 0.9, 0] });
+    if (v === 2) this._put(b, this.shelf(1.3, false), m * (-hw + 0.5), 0.4, { yaw: m * Math.PI / 2 });
     this._papers(b, tx + 0.8, tz + 1.0, 3);
-    if ((b.spec.derelict ?? 0) > 0.45) this._stain(b, 0.4, -hd + 2.2, 1.4);
+    if ((s.derelict ?? 0) > 0.45) this._stain(b, m * 0.4, -hd + 2.2, 1.4);
   }
 
   _tavern(b) {
@@ -1493,6 +1664,104 @@ export class InteriorKit {
     this._put(b, this.shelf(1.8, false), -hw + 1.2, -hd + 0.55, { loot: [0, 0.9] });
     this._put(b, this.fridge(), -hw + 0.55, 0.8, { yaw: Math.PI / 2 });
     this._papers(b, 0.3, 0.6, 2);
+  }
+
+  /**
+   * A low walkable platform inside a building — a stage, a dais, a step.
+   * Slab, collider and terrain platform together, in canonical coordinates,
+   * so you can genuinely get up on it and fight from it.
+   */
+  _platform(b, lx, lz, w, d, h) {
+    const s = b.spec;
+    const r = this._rectWorld(b, lx - w / 2, lz - d / 2, lx + w / 2, lz + d / 2);
+    const slab = this.kit.box(r.maxX - r.minX, h, r.maxZ - r.minZ, 'floorWood');
+    slab.position.set((r.minX + r.maxX) / 2, s.y + h / 2 + 0.1, (r.minZ + r.maxZ) / 2);
+    this._bucket.add(slab);
+    this.w.terrain.addPlatform(r.minX, r.maxX, r.minZ, r.maxZ, s.y + h + 0.1);
+    return r;
+  }
+
+  /**
+   * Eastgate Community Hall: the one clear span in the district.
+   *
+   * Everything is against the walls, which is exactly why it matters — it is
+   * the only Eastgate interior with enough open floor to fight a wave in, and
+   * the stage at the far end is high ground you can back onto. The chairs are
+   * stacked because whatever was on that last night was over before it
+   * started.
+   */
+  _hall(b) {
+    const c = this._canon(b.spec);
+    const hw = c.cw / 2, hd = c.cd / 2;
+    this._dropCeiling(b, 3.3);
+    this._platform(b, 0, -hd + 1.5, c.cw - 2.4, 2.4, 0.42);
+    this._put(b, this.piano(), -hw + 1.4, -hd + 1.4, { yaw: 0.25, lift: 0.52, collide: null });
+    this._put(b, this.picture(1.6, 1.0), 1.0, -hd + 0.35, { yaw: 0, collide: null });   // the banner
+    for (const s of [-1, 1]) {
+      this._put(b, this.chairStack(6), s * (hw - 0.85), -hd + 4.2, { yaw: -s * Math.PI / 2 });
+      this._put(b, this.chairStack(5), s * (hw - 0.85), -hd + 5.6, { yaw: -s * Math.PI / 2 });
+    }
+    this._put(b, this.trestle(2.6), -hw + 1.6, hd - 2.0, { yaw: 0.08, loot: [0, -0.9] });
+    this._put(b, this.trestle(2.2), hw - 1.6, hd - 2.0, { yaw: -0.06 });
+    this._put(b, this.counter(2.6), hw - 1.5, 0.4, { yaw: -Math.PI / 2, loot: [-0.9, 0] });  // the serving hatch
+    this._put(b, this.waterCooler(), -hw + 0.6, 1.6, { yaw: Math.PI / 2 });
+    this._put(b, this.tippedChair(), 1.6, 1.2);
+    this._put(b, this.tippedChair(), -2.4, 2.6);
+    this._put(b, this.chair(), 2.6, -1.0, { yaw: Math.PI });
+    // the store cupboard off the back corner, and what waits in it
+    this._closet(b, -hw + 1.4, hd - 1.2, 1.6, 1.4);
+    this._spawnAt(b, hw - 3.0, -hd + 3.4);
+    this._papers(b, 0, 0.6, 7);           // the raffle tickets, everywhere
+    this._stain(b, -1.4, -hd + 3.0, 1.5);
+  }
+
+  /**
+   * A back-lane garage. Half workshop, half everything that would not fit in
+   * the house — and the one Eastgate interior that pays out in hardware.
+   */
+  _garage(b) {
+    const c = this._canon(b.spec);
+    const hw = c.cw / 2, hd = c.cd / 2;
+    this._put(b, this.workbench(2.0), 0, -hd + 0.75, { loot: [0, 0.9] });
+    this._put(b, this.toolBoard(1.6), 0, -hd + 0.28, { collide: null, lift: 1.15 });
+    this._put(b, this.rack(2.2), -hw + 0.75, -0.4, { yaw: Math.PI / 2, loot: [1.0, 0] });
+    this._put(b, this.P.barrel(), hw - 0.85, -hd + 1.2);
+    this._put(b, this.locker(), hw - 0.65, 0.6, { yaw: -Math.PI / 2, loot: [-0.9, 0] });
+    this._put(b, this.P.crateStack(2), hw - 1.1, hd - 1.4, { yaw: 0.35 });
+    this._stainOil(b, 0, 0.6, 2.0);
+    this._stainOil(b, -1.2, -1.4, 1.2);
+    this._spawnAt(b, -0.6, 0.4);
+    this._papers(b, 1.2, -0.4, 2);
+  }
+
+  /**
+   * A garden shed: two square metres of somebody's whole outdoor life. Small
+   * enough that walking in is a decision, which is what makes finding
+   * something in one feel earned.
+   */
+  _shed(b) {
+    const c = this._canon(b.spec);
+    const hw = c.cw / 2, hd = c.cd / 2;
+    this._put(b, this.toolLean(), -hw + 0.5, -hd + 0.5, { yaw: 0.2 });
+    this._put(b, this.shelf(1.4, false), 0.2, -hd + 0.35, { loot: [0, 0.7] });
+    this._put(b, this.P.barrel(), hw - 0.55, -hd + 0.6);
+    this._decalAt(b, 'oilStain', -0.3, 0.2, 1.0, null);
+    this._spawnAt(b, 0, -hd + 0.9);
+  }
+
+  /**
+   * The nursery glasshouse. Everything in here is still alive, which in a town
+   * where nothing has been watered for a year is the part to think about.
+   */
+  _greenhouse(b) {
+    const c = this._canon(b.spec);
+    const hw = c.cw / 2, hd = c.cd / 2;
+    this._put(b, this.pottingBench(Math.min(2.4, c.cw - 1.4)), 0, -hd + 0.6, { loot: [0, 0.9] });
+    this._put(b, this.growBed(Math.min(2.2, c.cw - 1.6)), -0.2, 0.35);
+    this._put(b, this.P.barrel(), hw - 0.6, hd - 0.9);
+    this._put(b, this.plant(), -hw + 0.55, hd - 0.9);
+    this._put(b, this.plant(), hw - 0.6, -hd + 0.7);
+    this._decalAt(b, 'oilStain', 1.2, -0.4, 1.1, 0x2e4020);
   }
 
   /** Ground floor of the Meridian Tower: reception hall, dead elevators, and

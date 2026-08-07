@@ -25,6 +25,10 @@
  *      z-fights the inside of the wall it wraps
  *  13. the pond sits in its basin: never floating over the ground, no dry
  *      bank below the waterline, never flooding a building, and moving
+ *  14. Eastgate is a neighbourhood: every front door opens onto a street, no
+ *      building stands in a carriageway, and the district has enough moving
+ *      parts (swaying planting, wind-bent ground cover, turning props) to
+ *      read as a place rather than a diorama
  *
  * Usage: node tests/world.mjs
  * Requires playwright-core (any location via NODE_PATH) and the pre-installed
@@ -339,6 +343,78 @@ const r = await page.evaluate(async () => {
   }
   out.innerKerb = [...new Set(out.innerKerb)];
 
+  // --- 14. Eastgate reads as a neighbourhood -------------------------------
+  //
+  // The district used to place its houses on a coordinate list and its doors
+  // on whatever side the list said, which left a third of them opening onto
+  // open grass. A door is a claim about where the street is, so check the
+  // claim: walk out from each threshold along its own normal and see whether
+  // a carriageway is actually there. (Outbuildings — sheds, the glasshouse —
+  // front their own gardens and are exempt; garages open onto the back lane
+  // and are not.)
+  const FRONTED = new Set(['house', 'store', 'gasShop', 'hall', 'church', 'hollow', 'garage']);
+  out.doorsOntoNothing = [];
+  for (const s of specs) {
+    if (s.zone !== 1 || s.solid || !s.door || !FRONTED.has(s.use)) continue;
+    const [nx, nz] = SIDE[s.door];
+    const dx = s.x + nx * (s.w / 2), dz = s.z + nz * (s.d / 2);
+    let found = false;
+    for (let t = 1; t <= 16 && !found; t += 0.5) {
+      if (w.surfaceAt(dx + nx * t, dz + nz * t) === 'road') found = true;
+    }
+    if (!found) out.doorsOntoNothing.push(s.name);
+  }
+  // ...and no Eastgate building is standing in one. Sampled off the rendered
+  // carriageway itself rather than a bounding box, because the bounding box of
+  // a curving road is far fatter than the road.
+  out.inCarriageway = [];
+  for (const gm of w.groundMeshes || []) {
+    if (gm.kind !== 'road:road' && gm.kind !== 'road:roadLine') continue;
+    const p = gm.mesh.geometry.attributes.position, at = gm.mesh.position;
+    for (let i = 0; i < p.count; i += 3) {
+      const x = p.getX(i) + at.x, z = p.getZ(i) + at.z;
+      for (const s of specs) {
+        if (s.zone !== 1) continue;
+        if (Math.abs(x - s.x) < s.w / 2 - 0.2 && Math.abs(z - s.z) < s.d / 2 - 0.2) {
+          out.inCarriageway.push(`${s.name}@${x.toFixed(0)},${z.toFixed(0)}`);
+        }
+      }
+    }
+  }
+  out.inCarriageway = [...new Set(out.inCarriageway)];
+  // Eastgate Green is a promise the district makes: open ground with clear
+  // sight lines, which is worth exactly nothing if a later pass plants a tree
+  // in the middle of it. Assert it against the declared circle rather than
+  // against a coordinate somebody remembers being empty.
+  const { EASTGATE_GREEN: GREEN } = await import('/src/world/World.js');
+  out.greenIntruders = [];
+  for (const s of specs) {
+    if (Math.hypot(s.x - GREEN.x, s.z - GREEN.z) < GREEN.r - Math.max(s.w, s.d) / 2) {
+      out.greenIntruders.push(s.name);
+    }
+  }
+  for (const b of w.collision.boxes) {
+    if (!b.active || (b.tag !== 'tree' && b.tag !== 'fence' && b.tag !== 'prop')) continue;
+    const bx = (b.minX + b.maxX) / 2, bz = (b.minZ + b.maxZ) / 2;
+    if (Math.hypot(bx - GREEN.x, bz - GREEN.z) < GREEN.r - 2) {
+      out.greenIntruders.push(`${b.tag}@${bx.toFixed(0)},${bz.toFixed(0)}`);
+    }
+  }
+  out.greenIntruders = [...new Set(out.greenIntruders)];
+
+  out.eastgateBuildings = specs.filter((s) => s.zone === 1).length;
+  out.eastgateFurnished = specs.filter((s) => s.zone === 1 && !s.solid && s.use).length;
+  out.eastgatePorches = specs.filter((s) => s.zone === 1 && s.porch).length;
+  out.roofKinds = new Set(specs.filter((s) => s.zone === 1).map((s) => s.roof)).size;
+
+  // Everything that moves. Vegetation sways object by object; merged ground
+  // cover bends in the vertex shader off one shared clock, so the presence of
+  // the `aSway` attribute is what proves the grass is animated at all.
+  out.swayers = w.veg.swayers.length;
+  out.animProps = (w.animProps || []).length;
+  out.windFields = 0;
+  w.group.traverse((o) => { if (o.isMesh && o.geometry?.attributes?.aSway) out.windFields++; });
+
   // --- 12. the pond is a lake, not a sheet of glass laid over a hillside
   const pb = w.pondBasin;
   out.pond = { minDepth: 1e9, maxDepth: -1e9, verts: 0, overBuilding: 0, animated: w.waterSurfaces.length };
@@ -418,6 +494,19 @@ check('the world barrier has no gaps', r.barrierGaps.length === 0,
   `${r.barrierGaps.length}/${r.barrierSamples} probes escaped at ${r.barrierGaps.slice(0, 4).join(' ')}`);
 check('no prop had to be refused as badly placed', r.doorwayRejects.length === 0,
   r.doorwayRejects.join(' '));
+check('every Eastgate front door opens onto a street', r.doorsOntoNothing.length === 0,
+  r.doorsOntoNothing.slice(0, 6).join(', '));
+check('no Eastgate building stands in a carriageway', r.inCarriageway.length === 0,
+  r.inCarriageway.slice(0, 5).join(', '));
+check('Eastgate is built out as a neighbourhood', r.eastgateBuildings >= 40 && r.eastgateFurnished >= 35,
+  `${r.eastgateBuildings} buildings, ${r.eastgateFurnished} enterable`);
+check('Eastgate Green is genuinely clear ground', r.greenIntruders.length === 0,
+  r.greenIntruders.slice(0, 5).join(', '));
+check('Eastgate roofs and porches vary', r.roofKinds >= 3 && r.eastgatePorches >= 10,
+  `${r.roofKinds} roof kinds, ${r.eastgatePorches} porches`);
+check('planting is animated across the town', r.swayers >= 400 && r.windFields >= 20,
+  `${r.swayers} swayers, ${r.windFields} wind-bent ground-cover fields`);
+check('the district has moving props', r.animProps >= 15, `${r.animProps} animated`);
 
 // The barrier is a wall, not a suggestion: walk hard into it and stay inside.
 await page.click('#btn-start');
