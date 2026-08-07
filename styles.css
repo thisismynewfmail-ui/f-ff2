@@ -491,11 +491,130 @@ html, body {
 .wm-ammo { font-size: 11px; color: #a8b098; letter-spacing: 1px; }
 .wm-slot.dry .wm-ammo { color: #b03030; }
 
-#subtitle {
-  position: absolute; bottom: 156px; left: 50%; transform: translateX(-50%);
-  z-index: 25; max-width: 60%; text-align: center; font-size: 15px;
-  color: #d8e0c8; background: rgba(8, 10, 8, 0.7); padding: 6px 14px;
-  border-left: 3px solid #e0b840; opacity: 0;
+/* ===================================================================
+   NOTICE — the incoming-transmission readout, top right.
+   Built from the same parts as the console bar so it reads as another
+   instrument bolted to the rig rather than as a floating subtitle:
+   scratched gunmetal chassis, corner screws, a stencil header with a
+   live lamp, a green CRT inset behind scanlines, and a depletion bar
+   that shows exactly how long the message has left.
+   =================================================================== */
+#notice {
+  position: absolute; top: 18px; right: 18px; z-index: 26;
+  width: 336px; padding: 7px 9px 8px; pointer-events: none;
+  background-color: #1d1e1c; background-size: cover; background-position: center;
+  border: 2px solid #0c0d0b; border-radius: 7px;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.07), inset 0 0 26px rgba(0,0,0,0.55),
+    inset 0 -3px 8px rgba(0,0,0,0.5), 0 4px 14px rgba(0,0,0,0.6);
+  image-rendering: pixelated;
+  opacity: 0; visibility: hidden;
+}
+#notice > * { image-rendering: auto; }
+/* the chassis itself slides in off the right edge and settles */
+#notice.on { visibility: visible; animation: noticeIn 0.34s steps(6, end) forwards; }
+#notice.off { visibility: visible; animation: noticeOut 0.5s steps(5, end) forwards; }
+/* The settled value is reached at 85%, not at 100%: these run on steps(),
+   and a stepped animation's last hold is one step SHORT of the final
+   keyframe. Landing the end state early means the panel is fully opaque
+   (and fully gone) whatever the step rounding does. */
+@keyframes noticeIn {
+  0%   { opacity: 0; transform: translateX(26px); }
+  85%  { opacity: 1; transform: none; }
+  100% { opacity: 1; transform: none; }
+}
+@keyframes noticeOut {
+  0%   { opacity: 1; transform: none; }
+  85%  { opacity: 0; transform: translateX(10px); }
+  100% { opacity: 0; transform: translateX(10px); }
+}
+
+/* header: lamp, stencil label, carrier dots */
+.notice-head {
+  display: flex; align-items: center; gap: 6px;
+  /* side padding clears the corner screws so the lamp and the carrier
+     readout are never crowded against a fixing */
+  padding: 0 11px 5px; min-height: 13px;
+}
+.notice-lamp {
+  width: 7px; height: 7px; border-radius: 50%; flex: 0 0 auto;
+  background: radial-gradient(circle at 35% 30%, #ffd97a, #e0a020 60%, #6b4a10);
+  box-shadow: 0 0 6px rgba(224,168,32,0.85), inset 0 0 2px rgba(0,0,0,0.6);
+}
+#notice.on .notice-lamp { animation: noticeLamp 1.15s steps(2, end) infinite; }
+@keyframes noticeLamp { 0%, 55% { opacity: 1; } 56%, 100% { opacity: 0.35; } }
+.notice-title {
+  font-size: 9px; font-weight: bold; letter-spacing: 2px; color: #b3ab89;
+  text-shadow: 0 1px 0 rgba(0,0,0,0.8);
+}
+.notice-carrier { margin-left: auto; font-size: 9px; letter-spacing: 2px; color: #6ad06a; }
+#notice.on .notice-carrier { animation: noticeCarrier 0.9s steps(4, end) infinite; }
+@keyframes noticeCarrier { 0% { opacity: 0.25; } 50% { opacity: 1; } 100% { opacity: 0.25; } }
+
+/* the green CRT the message actually prints on */
+.notice-crt {
+  position: relative; overflow: hidden; min-height: 31px;
+  background-color: #060c07; background-size: cover;
+  border: 2px solid #131411; border-radius: 2px;
+  box-shadow: inset 0 0 18px rgba(0,0,0,0.8);
+  padding: 5px 7px;
+}
+.notice-crt::after { /* scanlines, same pitch as the console log */
+  content: ''; position: absolute; inset: 0; pointer-events: none;
+  background: repeating-linear-gradient(0deg, rgba(0,0,0,0.25) 0 1px, transparent 1px 3px);
+}
+.notice-crt::before { /* slow phosphor refresh sweep */
+  content: ''; position: absolute; left: 0; right: 0; height: 14px; top: -20%;
+  background: linear-gradient(180deg, transparent, rgba(120,255,140,0.10), transparent);
+  animation: crtsweep 4.5s linear infinite; pointer-events: none;
+}
+/* the tube striking: a bright horizontal line that opens out to full height */
+#notice.on .notice-crt { animation: noticeStrike 0.3s steps(5, end) forwards; }
+#notice.off .notice-crt { animation: noticeCollapse 0.42s steps(5, end) forwards; }
+@keyframes noticeStrike {
+  0%   { transform: scaleY(0.06); filter: brightness(3.4); }
+  45%  { transform: scaleY(1.06); filter: brightness(1.7); }
+  100% { transform: scaleY(1); filter: none; }
+}
+@keyframes noticeCollapse {
+  0%   { transform: scaleY(1); filter: none; }
+  55%  { transform: scaleY(0.5); filter: brightness(2.2); }
+  100% { transform: scaleY(0.05); filter: brightness(3.2); }
+}
+
+/* Plain inline flow, NOT flex: the block cursor has to sit against the last
+   character it printed wherever that lands, and a long message has to wrap
+   under its own bullet. A flex row does neither — it pins the cursor to the
+   far edge and refuses to shrink the text below its one-line width. */
+.notice-line {
+  font-size: 12px; line-height: 1.45; color: #6ad06a;
+  text-shadow: 0 0 4px rgba(70,220,90,0.55);
+  padding-left: 11px; text-indent: -11px;     /* hanging indent under the bullet */
+  overflow-wrap: break-word;
+}
+.notice-bullet { color: #7be07b; margin-right: 4px; }
+.notice-cursor {
+  color: #9bf09b; margin-left: 1px;
+  animation: noticeCursor 0.62s steps(2, end) infinite;
+}
+#notice.typed .notice-cursor { opacity: 0.55; }
+#notice.off .notice-cursor { display: none; }
+@keyframes noticeCursor { 0% { opacity: 1; } 50% { opacity: 0; } 100% { opacity: 1; } }
+
+/* depletion bar: how long the message has left, drained from HUD.update */
+.notice-timer {
+  margin: 5px 11px 0; height: 4px; overflow: hidden;
+  background-color: #0a0b08; border: 1px solid #131411; border-radius: 1px;
+  box-shadow: inset 0 0 5px rgba(0,0,0,0.9);
+}
+.notice-timer > i {
+  display: block; height: 100%; width: 100%;
+  background: linear-gradient(90deg, #8a6a1c, #e0b840);
+  box-shadow: 0 0 6px rgba(224,184,64,0.55);
+}
+#notice.expiring .notice-timer > i {
+  background: linear-gradient(90deg, #7a2a20, #d0523a);
+  box-shadow: 0 0 6px rgba(208,82,58,0.6);
 }
 #prompt {
   position: absolute; top: 54%; left: 50%; transform: translateX(-50%);
@@ -854,7 +973,7 @@ html, body {
 
 /* hide the combat chrome while the title menu is up (see HUD.showScreen) */
 #hud.on-menu #hud-dock, #hud.on-menu #crosshair, #hud.on-menu #weapon-menu,
-#hud.on-menu #subtitle, #hud.on-menu #prompt, #hud.on-menu #banner { display: none; }
+#hud.on-menu #notice, #hud.on-menu #prompt, #hud.on-menu #banner { display: none; }
 
 /* pause screen: action row under the stat rings */
 .pause-actions { display: flex; gap: 14px; flex-wrap: wrap; justify-content: center; }

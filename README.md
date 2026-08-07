@@ -299,6 +299,21 @@ There is deliberately no command that touches the kill counter — the
   kill and flash at every 1,000-kill milestone, and a REMAINING nameplate. Run
   stats — accuracy, score, secrets, progress, time — live on the **pause screen
   as circular gauges**, not on the HUD.
+- **The NOTICE readout:** messages the world sends you — a district opening,
+  a secret giving something up, a thing you touched answering back — arrive on
+  their own instrument in the **top-right corner**, deliberately out of the
+  sight line rather than captioned across the middle of the screen. It is
+  built from the console bar's own parts (scratched gunmetal chassis, corner
+  screws, a stencil TRANSMISSION header with a live lamp, a green CRT inset
+  behind scanlines and a phosphor sweep) so a message reads as a device on the
+  rig doing something. Nothing about it just appears: the tube **strikes** —
+  a bright line that opens out to full height — the text **teletypes** in
+  under a blinking block cursor, the carrier bars run, and an amber
+  **depletion bar** drains for the full **ten seconds** the message holds,
+  going red for the last quarter. When the time is up the tube **collapses
+  back to a line and dies**. A second message replaces the first and restrikes:
+  this is one readout, not a stack. Every message also lands in the console
+  bar's permanent CRT log, so nothing is lost if you were looking elsewhere.
 - **Waves:** **kill-driven** escalating hordes. Each wave sets a kill quota and
   clears the moment you hit it, so racking up kills is what advances the wave;
   then a short respite with a supply drop before the next, larger wave. Past
