@@ -1275,11 +1275,18 @@ export class World {
     this._prop(P.doghouse(), 212, 74, { yaw: 0.7 });
     anim(P.bicycle(0x6b3a32), 199, 91, { yaw: 2.1 }, 'spin', { axis: 'z', speed: 0.34 });
 
-    // --- porch swings, on the two porches deep enough to take one
-    for (const [name, ox, oz] of [['house09', 112.4, -38.7], ['house27', 114, 73.3]]) {
-      if (!this.built.get(name)) continue;
+    // --- porch swings, hung under the canopy of the two deepest porches.
+    // Seated off the BUILDING's pad rather than off the terrain under it: the
+    // deck is at spec.y + 0.36 whatever the ground is doing, and hanging the
+    // swing from the ground instead is what pushed its chains up through the
+    // porch roof. Offset sideways so it never stands in its own front door.
+    for (const [name, side] of [['house09', 1.5], ['house27', 1.5]]) {
+      const b = this.built.get(name);
+      if (!b) continue;
+      const s = b.spec;
+      const ox = s.x + side, oz = s.z + s.d / 2 + 1.0;   // on the deck, clear of the door
       const sw = P.porchSwing();
-      this.props.place(sw.group, ox, oz, { lift: 0.36 });
+      sw.group.position.set(ox, s.y + 0.36, oz);
       this.group.add(sw.group);
       this._animate(sw.pivot, 'swing', ox, oz, { axis: 'x', amp: 0.16, speed: 0.62 });
     }

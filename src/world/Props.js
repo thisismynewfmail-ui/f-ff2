@@ -827,7 +827,10 @@ export class PropKit {
       for (const lean of [-0.5, 0.5]) {
         const leg = this.box(0.1, 2.6, 0.1, 'metalRust');
         leg.position.set(sx, barY / 2, lean);
-        leg.rotation.x = lean * 0.42;
+        // NEGATIVE: rotating a leg about X swings its TOP toward +Z, so
+        // `lean * angle` splayed the frame at the head and stood it on a point.
+        // An A-frame is wide where it meets the ground.
+        leg.rotation.x = -lean * 0.42;
         g.add(leg);
       }
     }
@@ -1587,16 +1590,27 @@ export class PropKit {
   porchSwing() {
     const g = new THREE.Group();
     const pivot = new THREE.Group();
-    pivot.position.y = 2.5;
+    // The hanger sits just under a porch canopy, and the seat lands at sitting
+    // height below it. Both numbers are the porch's, not guesses: get them
+    // wrong and the chains run up through the roof they hang from.
+    pivot.position.y = PORCH_SWING_HANG;
     for (const s of [-0.72, 0.72]) {
-      const chain = this.box(0.03, 1.9, 0.03, this.colorMat(0x3a4148));
-      chain.position.set(s, -0.95, 0);
+      const chain = this.box(0.03, 1.8, 0.03, this.colorMat(0x3a4148));
+      chain.position.set(s, -0.9, 0);
       pivot.add(chain);
+      const eye = this.box(0.07, 0.06, 0.07, this.colorMat(0x5a6068));
+      eye.position.set(s, 0.03, 0);
+      pivot.add(eye);
     }
     const seat = this.box(1.7, 0.08, 0.5, 'wallWood');
-    seat.position.y = -1.95;
+    seat.position.y = -1.85;
     const back = this.box(1.7, 0.45, 0.07, 'wallWood');
-    back.position.set(0, -1.71, -0.22);
+    back.position.set(0, -1.61, -0.22);
+    for (const s of [-0.8, 0.8]) {
+      const arm = this.box(0.07, 0.07, 0.48, 'wallWood');
+      arm.position.set(s, -1.62, 0);
+      pivot.add(arm);
+    }
     pivot.add(seat, back);
     g.add(pivot);
     return { group: g, pivot };
@@ -1623,34 +1637,81 @@ export class PropKit {
     return { group: g, rotor };
   }
 
-  /** A bicycle dropped on a lawn. The front wheel is still turning. */
+  /**
+   * A bicycle dropped on a lawn, laid over on its side. The front wheel is
+   * still turning.
+   *
+   * Built as a real diamond frame — chainstay, seat tube, down tube, top tube,
+   * seat stay and fork all running between the four points a bicycle actually
+   * has (two axles, the bottom bracket and the head) — rather than as a bar
+   * with two rings near it. That is the difference between reading as a bike
+   * and reading as scrap: the triangles are the silhouette.
+   */
   bicycle(paint = 0x7a3b30) {
     const g = new THREE.Group();
-    const lean = new THREE.Group();
-    lean.rotation.z = 0.34;
-    const frame = this.box(1.05, 0.05, 0.05, this.colorMat(paint));
-    frame.position.set(0, 0.52, 0);
-    const down = this.box(0.05, 0.44, 0.05, this.colorMat(paint));
-    down.position.set(0.16, 0.34, 0);
-    down.rotation.z = 0.5;
-    const seat = this.box(0.22, 0.06, 0.11, this.colorMat(0x24211e));
-    seat.position.set(-0.44, 0.62, 0);
-    const bars = this.box(0.06, 0.06, 0.46, this.colorMat(0x8a8d84));
-    bars.position.set(0.5, 0.66, 0);
-    lean.add(frame, down, seat, bars);
-    const mkWheel = (ox) => {
-      const w = new THREE.Mesh(new THREE.TorusGeometry(0.32, 0.035, 4, 12), this.colorMat(0x1e1c1a));
-      w.position.set(ox, 0.33, 0);
-      for (let i = 0; i < 3; i++) {
-        const spoke = this.box(0.62, 0.012, 0.012, this.colorMat(0x9a9d96));
+    const body = new THREE.Group();
+    // laid on its side in the grass, resting on bars and pedals
+    body.rotation.x = Math.PI / 2;
+    body.position.y = 0.12;
+    const steel = this.colorMat(0x9aa0a2);
+    const dark = this.colorMat(0x1e1c1a);
+
+    // the four points the frame is strung between
+    const REAR = [-0.52, 0.32], FRONT = [0.52, 0.32];
+    const BB = [0, 0.26], SEAT = [-0.20, 0.66], HEAD = [0.34, 0.62];
+    const tube = (a, b, thick = 0.045, mat = this.colorMat(paint)) => {
+      const dx = b[0] - a[0], dy = b[1] - a[1];
+      const t = this.box(Math.hypot(dx, dy), thick, thick, mat);
+      t.position.set((a[0] + b[0]) / 2, (a[1] + b[1]) / 2, 0);
+      t.rotation.z = Math.atan2(dy, dx);
+      body.add(t);
+    };
+    tube(BB, REAR, 0.035);      // chainstay
+    tube(SEAT, REAR, 0.035);    // seat stay
+    tube(BB, SEAT);             // seat tube
+    tube(BB, HEAD);             // down tube
+    tube(SEAT, HEAD);           // top tube
+    tube(HEAD, FRONT, 0.04, steel);  // fork
+
+    const mkWheel = (at) => {
+      const w = new THREE.Group();
+      w.add(new THREE.Mesh(new THREE.TorusGeometry(0.32, 0.028, 4, 14), dark));
+      for (let i = 0; i < 3; i++) {   // spokes stay INSIDE the rim
+        const spoke = this.box(0.58, 0.012, 0.012, steel);
         spoke.rotation.z = (i / 3) * Math.PI;
         w.add(spoke);
       }
+      const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.07, 6), steel);
+      hub.rotation.x = Math.PI / 2;
+      w.add(hub);
+      w.position.set(at[0], at[1], 0);
+      body.add(w);
       return w;
     };
-    const front = mkWheel(0.55);
-    lean.add(front, mkWheel(-0.5));
-    g.add(lean);
+    const front = mkWheel(FRONT);
+    mkWheel(REAR);
+
+    const saddle = this.box(0.24, 0.05, 0.12, dark);
+    saddle.position.set(-0.23, 0.72, 0);
+    const post = this.box(0.03, 0.1, 0.03, steel);
+    post.position.set(-0.21, 0.69, 0);
+    const stem = this.box(0.11, 0.035, 0.035, steel);
+    stem.position.set(0.365, 0.655, 0);
+    const bars = this.box(0.04, 0.04, 0.44, steel);
+    bars.position.set(0.41, 0.66, 0);
+    body.add(saddle, post, stem, bars);
+    for (const sz of [-0.09, 0.09]) {   // cranks and pedals at the bottom bracket
+      const crank = this.box(0.03, 0.19, 0.03, steel);
+      crank.position.set(BB[0], BB[1] + (sz > 0 ? 0.08 : -0.08), sz);
+      const pedal = this.box(0.09, 0.02, 0.05, dark);
+      pedal.position.set(BB[0], BB[1] + (sz > 0 ? 0.17 : -0.17), sz);
+      body.add(crank, pedal);
+    }
+    const chain = this.box(0.5, 0.02, 0.02, dark);
+    chain.position.set(-0.26, 0.28, 0.055);
+    body.add(chain);
+
+    g.add(body);
     return { group: g, rotor: front };
   }
 
@@ -1956,6 +2017,10 @@ export class PropKit {
     return g;
   }
 }
+
+/** How high above a porch deck the swing's hanger sits — under the canopy
+ *  (see BuildingKit._porch: the roof underside lands around 2.49 m up). */
+export const PORCH_SWING_HANG = 2.35;
 
 /** Blend two packed 0xRRGGBB colours; used to soot a wreck's paint down. */
 function mixHex(a, b, t) {

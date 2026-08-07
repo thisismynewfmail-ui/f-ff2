@@ -22,6 +22,9 @@ import { local2world, mergeStatic, mulberry32 } from './Buildings.js';
  *  furniture may not stand in reaches. */
 const DOOR_HALF = 0.85;
 const DOOR_LANE = 2.6;
+/** How much two pieces may share before it reads as one growing out of the
+ *  other. Loose enough that a chair tucked under a table is still fine. */
+const FURNITURE_GAP = 0.12;
 
 /** Canonical-frame transform for a door side. cw/cd are the canonical
  *  width (door wall) and depth; m maps canonical -> building-local coords. */
@@ -82,6 +85,8 @@ export class InteriorKit {
     this.P = world.props;
     this.kit = world.kit;
     this.populated = [];
+    this.rejects = [];        // pieces refused for landing inside something
+    this._room = [];
     this._canons = new Map();
     this._mats = new Map();
   }
@@ -93,6 +98,7 @@ export class InteriorKit {
     // collapsed to a handful of merged meshes — interiors cost almost no
     // per-object overhead at render time.
     this._bucket = new THREE.Group();
+    this._room = [];          // footprints already down in THIS building
     fn.call(this, built);
     mergeStatic(this._bucket);
     this.w.group.add(this._bucket);
@@ -141,16 +147,45 @@ export class InteriorKit {
       const overlapsZ = lz + fz > c.cd / 2 - lane && lz - fz < c.cd / 2;
       if (overlapsX && overlapsZ) return null;
     }
-    const g = maker.group;
-    g.position.set(p.x, spec.y + 0.12 + (opts.lift ?? 0), p.z);
-    g.rotation.y = yaw;
-    this._bucket.add(g);
     const collide = opts.collide === undefined ? maker.collide : opts.collide;
+    const baseY = spec.y + 0.12 + (opts.lift ?? 0);
+    // Nothing may stand inside something already in the room.
+    //
+    // Layouts are written once in a canonical frame and then rotated to match
+    // whichever wall the door is on, so a pair that reads as comfortably apart
+    // in the source can end up inside each other the moment a narrower
+    // footprint or a mirrored variant reshapes the frame — which is exactly
+    // how a television ended up growing out of a writing desk. The plan cannot
+    // see it and a reviewer cannot either, so the check lives at the point of
+    // placement: first come, first served, and a piece that would intersect an
+    // earlier one is simply not put down. Refusals are recorded rather than
+    // silently swallowed, so tests/world.mjs can name the room.
+    let box = null;
     if (collide) {
       let [hx, hy, hz] = collide;
       const q = Math.round(yaw / (Math.PI / 2));
       if (Math.abs(yaw - q * Math.PI / 2) < 0.2 && Math.abs(q) % 2 === 1) [hx, hz] = [hz, hx];
-      this.w.collision.addBoxCentered(p.x, spec.y + 0.12 + (opts.lift ?? 0) + hy, p.z, hx, hy, hz, 'furniture');
+      box = {
+        minX: p.x - hx, maxX: p.x + hx, minZ: p.z - hz, maxZ: p.z + hz,
+        minY: baseY, maxY: baseY + hy * 2, hy, lx, lz,
+      };
+      const hit = this._occupied(box);
+      if (hit) {
+        // Canonical coordinates for both pieces, so a refusal reads straight
+        // back to the two layout lines that disagree.
+        this.rejects.push(
+          `${spec.use}:${spec.name} ${lx.toFixed(1)},${lz.toFixed(1)} into ${hit.lx.toFixed(1)},${hit.lz.toFixed(1)}`);
+        return null;
+      }
+    }
+    const g = maker.group;
+    g.position.set(p.x, baseY, p.z);
+    g.rotation.y = yaw;
+    this._bucket.add(g);
+    if (box) {
+      this._room.push(box);
+      this.w.collision.addBoxCentered(p.x, baseY + box.hy, p.z,
+        (box.maxX - box.minX) / 2, box.hy, (box.maxZ - box.minZ) / 2, 'furniture');
     }
     if (opts.loot) {
       const [ox, oz] = opts.loot === true ? [0, 0.8] : opts.loot;
@@ -160,6 +195,18 @@ export class InteriorKit {
     }
     if (opts.spawn) this.w.spawnPoints.push({ x: p.x, z: p.z, zone: spec.zone, indoor: true });
     return g;
+  }
+
+  /** Does this footprint intersect anything already placed in this room?
+   *  All three axes, so a lamp standing ON a nightstand is not a clash. */
+  _occupied(box) {
+    for (const o of this._room) {
+      if (Math.min(box.maxX, o.maxX) - Math.max(box.minX, o.minX) <= FURNITURE_GAP) continue;
+      if (Math.min(box.maxZ, o.maxZ) - Math.max(box.minZ, o.minZ) <= FURNITURE_GAP) continue;
+      if (Math.min(box.maxY, o.maxY) - Math.max(box.minY, o.minY) <= FURNITURE_GAP) continue;
+      return o;
+    }
+    return null;
   }
 
   _pt(built, lx, lz) {
@@ -1069,30 +1116,84 @@ export class InteriorKit {
     return { group: g, collide: [len / 2, 0.42, 0.36] };
   }
 
-  /** Upright piano, lid closed. Nobody is going to open it. */
+  /**
+   * Upright piano — case, music desk, candle sconces, pedal lyre, castors, and
+   * a keyboard that is a real bank of keys rather than a painted stripe.
+   *
+   * The key bank is returned as its own pivot hinged at the BACK of the keys,
+   * so dipping it a couple of degrees reads as somebody putting their hands
+   * down on it. That is what makes the thing worth walking over to: it is the
+   * one instrument in the district you can actually sound, and it is loud.
+   */
   piano() {
     const g = new THREE.Group();
-    const body = this.P.box(1.5, 1.15, 0.62, this.P.colorMat(0x2e2119));
-    body.position.y = 0.6;
-    const lid = this.P.box(1.56, 0.06, 0.68, this.P.colorMat(0x241a13));
-    lid.position.y = 1.2;
-    const fall = this.P.box(1.4, 0.14, 0.06, this.P.colorMat(0x120d09));
-    fall.position.set(0, 0.86, 0.33);
-    g.add(body, lid, fall);
-    const keys = this.P.box(1.32, 0.04, 0.24, this.P.colorMat(0xd8d2c0));
-    keys.position.set(0, 0.79, 0.44);
-    g.add(keys);
-    for (let i = 0; i < 9; i++) {
-      const black = this.P.box(0.05, 0.03, 0.15, this.P.colorMat(0x14110e));
-      black.position.set(-0.6 + i * 0.15, 0.82, 0.4);
-      g.add(black);
+    const case_ = this.P.colorMat(0x2e2119);
+    const dark = this.P.colorMat(0x241a13);
+    const body = this.P.box(1.5, 1.15, 0.6, case_);
+    body.position.set(0, 0.6, -0.06);
+    const lid = this.P.box(1.56, 0.06, 0.7, dark);
+    lid.position.set(0, 1.2, -0.02);
+    const front = this.P.box(1.34, 0.5, 0.04, this.P.colorMat(0x372a1e));  // upper panel
+    front.position.set(0, 0.92, 0.25);
+    const desk = this.P.box(1.2, 0.34, 0.03, dark);                        // music desk
+    desk.position.set(0, 0.99, 0.29);
+    desk.rotation.x = -0.22;
+    const sheet = this.P.box(0.46, 0.3, 0.01, this.P.colorMat(0xcfc9b4));  // the music, still open
+    sheet.position.set(-0.1, 1.0, 0.32);
+    sheet.rotation.x = -0.22;
+    const fall = this.P.box(1.4, 0.13, 0.06, this.P.colorMat(0x120d09));   // fallboard
+    fall.position.set(0, 0.85, 0.32);
+    g.add(body, lid, front, desk, sheet, fall);
+    for (const sx of [-0.5, 0.5]) {                                        // candle sconces
+      const arm = this.P.box(0.14, 0.02, 0.02, this.P.colorMat(0x8a7433));
+      arm.position.set(sx, 1.1, 0.28);
+      const candle = this.P.box(0.03, 0.11, 0.03, this.P.colorMat(0xd6cdb2));
+      candle.position.set(sx + 0.06, 1.16, 0.28);
+      g.add(arm, candle);
     }
-    for (const s of [-1, 1]) {
-      const leg = this.P.box(0.12, 0.28, 0.55, this.P.colorMat(0x241a13));
-      leg.position.set(s * 0.62, 0.14, 0);
+    // the keyboard: a hinged bank so it can be played
+    const keys = new THREE.Group();
+    keys.position.set(0, 0.78, 0.18);       // hinge line, at the back of the keys
+    const whites = this.P.box(1.32, 0.035, 0.26, this.P.colorMat(0xd8d2c0));
+    whites.position.set(0, 0, 0.15);
+    keys.add(whites);
+    for (let i = 0; i < 15; i++) {          // key gaps
+      const gap = this.P.box(0.012, 0.038, 0.24, this.P.colorMat(0x9a9482));
+      gap.position.set(-0.62 + i * 0.088, 0.001, 0.16);
+      keys.add(gap);
+    }
+    for (let i = 0; i < 10; i++) {          // sharps, in their real 2–3 grouping
+      const n = i % 5;
+      if (n === 2) continue;
+      const black = this.P.box(0.042, 0.03, 0.16, this.P.colorMat(0x14110e));
+      black.position.set(-0.58 + i * 0.125, 0.03, 0.09);
+      keys.add(black);
+    }
+    const cheekL = this.P.box(0.08, 0.1, 0.3, dark);
+    cheekL.position.set(-0.7, 0.79, 0.33);
+    const cheekR = cheekL.clone();
+    cheekR.position.x = 0.7;
+    g.add(keys, cheekL, cheekR);
+    // pedal lyre and castors
+    const lyre = this.P.box(0.26, 0.3, 0.05, dark);
+    lyre.position.set(0, 0.16, 0.16);
+    g.add(lyre);
+    for (const px of [-0.06, 0.06]) {
+      const pedal = this.P.box(0.05, 0.02, 0.14, this.P.colorMat(0xa8913f));
+      pedal.position.set(px, 0.1, 0.22);
+      g.add(pedal);
+    }
+    for (const sx of [-1, 1]) {
+      const leg = this.P.box(0.13, 0.3, 0.58, dark);
+      leg.position.set(sx * 0.62, 0.15, -0.06);
       g.add(leg);
+      const castor = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.05, 6),
+        this.P.colorMat(0x4a4038));
+      castor.rotation.z = Math.PI / 2;
+      castor.position.set(sx * 0.62, 0.045, 0.16);
+      g.add(castor);
     }
-    return { group: g, collide: [0.78, 0.6, 0.34] };
+    return { group: g, collide: [0.78, 0.6, 0.36], keys };
   }
 
   /** Potting bench with seed trays — the working surface of a glasshouse. */
@@ -1371,21 +1472,36 @@ export class InteriorKit {
     this._put(b, this.bed(), m * (-hw + 0.75), -hd + 1.3);
     this._put(b, this.nightstand(), m * (-hw + 0.75), -hd + 2.6);
     this._put(b, this.dresser(), m * 0.4, -hd + 0.6, { yaw: Math.PI, loot: [0, 0.9] });
-    this._put(b, this.wardrobe(), m * (hw - 0.9), -hd + 0.9, { yaw: Math.PI, loot: [0, 1.0] });
+    this._put(b, this.wardrobe(), m * (hw - 0.9), -hd + 0.55, { yaw: Math.PI, loot: [0, 1.0] });
     this._put(b, this.picture(0.5, 0.4), m * (-hw + 0.35), -hd + 1.9,
       { yaw: m * Math.PI / 2, collide: null });
     if (v === 2) {   // the family plan: somebody small slept in here too
-      this._put(b, this.cot(), m * (hw - 0.9), -hd + 2.6, { yaw: Math.PI });
+      this._put(b, this.cot(), m * (hw - 0.9), -hd + 2.0, { yaw: Math.PI });
       this._decalAt(b, 'chalkHopscotch', m * (hw - 1.6), -hd + 1.6, 1.1, null);
     }
-    // --- kitchen run against the side wall of the main room
-    this._put(b, this.kitchenRun(Math.min(2.4, c.cd - 5)), m * (hw - 0.6), -hd + 4.6, { yaw: -m * Math.PI / 2 });
-    this._put(b, this.stove(), m * (hw - 0.55), -hd + 3.4, { yaw: -m * Math.PI / 2 });
-    this._put(b, this.fridge(), m * (hw - 0.55), hd - 1.6, { yaw: -m * Math.PI / 2, loot: [-m * 0.9, 0] });
+    // --- kitchen along the side wall of the main room.
+    // Laid out END TO END from one running mark rather than from three fixed
+    // anchors: the anchors were spaced for one particular room depth, so in
+    // any other the counter ran through the cooker. Real units butt up to each
+    // other, and this way they do that at every size.
+    const kx = m * (hw - 0.6), kyaw = -m * Math.PI / 2;
+    const kStart = -hd + 3.9, kEnd = hd - 0.9;   // between the bedroom wall and the front
+    let kz = kStart + 0.4;
+    this._put(b, this.stove(), kx, kz, { yaw: kyaw });
+    const runLen = Math.min(2.4, kEnd - kStart - 1.9);
+    if (runLen >= 1.0) {                          // a small cottage gets no worktop
+      kz += 0.55 + runLen / 2;
+      this._put(b, this.kitchenRun(runLen), kx, kz, { yaw: kyaw });
+      kz += runLen / 2;
+    }
+    kz += 0.55;
+    this._put(b, this.fridge(), kx, kz, { yaw: kyaw, loot: [-m * 0.9, 0] });
     // --- dining set, off the partition-gap corridor
     const tx = m * -hw * 0.25, tz = hd * 0.28;
     if (this._put(b, this.table(1.5, 0.95), tx, tz)) {
-      this._put(b, this.chair(), tx - m * 1.1, tz, { yaw: m * Math.PI / 2 });
+      // Pulled out at the END of the table, not the side: the side chair stood
+      // in the same half-metre as the television.
+      this._put(b, this.chair(), tx, tz - 0.95, { yaw: 0 });
       this._put(b, this.tippedChair(), tx + m * 1.15, tz + 0.3);
       this._meal(b, tx - 0.3, tz);
       if (v !== 2) this._meal(b, tx + 0.35, tz - 0.15);
@@ -1394,9 +1510,13 @@ export class InteriorKit {
     this._put(b, this.rug(2.0, 1.4), m * (-hw + 1.5), hd - 2.0, { collide: null });
     this._put(b, this.sofa(), m * (-hw + 1.2), hd - 1.1, { yaw: Math.PI });
     this._put(b, this.crtTv(), m * (-hw + 1.4), hd - 3.4, { yaw: 0 });
-    if (v === 0) this._put(b, this.shelf(1.5), m * (-hw + 0.5), 0.6, { yaw: m * Math.PI / 2 });
-    if (v === 1) this._put(b, this.desk(), m * (-hw + 0.9), 0.4, { yaw: m * Math.PI / 2, loot: [m * 0.9, 0] });
-    if (v === 2) this._put(b, this.shelf(1.3, false), m * (-hw + 0.5), 0.4, { yaw: m * Math.PI / 2 });
+    // Against the BEDROOM WALL facing the room, not against the side wall: the
+    // side wall is the television's, and a writing desk half a metre from a
+    // television set is a writing desk growing out of a television set.
+    const bw = m * (-hw + 1.6), bz = -hd + 3.5;
+    if (v === 0) this._put(b, this.shelf(1.5), bw, bz);
+    if (v === 1) this._put(b, this.desk(), bw, bz, { loot: [0, 0.9] });
+    if (v === 2) this._put(b, this.shelf(1.3, false), bw, bz);
     this._papers(b, tx + 0.8, tz + 1.0, 3);
     if ((s.derelict ?? 0) > 0.45) this._stain(b, m * 0.4, -hd + 2.2, 1.4);
   }
@@ -1695,13 +1815,38 @@ export class InteriorKit {
     const hw = c.cw / 2, hd = c.cd / 2;
     this._dropCeiling(b, 3.3);
     this._platform(b, 0, -hd + 1.5, c.cw - 2.4, 2.4, 0.42);
-    this._put(b, this.piano(), -hw + 1.4, -hd + 1.4, { yaw: 0.25, lift: 0.52, collide: null });
+    // The piano stands ON the stage, square to the room and well inboard of the
+    // edge — it used to sit half off the end of the platform with no collider,
+    // so you walked through it. Now it is solid, it faces the hall, and it
+    // works: see the interactable below.
+    const pn = this.piano();
+    const pg = this._put(b, pn, -hw + 3.2, -hd + 1.5, { lift: 0.54, loot: [0, 1.4] });
+    if (pg) {
+      this._put(b, this.stool(), -hw + 3.2, -hd + 2.5, { lift: 0.54 });
+      const press = this.w._animate(pn.keys, 'press', pg.position.x, pg.position.z,
+        { axis: 'x', amp: 0.055, speed: 3.4 });
+      const pos = { x: pg.position.x, y: b.spec.y + 1.3, z: pg.position.z };
+      this.w.addInteractable({
+        x: pg.position.x, z: pg.position.z + 1.0, y: b.spec.y, radius: 2.2,
+        prompt: 'Play the piano [E]',
+        onInteract: () => {
+          if (press) press.impulse = 1;
+          this.w.events.emit('anomaly:sound', { kind: 'piano', pos });
+          // A hall piano in an empty street is the loudest thing you own.
+          this.w.events.emit('noise', { pos, radius: 85 });
+          this.w.events.emit('subtitle', {
+            text: 'The chord holds far longer than the room should let it. Something outside keeps time.',
+          });
+          this.w.events.emit('whisper', { intensity: 0.5 });
+        },
+      });
+    }
     this._put(b, this.picture(1.6, 1.0), 1.0, -hd + 0.35, { yaw: 0, collide: null });   // the banner
     for (const s of [-1, 1]) {
       this._put(b, this.chairStack(6), s * (hw - 0.85), -hd + 4.2, { yaw: -s * Math.PI / 2 });
       this._put(b, this.chairStack(5), s * (hw - 0.85), -hd + 5.6, { yaw: -s * Math.PI / 2 });
     }
-    this._put(b, this.trestle(2.6), -hw + 1.6, hd - 2.0, { yaw: 0.08, loot: [0, -0.9] });
+    this._put(b, this.trestle(2.6), -hw + 4.2, hd - 1.9, { yaw: 0.08, loot: [0, -0.9] });
     this._put(b, this.trestle(2.2), hw - 1.6, hd - 2.0, { yaw: -0.06 });
     this._put(b, this.counter(2.6), hw - 1.5, 0.4, { yaw: -Math.PI / 2, loot: [-0.9, 0] });  // the serving hatch
     this._put(b, this.waterCooler(), -hw + 0.6, 1.6, { yaw: Math.PI / 2 });
@@ -1727,7 +1872,7 @@ export class InteriorKit {
     this._put(b, this.rack(2.2), -hw + 0.75, -0.4, { yaw: Math.PI / 2, loot: [1.0, 0] });
     this._put(b, this.P.barrel(), hw - 0.85, -hd + 1.2);
     this._put(b, this.locker(), hw - 0.65, 0.6, { yaw: -Math.PI / 2, loot: [-0.9, 0] });
-    this._put(b, this.P.crateStack(2), hw - 1.1, hd - 1.4, { yaw: 0.35 });
+    this._put(b, this.P.crateStack(2), hw - 1.4, hd - 0.9, { yaw: 0.35 });
     this._stainOil(b, 0, 0.6, 2.0);
     this._stainOil(b, -1.2, -1.4, 1.2);
     this._spawnAt(b, -0.6, 0.4);

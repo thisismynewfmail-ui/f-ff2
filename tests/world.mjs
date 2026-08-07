@@ -382,6 +382,29 @@ const r = await page.evaluate(async () => {
     }
   }
   out.inCarriageway = [...new Set(out.inCarriageway)];
+  // --- interior furniture does not interpenetrate ---------------------------
+  // Layouts are written in canonical coordinates and rotated per door side, so
+  // two pieces that look well apart in the source can end up inside each other
+  // once a narrower footprint or a mirrored variant reshapes the frame. Cheap
+  // to check, invisible in review, and immediately obvious in game.
+  const furn = w.collision.boxes.filter((b) => b.active && b.tag === 'furniture');
+  out.furnClash = [];
+  for (let i = 0; i < furn.length; i++) {
+    for (let j = i + 1; j < furn.length; j++) {
+      const a = furn[i], c = furn[j];
+      const ox = Math.min(a.maxX, c.maxX) - Math.max(a.minX, c.minX);
+      const oy = Math.min(a.maxY, c.maxY) - Math.max(a.minY, c.minY);
+      const oz = Math.min(a.maxZ, c.maxZ) - Math.max(a.minZ, c.minZ);
+      if (ox > 0.12 && oy > 0.12 && oz > 0.12) {
+        const host = specs.find((sp) => Math.abs((a.minX + a.maxX) / 2 - sp.x) < sp.w / 2
+          && Math.abs((a.minZ + a.maxZ) / 2 - sp.z) < sp.d / 2);
+        out.furnClash.push(`${host ? host.name : '?'}@${((a.minX + a.maxX) / 2).toFixed(0)},${((a.minZ + a.maxZ) / 2).toFixed(0)}`);
+      }
+    }
+  }
+  out.furnClash = [...new Set(out.furnClash)];
+  out.furnRejects = w.interiors.rejects;
+
   // Eastgate Green is a promise the district makes: open ground with clear
   // sight lines, which is worth exactly nothing if a later pass plants a tree
   // in the middle of it. Assert it against the declared circle rather than
@@ -500,6 +523,13 @@ check('no Eastgate building stands in a carriageway', r.inCarriageway.length ===
   r.inCarriageway.slice(0, 5).join(', '));
 check('Eastgate is built out as a neighbourhood', r.eastgateBuildings >= 40 && r.eastgateFurnished >= 35,
   `${r.eastgateBuildings} buildings, ${r.eastgateFurnished} enterable`);
+check('no two pieces of furniture occupy the same space', r.furnClash.length === 0,
+  `${r.furnClash.length} clashes: ` + r.furnClash.slice(0, 8).join(', '));
+// The guard above can only hold by refusing pieces, so watch what it refuses:
+// a layout change that starts gutting rooms shows up here long before anyone
+// walks into an empty one.
+check('few interior pieces are refused for want of room', r.furnRejects.length <= 20,
+  `${r.furnRejects.length} refused: ` + r.furnRejects.slice(0, 5).join(' | '));
 check('Eastgate Green is genuinely clear ground', r.greenIntruders.length === 0,
   r.greenIntruders.slice(0, 5).join(', '));
 check('Eastgate roofs and porches vary', r.roofKinds >= 3 && r.eastgatePorches >= 10,

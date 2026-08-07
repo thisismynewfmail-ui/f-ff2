@@ -86,6 +86,18 @@ The weapon menu is hidden during play; a number key or a mouse-wheel scroll
 fades it in at the top of the screen, and it fades back out after a couple of
 seconds (or the instant you fire).
 
+**Mouse look filters the pointer-lock plumbing out of your aim.** A locked
+mousemove does not always carry your hand: the browser reports the cursor's
+old position as a movement delta every time lock is acquired (which happens on
+every click, unpause and alt-tab back), and Chromium intermittently reports a
+delta computed against a stale screen coordinate. Both used to be added
+straight onto the camera, which is what made the view snap at random as though
+the mouse had been slammed across the desk. `src/engine/Input.js` now ignores
+motion for a moment after taking the pointer and refuses any single event that
+is both large and wildly out of scale with how fast the mouse has genuinely
+been moving — so a hard flick escalates the threshold and keeps working while
+an isolated jump never reaches your aim.
+
 ## Arsenal
 
 Every weapon is a fully 3D, PBR-textured model with a steampunk / Bioshock

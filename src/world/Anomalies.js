@@ -324,6 +324,11 @@ export class Anomalies {
         if (dx * dx + dz * dz > 8100) continue;   // 90 m
         if (a.kind === 'spin') {
           a.node.rotation[a.axis] += dt * a.speed;
+        } else if (a.kind === 'press') {
+          // one-shot: something was pushed, and it settles back
+          if (!(a.impulse > 0)) continue;
+          a.impulse = Math.max(0, a.impulse - dt * a.speed);
+          a.node.rotation[a.axis] = a.impulse * a.amp;
         } else if (a.kind === 'swing') {
           a.node.rotation[a.axis] = Math.sin(time * a.speed + a.phase) * a.amp
             * (0.6 + 0.4 * Math.sin(time * 0.043 + a.phase));   // the arc breathes, never stops

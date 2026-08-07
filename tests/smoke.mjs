@@ -1017,6 +1017,62 @@ const victoryVisible = await page.evaluate(() => {
 check('victory screen displayed with stats', victoryVisible === true, String(victoryVisible));
 if (takeScreens) await page.screenshot({ path: join(SCREEN_DIR, 'shot_victory.png') });
 
+// --- mouse-look spike rejection -----------------------------------------
+// The view used to snap at random because every pointer-locked mousemove was
+// added straight onto the camera, including the delta pointer lock reports on
+// acquisition and Chromium's occasional stale-coordinate outlier. Drive the
+// real Input with synthetic events and check what survives.
+const look = await page.evaluate(() => {
+  const input = window.__game.input;
+  const out = {};
+  const feed = (moves) => {
+    input.mouseDX = 0; input.mouseDY = 0;
+    for (const [dx, dy] of moves) {
+      document.dispatchEvent(new MouseEvent('mousemove', { movementX: dx, movementY: dy }));
+    }
+    return input.mouseDX;
+  };
+  input.pointerLocked = true;
+  input.suppressed = false;
+
+  // 1. the acquisition delta, however big, never reaches the camera
+  input._settleMouse();
+  out.duringSettle = feed([[900, 0], [-1400, 260]]);
+
+  // 2. ordinary play passes through untouched
+  input._lockedAt = 0; input._mouseBaseline = 8;
+  const gentle = [[6, 2], [9, -3], [12, 4], [7, 1], [11, -2]];
+  out.gentle = feed(gentle);
+  out.gentleWant = gentle.reduce((a, m) => a + m[0], 0);
+
+  // 3. an isolated jump in the middle of ordinary play is dropped, and the
+  //    ordinary events around it still land
+  input._lockedAt = 0; input._mouseBaseline = 8;
+  out.withSpike = feed([[8, 0], [1800, -900], [10, 0]]);
+
+  // 4. a genuine hard flick is NOT eaten: every event of it is accepted, which
+  //    is what separates this from a blunt clamp
+  input._lockedAt = 0; input._mouseBaseline = 8;
+  const flick = [[260, 0], [300, 0], [280, 0]];
+  out.flick = feed(flick);
+  out.flickWant = flick.reduce((a, m) => a + m[0], 0);
+
+  // 5. one frame can never turn the view by more than the backstop
+  input._lockedAt = 0; input._mouseBaseline = 8;
+  out.clamped = feed(Array.from({ length: 40 }, () => [400, 0]));
+  input.pointerLocked = false;
+  input.mouseDX = 0; input.mouseDY = 0;
+  return out;
+});
+check('pointer-lock acquisition delta never moves the view', look.duringSettle === 0,
+  `${look.duringSettle}px got through`);
+check('ordinary mouse motion passes through untouched', look.gentle === look.gentleWant,
+  `${look.gentle} vs ${look.gentleWant}`);
+check('an isolated movement spike is rejected', look.withSpike === 18, `${look.withSpike}px`);
+check('a genuine hard flick is not eaten as a spike', look.flick === look.flickWant,
+  `${look.flick} vs ${look.flickWant}`);
+check('one frame cannot turn the view without limit', look.clamped <= 1430, `${look.clamped}px`);
+
 check('no console errors across the whole run', errors.length === 0, errors.slice(0, 3).join(' | '));
 
 await browser.close();
