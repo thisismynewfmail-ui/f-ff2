@@ -41,6 +41,17 @@ export class Vegetation {
     this.leavesMat = this._cutout('leaves');
     this.bushMat = this._cutout('bush');
     this.tuftMat = this._windCutout('grassTuft');
+    // Standing cover has to agree with the ground it stands on: a tuft of
+    // parched straw in the middle of a park lawn gives the blend away at a
+    // glance. World installs `kindAt` (see World._grassKind) and tuftField
+    // sorts its points into the right clump for wherever they landed.
+    this.tuftMats = {
+      lawn: this.tuftMat,
+      dry: this._windCutout('grassTuftDry'),
+      wild: this._windCutout('grassTuftWild'),
+    };
+    this.tuftHeights = { lawn: 0.7, dry: 0.55, wild: 1.05 };
+    this.kindAt = () => 'lawn';
     this.weedMat = this._windCutout('weeds');
     this.hedgeMat = this._cutout('hedge');
     this.flowerMat = this._cutout('flowers');
@@ -215,9 +226,25 @@ export class Vegetation {
     return mesh;
   }
 
-  /** Grass tufts, merged and wind-animated. points: array of [x, z]. */
+  /**
+   * Grass tufts, merged and wind-animated. points: array of [x, z].
+   *
+   * Sorted by region first, so one call spanning a district boundary comes out
+   * as lawn on one side and meadow on the other — one merged mesh per kind
+   * present, never more than three, and callers never have to know.
+   */
   tuftField(parent, points) {
-    return this._coverField(parent, points, this.tuftMat, 0.9, 0.7);
+    const groups = new Map();
+    for (const p of points) {
+      const k = this.tuftMats[this.kindAt(p[0], p[1])] ? this.kindAt(p[0], p[1]) : 'lawn';
+      if (!groups.has(k)) groups.set(k, []);
+      groups.get(k).push(p);
+    }
+    const made = [];
+    for (const [k, pts] of groups) {
+      made.push(this._coverField(parent, pts, this.tuftMats[k], 0.9, this.tuftHeights[k]));
+    }
+    return made.length === 1 ? made[0] : made;
   }
 
   /**

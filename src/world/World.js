@@ -6,7 +6,7 @@ import { BuildingKit, mergeStatic, mulberry32 } from './Buildings.js';
 import { InteriorKit, housePartitions, officePartitions, lobbyPartitions } from './Interiors.js';
 import { PropKit } from './Props.js';
 import { Vegetation } from './Vegetation.js';
-import { Zones, ZONES } from './Zones.js';
+import { Zones, ZONES, zoneIdAt } from './Zones.js';
 import { Secrets } from './Secrets.js';
 import { Anomalies } from './Anomalies.js';
 import { CompanionCube } from './CompanionCube.js';
@@ -25,6 +25,60 @@ const DOOR_LANE_HALF = 1.6;
  * on it rather than on a coordinate that happens to be empty today.
  */
 export const EASTGATE_GREEN = { x: 158, z: 42, r: 20 };
+
+/**
+ * Grass bias per district — [dry, lush, wild] overlay weights over the kept
+ * lawn, which is the base texture and therefore needs no weight of its own.
+ * Indexed by zone id; the ground that belongs to no district at all is
+ * FLATS_GRASS, below.
+ *
+ * These run stronger than what actually lands: a district only reaches its
+ * full bias well inside its own boundary (see GRASS_LAYERS), so the number
+ * here is the character the middle of the district is aiming at.
+ */
+const DISTRICT_GRASS = [
+  [0, 0.20, 0],        //  0  Old Town Square: still kept
+  [0.30, 0.12, 0],     //  1  Eastgate Residential: suburban lawns going patchy
+  [0.52, 0, 0.18],     //  2  Downtown: baked verges
+  [0, 0.95, 0],        //  3  Hollow Park: deep and wet
+  [0.78, 0, 0.24],     //  4  Southside Industrial: dead ground
+  [0.14, 0, 0.86],     //  5  Chapel Ridge: unmown
+];
+/** Past the last kerb. Nobody has cut this since before any of it started. */
+const FLATS_GRASS = [0.26, 0, 0.66];
+
+/**
+ * The districts as SOFT rectangles, painted largest first.
+ *
+ * A district is a rectangle on a plan, and a rectangle has a hard edge; blend
+ * grass by a hard edge and you draw that plan on the ground in colour. So
+ * membership ramps linearly from nothing at the boundary to full some tens of
+ * metres inside it, and the biases are composited in area order — largest at
+ * the bottom — which keeps the "smallest rect wins where they overlap" rule
+ * the district lookup itself uses, without any of the steps that rule implies.
+ *
+ * The ramp is linear rather than eased on purpose: a smoothstep is twice as
+ * steep in the middle as it is wide, and it is the STEEPEST part of the ramp
+ * that decides whether a transition reads as a gradient or as a line.
+ */
+const GRASS_LAYERS = ZONES
+  .map((zone) => {
+    const r = zone.rect;
+    const span = Math.min(r.maxX - r.minX, r.maxZ - r.minZ);
+    return {
+      rect: r, bias: DISTRICT_GRASS[zone.id],
+      area: (r.maxX - r.minX) * (r.maxZ - r.minZ),
+      edge: Math.min(92, span * 0.46),
+    };
+  })
+  .sort((a, b) => b.area - a.area);
+
+/** How much of a district a point is in: 0 at its boundary, 1 well inside. */
+function grassMember(x, z, r, e) {
+  const t = Math.min((x - r.minX) / e, (r.maxX - x) / e,
+    (z - r.minZ) / e, (r.maxZ - z) / e);
+  return t <= 0 ? 0 : t >= 1 ? 1 : t;
+}
 // How much two solid footprints may overlap before it reads as a mistake.
 // Small enough to catch a stall clipping a wall, loose enough that props
 // deliberately tucked against something aren't refused.
@@ -73,6 +127,7 @@ export class World {
     this.kit = new BuildingKit(texLib, this.collision, this.nav, this.terrain);
     this.props = new PropKit(texLib, this.collision, this.nav, this.terrain);
     this.veg = new Vegetation(texLib, this.collision, this.nav, this.terrain);
+    this.veg.kindAt = (x, z) => this._grassKind(x, z);
 
     this.spawnPoints = [];   // {x, z, zone, indoor}
     this.lootPoints = [];    // {x, z, zone}
@@ -176,7 +231,7 @@ export class World {
     // the boathouse standing on its bank.
     this._planTerrain();            // pond basin
     this._planBuildings();          // building pads, which override it locally
-    this.group.add(this.terrain.buildMesh(this.texLib));
+    this.group.add(this.terrain.buildMesh(this.texLib, (x, z) => this._grassAt(x, z)));
     this._roads();
     this._constructBuildings();
     this.zones = new Zones(this.events, this.props, this.collision, this.nav, this.terrain, this.group);
@@ -392,6 +447,84 @@ export class World {
    * registered BEFORE Terrain.buildMesh runs, or the ground mesh is displaced
    * without it and the feature ends up floating over its own hole.
    */
+  /**
+   * What kind of grass grows at a world point.
+   *
+   * The town is not one lawn. A district that has been mown for a century
+   * does not look like the ravine in Hollow Park, and neither looks like the
+   * flats past the last kerb, so the ground carries four grasses blended per
+   * fragment (see Terrain.buildMesh): the kept lawn is the base and dry, lush
+   * and wild are laid over it by weight.
+   *
+   * The district bias is the hard part. Districts are RECTANGLES, so a hard
+   * lookup makes the bias a step function, and a step in the blend draws that
+   * planning rectangle on the ground in colour. So districts are composited as
+   * SOFT rects instead (GRASS_LAYERS), and the point they are read at is first
+   * pushed around by a low-frequency wobble, so the transition is neither a
+   * line nor a clean offset copy of one — it happens somewhere in a field, the
+   * way it does outdoors.
+   *
+   * Everything else scales with distance from town: the further out, the
+   * wilder, because the further out the longer since anybody cut it.
+   */
+  _grassAt(x, z) {
+    // two incommensurable wobbles, so the pattern never repeats on either axis
+    const n1 = Math.sin(x * 0.0121 + 0.7) * Math.cos(z * 0.0157 - 1.3);
+    const n2 = Math.sin(x * 0.0311 - 2.1) * Math.sin(z * 0.0273 + 0.9);
+    const wob = n1 * 0.34 + n2 * 0.17;
+    // warp where the district is read from, so the softened edge still wanders
+    const wx = x + n1 * 7, wz = z + n2 * 6;
+
+    let dry = FLATS_GRASS[0], lush = FLATS_GRASS[1], wild = FLATS_GRASS[2];
+    for (const L of GRASS_LAYERS) {
+      const m = grassMember(wx, wz, L.rect, L.edge);
+      if (m <= 0) continue;
+      dry += (L.bias[0] - dry) * m;
+      lush += (L.bias[1] - lush) * m;
+      wild += (L.bias[2] - wild) * m;
+    }
+
+    // Local features mix IN rather than taking a maximum: `Math.max(a, floor)`
+    // steps the moment the floor wins, which puts a hard ring around every
+    // feature at exactly the radius it stops mattering. Linear, and wide: a
+    // smoothstep is half again as steep in its middle as its width suggests,
+    // and this halo is the steepest thing on the whole ground.
+    const ramp = (px, pz, r) => Math.max(0, 1 - Math.hypot(x - px, z - pz) / r);
+    // the pond drags lush growth out onto its bank whatever district it is in
+    const pb = this.pondBasin;
+    if (pb) {
+      const k = ramp(pb.x, pb.z, 70);
+      lush = lush * (1 - k) + 0.95 * k;
+    }
+    // the two farm fields are worked ground: parched, and nothing lush on them
+    for (const [fx, fz, fr] of [[100, -190, 62], [150, -150, 54]]) {
+      const k = ramp(fx, fz, fr);
+      dry = dry * (1 - k) + 0.85 * k;
+      lush *= 1 - k;
+    }
+    // and everything goes over the further you get from the middle of town
+    const out = Math.min(1, Math.max(0, (Math.hypot(x, z) - 150) / 110));
+    wild = Math.min(1, wild + out * 0.45);
+
+    return {
+      dry: Math.max(0, dry + wob * 0.5),
+      lush: Math.max(0, lush + wob * 0.35),
+      wild: Math.max(0, wild + wob * 0.45),
+      // Long-wavelength tone: sun-bleached crowns, darker in the hollows.
+      tint: 0.9 + Math.sin(x * 0.0067 + 1.9) * 0.075 + Math.cos(z * 0.0053 - 0.6) * 0.075
+        + n2 * 0.035,
+    };
+  }
+
+  /** Which standing tuft belongs at a point — the same call the ground blend
+   *  makes, reduced to whichever grass is actually winning there. */
+  _grassKind(x, z) {
+    const g = this._grassAt(x, z);
+    if (g.wild > 0.42 && g.wild >= g.dry) return 'wild';
+    if (g.dry > 0.34) return 'dry';
+    return 'lawn';
+  }
+
   _planTerrain() {
     // The pond basin.
     //

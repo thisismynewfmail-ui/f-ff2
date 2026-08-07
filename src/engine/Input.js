@@ -45,6 +45,8 @@ const MOUSE_BASELINE_FLOOR = 8;
 // How long after lock is acquired (or the keyboard handed back) to ignore
 // motion entirely, so the acquisition delta never reaches the camera.
 const LOCK_SETTLE_MS = 150;
+// How often an outstanding pointer-lock request is retried.
+const LOCK_RETRY_MS = 260;
 // Final backstop on what one frame may turn the view by: 1430 px is a full
 // 180° at default sensitivity, and nobody spins on the spot inside a single
 // frame. The per-event guard above is what actually catches spikes; this only
@@ -66,6 +68,8 @@ export class Input {
     this.mousePressed = [false, false, false, false, false];
     this.wheelDelta = 0;
     this.pointerLocked = false;
+    this.lockWanted = false;     // the game wants the pointer (see requestPointerLock)
+    this._lastLockTry = 0;
     this.onPointerLockChange = null;
     this.suppressed = false; // true while the dev console owns the keyboard
     // Live action → code map (rebindable in Settings). Seeded with the defaults
@@ -74,6 +78,8 @@ export class Input {
     this._boundCodes = new Set(Object.values(this.bindings));
 
     document.addEventListener('keydown', (e) => {
+      // Any gesture is a chance to get an outstanding lock back.
+      if (!e.repeat) this._tryLock();
       if (e.repeat || this.suppressed) return;
       this.keys.add(e.code);
       this.pressed.add(e.code);
@@ -90,6 +96,8 @@ export class Input {
       this.mouseDY = clamp(this.mouseDY + dy, MOUSE_FRAME_CLAMP);
     });
     document.addEventListener('mousedown', (e) => {
+      // A click is the strongest gesture there is; never throttle this one.
+      this._tryLock(true);
       if (this.suppressed) return;
       if (e.button >= 3) e.preventDefault(); // stop thumb-button back/forward nav
       if (e.button < this.mouseDown.length) {
@@ -105,8 +113,13 @@ export class Input {
 
     document.addEventListener('pointerlockchange', () => {
       this.pointerLocked = document.pointerLockElement === this.element;
-      if (this.pointerLocked) this._settleMouse();
+      if (this.pointerLocked) { this.lockWanted = false; this._settleMouse(); }
       this.onPointerLockChange?.(this.pointerLocked);
+    });
+    // A refused request is reported here on older engines. Nothing to do but
+    // note the time so the pump backs off a beat before asking again.
+    document.addEventListener('pointerlockerror', () => {
+      this._lastLockTry = performance.now();
     });
   }
 
@@ -132,16 +145,63 @@ export class Input {
     return false;
   }
 
-  async requestPointerLock() {
-    try {
-      await this.element.requestPointerLock();
-    } catch {
-      // Headless / denied: continue without mouse look.
-    }
+  /**
+   * Ask for the pointer, and keep asking until it is given.
+   *
+   * A single requestPointerLock() is not enough and never was. The browser
+   * refuses one outright for about a second after the USER pressed Escape to
+   * leave a lock — which is precisely the situation a resume is always in,
+   * because Escape is how you paused. Ask once, land inside that window, and
+   * the request is dropped on the floor: the game un-pauses into a state with
+   * no mouse look, no cursor, and — since Escape only ever paused by dropping
+   * a lock there is no longer any of — no way back out either. That is the
+   * dead end this exists to make impossible.
+   *
+   * So the request becomes a standing intent instead of an event. `pump()`
+   * retries it a few times a second while the game wants the pointer and does
+   * not have it, and the input handlers retry it on the spot whenever the
+   * player does anything, since a real gesture is what the stricter engines
+   * want. It stops the moment the lock lands or the game gives up wanting it.
+   */
+  requestPointerLock() {
+    // Already holding it: the request is satisfied on arrival. Leaving the
+    // intent standing here would be worse than useless — Game treats a live
+    // intent as "an unlock event is our own doing, ignore it", so a resume
+    // that never actually lost the pointer would go on to swallow the next
+    // Escape the player pressed.
+    if (this.pointerLocked) { this.lockWanted = false; return; }
+    this.lockWanted = true;
+    this._tryLock();
   }
 
   releasePointerLock() {
+    this.lockWanted = false;
     if (document.pointerLockElement) document.exitPointerLock();
+  }
+
+  /** True while the game wants the pointer and the browser has not given it —
+   *  what the HUD's "click to look" hint is driven from. */
+  get lockPending() { return this.lockWanted && !this.pointerLocked; }
+
+  _tryLock(force = false) {
+    if (!this.lockWanted || this.pointerLocked || !this.element) return;
+    const now = performance.now();
+    // Throttled: a refused request logs in the console, and asking sixty times
+    // a second turns one refusal into a wall of them.
+    if (!force && now - this._lastLockTry < LOCK_RETRY_MS) return;
+    this._lastLockTry = now;
+    try {
+      const p = this.element.requestPointerLock();
+      // Older engines return undefined and report failure through
+      // 'pointerlockerror'; newer ones reject. Neither is an error here — the
+      // pump will come back around.
+      if (p && typeof p.catch === 'function') p.catch(() => {});
+    } catch { /* headless / denied: the pump will try again */ }
+  }
+
+  /** Call once a frame. Only does anything while a lock is outstanding. */
+  pump() {
+    if (this.lockPending) this._tryLock();
   }
 
   /** Hand the keyboard/mouse to (or take it back from) an overlay UI. */

@@ -438,6 +438,60 @@ const r = await page.evaluate(async () => {
   out.windFields = 0;
   w.group.traverse((o) => { if (o.isMesh && o.geometry?.attributes?.aSway) out.windFields++; });
 
+  // The ground is four grasses blended per fragment, so "is the grass right"
+  // is three separate questions: are all four actually bound, does the mix
+  // really differ between districts (or is it one lawn with extra samplers),
+  // and does it CHANGE gradually — a splat map that steps from one weight to
+  // another between neighbouring vertices draws a visible line across a field,
+  // which is the exact failure the blend exists to avoid.
+  {
+    const t = w.terrain.mesh;
+    const g = t.geometry.attributes.aGrass;
+    out.grass = {
+      maps: ['grass', 'grassDry', 'grassLush', 'grassWild'].filter((n) => {
+        try { return !!w.texLib.get(n); } catch { return false; }
+      }).length,
+      splat: !!g && !!t.geometry.attributes.aTint,
+      cacheKey: typeof t.material.customProgramCacheKey === 'function',
+    };
+    // no vertex may ask for more grass than exists
+    let over = 0, tintLo = 9, tintHi = -9;
+    const tint = t.geometry.attributes.aTint;
+    for (let i = 0; i < g.count; i++) {
+      if (g.getX(i) + g.getY(i) + g.getZ(i) > 1.0001) over++;
+      tintLo = Math.min(tintLo, tint.getX(i));
+      tintHi = Math.max(tintHi, tint.getX(i));
+    }
+    out.grass.over = over;
+    out.grass.tintRange = +(tintHi - tintLo).toFixed(3);
+    // districts must actually differ from each other
+    const mix = (x, z) => { const p = w._grassAt(x, z); return [p.dry, p.lush, p.wild]; };
+    const d = (a, b) => Math.abs(a[0] - b[0]) + Math.abs(a[1] - b[1]) + Math.abs(a[2] - b[2]);
+    const town = mix(0, 20), park = mix(-170, 60), ind = mix(-60, 165), ridge = mix(-200, -180);
+    out.grass.spread = +Math.min(d(town, park), d(town, ind), d(park, ind), d(ind, ridge)).toFixed(3);
+    // and the change between neighbouring lattice cells must be gradual
+    let jump = 0;
+    const n = 201;
+    for (let j = 0; j < n - 1; j++) {
+      for (let i = 0; i < n - 1; i++) {
+        const a = j * n + i, b = a + 1, c = a + n;
+        for (const o of [b, c]) {
+          jump = Math.max(jump,
+            Math.abs(g.getX(a) - g.getX(o)) + Math.abs(g.getY(a) - g.getY(o)) + Math.abs(g.getZ(a) - g.getZ(o)));
+        }
+      }
+    }
+    out.grass.jump = +jump.toFixed(3);
+    // standing cover has to follow the ground it stands on
+    const kinds = new Set();
+    w.group.traverse((o) => {
+      if (o.isMesh && o.geometry?.attributes?.aSway) {
+        for (const [k, m] of Object.entries(w.veg.tuftMats)) if (m === o.material) kinds.add(k);
+      }
+    });
+    out.grass.tuftKinds = [...kinds].sort();
+  }
+
   // Surfaces that move without a moving part behind them: the TV static
   // flipbook, the arcade and vending tubes, the campfire. Counting the
   // registry only proves it was declared, so sample every entry's actual
@@ -655,6 +709,18 @@ check('Eastgate roofs and porches vary', r.roofKinds >= 3 && r.eastgatePorches >
 check('planting is animated across the town', r.swayers >= 400 && r.windFields >= 20,
   `${r.swayers} swayers, ${r.windFields} wind-bent ground-cover fields`);
 check('the district has moving props', r.animProps >= 15, `${r.animProps} animated`);
+check('the ground carries all four grasses', r.grass.maps === 4 && r.grass.splat && r.grass.cacheKey,
+  `${r.grass.maps} textures, splat ${r.grass.splat}, own program ${r.grass.cacheKey}`);
+check('no patch of ground asks for more grass than there is', r.grass.over === 0,
+  `${r.grass.over} vertices over weight`);
+check('districts really do grow different grass', r.grass.spread > 0.3,
+  `closest pair of districts differs by ${r.grass.spread}`);
+check('the grass changes gradually, never on a line', r.grass.jump < 0.16,
+  `worst neighbouring step ${r.grass.jump}`);
+check('the ground tone varies over the map', r.grass.tintRange > 0.12,
+  `tint spans ${r.grass.tintRange}`);
+check('standing cover matches the ground it stands on', r.grass.tuftKinds.length >= 2,
+  `tuft kinds in use: ${r.grass.tuftKinds.join(', ')}`);
 check('screens, tubes and the fire animate in place', r.matAnims >= 4 && r.matKinds.length >= 3,
   `${r.matAnims} animated surfaces: ${r.matKinds.join(', ')}`);
 check('no animated surface is stuck', r.matFrozen.length === 0,

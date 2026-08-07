@@ -645,6 +645,21 @@ html, body {
 .scope-h { left: 50%; top: 50%; width: 60vh; height: 2px; transform: translate(-50%, -50%); }
 .scope-v { left: 50%; top: 50%; width: 2px; height: 60vh; transform: translate(-50%, -50%); }
 
+/* "click to take the mouse back": the pointer-lock prompt. Delayed in, instant
+   out — an ordinary resume gets the pointer within a frame or two and must not
+   flash this at the player on the way past. */
+#lock-hint {
+  position: absolute; left: 50%; top: 62%; transform: translateX(-50%);
+  z-index: 45; pointer-events: none; opacity: 0;
+  font-size: 13px; letter-spacing: 3px; color: #cfc9a8;
+  background: rgba(10, 12, 10, 0.82); border: 2px solid #33372c; border-radius: 4px;
+  padding: 8px 18px; white-space: nowrap;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.06), 0 3px 10px rgba(0,0,0,0.65);
+  transition: opacity 0.15s;
+}
+#lock-hint b { color: #e6c24a; }
+#lock-hint.on { opacity: 1; transition: opacity 0.25s ease 0.7s; }
+
 /* full screens */
 .screen {
   position: absolute; inset: 0; z-index: 50;
@@ -715,22 +730,396 @@ html, body {
 }
 .inv-foot { margin-top: 20px; font-size: 11px; color: #6a7462; text-align: center; letter-spacing: 1px; }
 
-/* circular stat gauges (pause screen) */
-.statrings { display: flex; flex-wrap: wrap; gap: 22px; justify-content: center; max-width: 560px; }
-.ring { display: flex; flex-direction: column; align-items: center; gap: 6px; width: 118px; }
-.ring svg { width: 104px; height: 104px; transform: rotate(-90deg); }
-.ring .track { fill: none; stroke: #2a3226; stroke-width: 9; }
-.ring .arc { fill: none; stroke: #e0b840; stroke-width: 9; stroke-linecap: round; transition: stroke-dashoffset 0.4s ease; }
-.ring .arc.green { stroke: #6a9a4a; }
-.ring .arc.blue { stroke: #6f9fd0; }
-.ring-val {
-  position: absolute; inset: 0; display: flex; flex-direction: column;
-  align-items: center; justify-content: center;
+/* ===================================================================
+   PAUSE SCREEN — the instrument case, opened on the bench
+   ===================================================================
+   Same materials as the HUD dock: scratched gunmetal ground, corner
+   screws, dark bezels, ivory dials and green CRT. Seven readouts, seven
+   DIFFERENT instruments, because a panel of identical rings makes the
+   operator read every one of them from scratch every time. Everything
+   animates in from rest when the case is `.armed` (set one frame after
+   the values land, so the transitions have somewhere to run from).
+   =================================================================== */
+.pause-screen { background: rgba(4, 6, 6, 0.93); }
+#pause-case {
+  position: relative;
+  width: min(1000px, 94vw); max-height: 94vh;
+  padding: 12px 18px 14px;
+  display: flex; flex-direction: column; gap: 10px;
+  background-color: #1d1e1c; background-size: cover; background-position: center;
+  border: 2px solid #0c0d0b; border-radius: 14px;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.07), inset 0 0 34px rgba(0,0,0,0.6),
+    inset 0 -3px 10px rgba(0,0,0,0.5), 0 10px 34px rgba(0,0,0,0.75);
+  image-rendering: pixelated;
+  animation: caseBoot 0.42s cubic-bezier(0.2, 1.2, 0.4, 1) both;
 }
-.ring-wrap { position: relative; width: 104px; height: 104px; }
-.ring-num { font-size: 17px; font-weight: bold; color: #e8e8d0; }
-.ring-sub { font-size: 9px; color: #8a9478; }
-.ring-label { font-size: 11px; letter-spacing: 2px; color: #8a9478; }
+#pause-case > * { image-rendering: auto; }
+#pause-case::after {          /* CRT scanline wash — light, because the HUD
+                                 already lays a global one over everything and
+                                 two of them stripe the bright instruments */
+  content: ''; position: absolute; inset: 0; border-radius: 14px; pointer-events: none;
+  background: repeating-linear-gradient(0deg, rgba(0,0,0,0.09) 0 1px, transparent 1px 4px);
+}
+@keyframes caseBoot {
+  0% { opacity: 0; transform: scaleY(0.4) scaleX(0.98); filter: brightness(3); }
+  35% { opacity: 1; filter: brightness(1.5); }
+  100% { opacity: 1; transform: none; filter: none; }
+}
+
+/* header: hold lamp, stencil title, stamped state */
+.pause-head {
+  display: flex; align-items: center; gap: 10px;
+  padding: 0 6px 7px; border-bottom: 2px solid #0e0f0d;
+}
+.pause-lamp {
+  width: 13px; height: 13px; border-radius: 50%; flex: 0 0 auto;
+  background: radial-gradient(circle at 38% 30%, #f2d05e, #b8860f);
+  border: 1px solid #000;
+  box-shadow: inset 0 -2px 3px rgba(0,0,0,0.45), inset 0 2px 2px rgba(255,255,255,0.25);
+  animation: holdlamp 1.6s steps(1, end) infinite;
+}
+@keyframes holdlamp {
+  0%, 55% { filter: none; box-shadow: 0 0 10px 2px #e8b62a, inset 0 2px 2px rgba(255,255,255,0.25); }
+  56%, 100% { filter: saturate(0.3) brightness(0.45); box-shadow: none; }
+}
+.pause-title {
+  font-size: 11px; font-weight: bold; letter-spacing: 3px; color: #b3ab89;
+  text-shadow: 0 1px 0 rgba(0,0,0,0.8);
+}
+.pause-title span { color: #e3dbb8; }
+.pause-stamp {
+  margin-left: auto; font-size: 10px; letter-spacing: 4px; color: #d9603f;
+  border: 2px solid #6a2a1e; border-radius: 3px; padding: 2px 9px;
+  transform: rotate(-1.5deg);
+  text-shadow: 0 0 6px rgba(216,84,52,0.5);
+}
+
+/* --- the bay grid ---------------------------------------------------- */
+.pause-bays {
+  display: grid; gap: 8px;
+  grid-template-columns: 168px minmax(0, 1fr) 196px;
+  grid-template-areas:
+    "vitals wave    aim"
+    "vitals progress aim"
+    "score  secrets clock";
+}
+.bay-vitals { grid-area: vitals; }
+.bay-wave { grid-area: wave; }
+.bay-aim { grid-area: aim; }
+.bay-progress { grid-area: progress; }
+.bay-secrets { grid-area: secrets; }
+.bay-score { grid-area: score; }
+.bay-clock { grid-area: clock; }
+
+.bay {
+  position: relative; min-width: 0;
+  display: flex; flex-direction: column; gap: 4px;
+  padding: 6px 9px 5px;
+  background: linear-gradient(#24261f, #16180f);
+  border: 2px solid #0e0f0d; border-radius: 5px;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.05), inset 0 0 16px rgba(0,0,0,0.6);
+  opacity: 0; transform: translateY(10px);
+  transition: box-shadow 0.18s, border-color 0.18s, transform 0.18s;
+}
+/* staggered so the panel comes up bay by bay instead of all at once */
+.armed .bay { animation: bayIn 0.3s ease-out both; }
+.armed .bay-vitals { animation-delay: 0.02s; }
+.armed .bay-wave { animation-delay: 0.07s; }
+.armed .bay-aim { animation-delay: 0.12s; }
+.armed .bay-progress { animation-delay: 0.17s; }
+.armed .bay-secrets { animation-delay: 0.22s; }
+.armed .bay-score { animation-delay: 0.27s; }
+.armed .bay-clock { animation-delay: 0.32s; }
+@keyframes bayIn {
+  0% { opacity: 0; transform: translateY(10px); }
+  100% { opacity: 1; transform: none; }
+}
+.armed .bay:hover {
+  border-color: #3f4a36; transform: translateY(-2px);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.06), 0 4px 12px rgba(0,0,0,0.55),
+    0 0 0 1px rgba(122,150,90,0.25);
+}
+.bay-label {
+  font-size: 8px; letter-spacing: 3px; color: #b3ab89;
+  border-bottom: 1px solid #33372c; padding-bottom: 3px;
+}
+.bay-body { flex: 1; display: flex; align-items: center; justify-content: center; min-width: 0; }
+/* the readout each bay keeps back until you look at it */
+.bay-detail {
+  font-size: 8px; letter-spacing: 1px; color: #7be07b; text-align: center;
+  height: 0; overflow: hidden; opacity: 0;
+  transition: height 0.18s, opacity 0.18s;
+  white-space: nowrap; text-overflow: ellipsis;
+}
+.armed .bay:hover .bay-detail { height: 11px; opacity: 1; }
+
+/* --- VITALS: a graduated fluid cell ---------------------------------- */
+.cell-col {
+  display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 2px 0;
+}
+.cell-tube {
+  position: relative; width: 48px; height: 112px; overflow: hidden;
+  background: #090a07; border: 2px solid #131411; border-radius: 4px;
+  box-shadow: inset 0 0 12px rgba(0,0,0,0.95);
+}
+.cell-fill {
+  position: absolute; left: 0; right: 0; bottom: 0; height: 0;
+  background: linear-gradient(180deg, #a6ee74 0%, #6fc84a 55%, #35812a 100%);
+  box-shadow: 0 0 12px rgba(120,220,90,0.55);
+  transition: height 0.75s cubic-bezier(0.2, 1.15, 0.4, 1), background 0.3s;
+}
+.cell-fill::after {           /* meniscus: the bright line at the surface */
+  content: ''; position: absolute; left: 0; right: 0; top: 0; height: 2px;
+  background: rgba(240,255,220,0.9);
+}
+.cell-tube.low .cell-fill { background: linear-gradient(180deg, #f0c552, #cf8f26); }
+.cell-tube.crit .cell-fill {
+  background: linear-gradient(180deg, #e8705a, #a02a1e);
+  animation: cellcrit 0.8s ease-in-out infinite;
+}
+@keyframes cellcrit {
+  0%, 100% { box-shadow: 0 0 8px rgba(224,80,60,0.5); }
+  50% { box-shadow: 0 0 18px rgba(255,90,60,0.95); }
+}
+/* graduations etched on the glass — quarter marks, the lowest one in red so
+   the danger level is a thing you can see the fluid approach */
+.cell-mark {
+  position: absolute; right: 0; width: 13px; height: 1px;
+  background: rgba(206,214,186, 0.4); pointer-events: none;
+}
+.cell-mark.danger { width: 100%; background: rgba(198,62,42,0.65); }
+.cell-gloss {
+  position: absolute; top: 0; bottom: 0; left: 4px; width: 6px; pointer-events: none;
+  background: linear-gradient(180deg, rgba(255,255,255,0.18), rgba(255,255,255,0.02));
+}
+
+/* mechanical odometers, sized down from the dock's */
+.pause-odo .digit { width: 17px; height: 24px; line-height: 24px; font-size: 18px; }
+.pause-odo.wide .digit { width: 21px; height: 30px; line-height: 30px; font-size: 23px; }
+
+/* --- ENGAGEMENT: a bank of vacuum tubes ------------------------------ */
+.tube-row { display: flex; align-items: center; gap: 10px; width: 100%; }
+.tube-num {
+  font-size: 30px; font-weight: bold; color: #e3dbb8; letter-spacing: 2px;
+  text-shadow: 0 0 8px rgba(227,219,184,0.35); min-width: 46px; text-align: center;
+}
+.tube-bank { flex: 1; display: flex; gap: 4px; align-items: flex-end; min-width: 0; }
+.vtube {
+  position: relative; flex: 1 1 0; min-width: 0; height: 44px;
+  border-radius: 7px 7px 3px 3px; background: #0c0e0a;
+  border: 1px solid #050604; overflow: hidden;
+}
+.vtube-glass {
+  position: absolute; inset: 0; border-radius: 6px 6px 2px 2px;
+  background: linear-gradient(110deg, rgba(255,255,255,0.12), transparent 55%);
+}
+.vtube-fil {                  /* the filament: dark until the tube is lit */
+  position: absolute; left: 50%; bottom: 6px; width: 3px; height: 0;
+  transform: translateX(-50%); border-radius: 2px; background: #2a2c22;
+  transition: height 0.4s ease-out, background 0.3s, box-shadow 0.3s;
+  transition-delay: calc(var(--i) * 45ms);
+}
+.vtube.lit .vtube-fil {
+  height: 30px; background: linear-gradient(180deg, #ffe9a0, #e08a2a);
+  box-shadow: 0 0 10px 2px rgba(240,180,60,0.75);
+}
+.vtube.lit { background: #17140c; }
+/* between waves the bank idles in a slow chase instead of standing dead */
+.respite .vtube-fil { height: 8px; background: #3a3c2c; }
+.armed .respite .vtube-fil { animation: tubechase 2.4s ease-in-out infinite; animation-delay: calc(var(--i) * 120ms); }
+@keyframes tubechase {
+  0%, 70%, 100% { height: 8px; background: #3a3c2c; box-shadow: none; }
+  20% { height: 18px; background: #7a6a30; box-shadow: 0 0 6px rgba(200,160,60,0.4); }
+}
+.tube-state { font-size: 9px; letter-spacing: 2px; min-width: 54px; text-align: right; }
+.tube-state.hot { color: #e08a4a; animation: modeblink 0.9s steps(2, end) infinite; }
+.tube-state.cool { color: #6ad06a; }
+
+/* --- MARKSMANSHIP: the dock's needle gauge, on the bench -------------- */
+.bay-aim .dev-gauge-face { width: 150px; height: 100px; }
+.bay-aim .dev-gauge-dial { width: 150px; height: 100px; }
+.bay-aim .dev-needle { height: 76px; width: 6px; }
+.bay-aim .dev-gauge-cap { font-size: 9px; }
+.bay-aim .dev-needle { transition: transform 0.95s cubic-bezier(0.25, 1.7, 0.4, 1); }
+
+/* --- PROGRESS: punched paper tape ------------------------------------ */
+.bay-progress .bay-body { flex-direction: column; gap: 6px; }
+.tape {
+  position: relative; width: 100%; height: 22px; overflow: hidden;
+  background: #17150f; border: 1px solid #080906; border-radius: 2px;
+  box-shadow: inset 0 0 10px rgba(0,0,0,0.85);
+}
+.tape-sprockets {             /* the drive perforation down the middle */
+  position: absolute; left: 0; right: 0; top: 50%; height: 4px; transform: translateY(-50%);
+  background: repeating-linear-gradient(90deg, #05060422 0 4px, transparent 4px 5px, #0a0b08 5px 9px, transparent 9px 10px);
+  opacity: 0.9;
+}
+.tape-run {
+  position: absolute; left: 0; top: 0; bottom: 0; width: 0;
+  background: linear-gradient(180deg, #e6c24a, #a87c1e);
+  box-shadow: 0 0 10px rgba(230,194,74,0.6);
+  transition: width 0.9s cubic-bezier(0.2, 1.1, 0.4, 1);
+}
+.tape-run::after {            /* the read head sitting at the end of the run */
+  content: ''; position: absolute; right: -1px; top: -2px; bottom: -2px; width: 3px;
+  background: #fff6cf; box-shadow: 0 0 8px 2px rgba(255,246,207,0.8);
+}
+.tape-punch {                 /* punched columns crawling past, forever */
+  position: absolute; inset: 0; pointer-events: none; opacity: 0.5;
+  background: repeating-linear-gradient(90deg,
+    transparent 0 9px, rgba(0,0,0,0.65) 9px 11px, transparent 11px 14px, rgba(0,0,0,0.4) 14px 15px);
+}
+.tape-pct {
+  position: absolute; right: 5px; top: 50%; transform: translateY(-50%);
+  font-size: 9px; letter-spacing: 1px; color: #e6c24a;
+  text-shadow: 0 0 4px rgba(0,0,0,0.9); z-index: 2;
+}
+.tape-head {                  /* the read head seeking the count on power-up.
+                                 A quarter of a million kills means the run
+                                 itself is a few pixels for most of a game, so
+                                 the SEEK is what shows the meter working. */
+  position: absolute; top: -2px; bottom: -2px; left: 0; width: 3px; z-index: 3;
+  background: #fff6cf; box-shadow: 0 0 9px 2px rgba(255,246,207,0.85);
+  opacity: 0; pointer-events: none;
+}
+.armed .tape-head { animation: tapeSeek 0.85s cubic-bezier(0.3, 0.9, 0.35, 1) both; }
+@keyframes tapeSeek {
+  0% { left: 0; opacity: 0; }
+  12% { opacity: 1; }
+  70% { left: calc(100% - 3px); opacity: 1; }
+  100% { left: calc(100% - 3px); opacity: 0; }
+}
+.armed .tape-punch { animation: tapecrawl 2.6s linear infinite; }
+@keyframes tapecrawl { 0% { background-position-x: 0; } 100% { background-position-x: -30px; } }
+
+/* --- SECRETS: one lamp per secret ------------------------------------ */
+.bay-secrets .bay-body { flex-direction: column; gap: 6px; }
+.sec-row { display: flex; flex-wrap: wrap; gap: 7px; justify-content: center; }
+.sec-lamp {
+  width: 20px; height: 20px; border-radius: 50%;
+  background: radial-gradient(circle at 38% 30%, #4a5240, #1a1d16 70%);
+  border: 1px solid #000;
+  box-shadow: inset 0 -2px 3px rgba(0,0,0,0.5), inset 0 2px 2px rgba(255,255,255,0.12);
+  transition: background 0.2s, box-shadow 0.25s, transform 0.25s;
+  transition-delay: calc(var(--i) * 55ms);
+}
+.sec-lamp.lit {
+  background: radial-gradient(circle at 38% 30%, #f6de84, #b8860f 72%);
+  box-shadow: inset 0 2px 2px rgba(255,255,255,0.3), 0 0 10px 2px rgba(232,182,42,0.8);
+  transform: scale(1.08);
+}
+.sec-count { font-size: 12px; letter-spacing: 3px; color: #8f8a72; }
+.sec-count b { font-size: 20px; color: #e6c24a; text-shadow: 0 0 8px rgba(230,194,74,0.45); }
+
+/* --- SCORE + CLOCK --------------------------------------------------- */
+.bay-score .bay-body, .bay-clock .bay-body { padding: 2px 0; }
+.flapboard { display: flex; align-items: center; gap: 2px; }
+.flap-pair { display: flex; gap: 2px; }
+.flap {
+  position: relative; width: 22px; height: 32px; line-height: 32px; text-align: center;
+  font-size: 21px; font-weight: bold; color: #e8e2c8;
+  background: linear-gradient(#23251c 0 48%, #0a0b07 48% 52%, #191a13 52%);
+  border: 1px solid #000; border-radius: 2px;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.07), 0 1px 2px rgba(0,0,0,0.7);
+}
+.flap.flip { animation: flapdrop 0.34s cubic-bezier(0.35, 1.5, 0.5, 1); }
+@keyframes flapdrop {
+  0% { transform: perspective(90px) rotateX(-82deg); filter: brightness(1.9); }
+  100% { transform: none; filter: none; }
+}
+.flap-colon { color: #8f8a72; font-size: 17px; padding: 0 1px; }
+
+/* --- the action row: four buttons, four different mechanisms ---------- */
+.pause-actions { display: flex; gap: 8px; justify-content: center; padding-top: 2px; }
+#pause-case .pact {
+  position: relative; overflow: hidden; cursor: pointer;
+  font-family: inherit; font-size: 13px; letter-spacing: 3px;
+  padding: 10px 20px; min-width: 132px;
+  color: #cfc9a8; background: linear-gradient(#1e201a, #131410);
+  border: 2px solid #33372c; border-radius: 4px;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.06), 0 2px 4px rgba(0,0,0,0.6);
+  transition: color 0.16s, border-color 0.16s, transform 0.09s, box-shadow 0.16s;
+  opacity: 0; transform: translateY(8px);
+}
+#pause-case.armed .pact { animation: bayIn 0.28s ease-out both; }
+#pause-case.armed .pact:nth-child(1) { animation-delay: 0.34s; }
+#pause-case.armed .pact:nth-child(2) { animation-delay: 0.39s; }
+#pause-case.armed .pact:nth-child(3) { animation-delay: 0.44s; }
+#pause-case.armed .pact:nth-child(4) { animation-delay: 0.49s; }
+#pause-case .pact-label { position: relative; z-index: 2; }
+#pause-case .pact-wipe { position: absolute; inset: 0; z-index: 1; pointer-events: none; }
+#pause-case .pact:active { transform: translateY(1px) scale(0.985); }
+#pause-case .pact:disabled { cursor: default; filter: saturate(0.4) brightness(0.8); }
+#pause-case .pact:focus-visible { outline: none; }
+
+/* RESUME — a green engage bar sweeps in behind the label */
+#pause-case .pact-go { color: #9be86a; border-color: #3d6a2c; }
+#pause-case .pact-go .pact-wipe {
+  background: linear-gradient(90deg, #3f8f2f, #74c94c);
+  transform: scaleX(0); transform-origin: left; opacity: 0.85;
+  transition: transform 0.22s cubic-bezier(0.3, 1.3, 0.4, 1);
+}
+#pause-case .pact-go:hover, #pause-case .pact-go:focus-visible { color: #0d1408; border-color: #9be86a; }
+#pause-case .pact-go:hover .pact-wipe, #pause-case .pact-go:focus-visible .pact-wipe { transform: scaleX(1); }
+
+/* SAVE RUN — punched tape scrolls across the face while it is armed */
+#pause-case .pact-save { color: #e6c24a; border-color: #6a5f30; }
+#pause-case .pact-save .pact-wipe {
+  opacity: 0; transition: opacity 0.2s;
+  background: repeating-linear-gradient(90deg,
+    transparent 0 7px, rgba(230,194,74,0.32) 7px 9px, transparent 9px 13px);
+}
+#pause-case .pact-save:hover, #pause-case .pact-save:focus-visible { color: #ffe7a0; border-color: #e6c24a; }
+#pause-case .pact-save:hover .pact-wipe, #pause-case .pact-save:focus-visible .pact-wipe {
+  opacity: 1; animation: tapecrawl 0.8s linear infinite;
+}
+#pause-case .pact-save.working .pact-wipe { opacity: 1; animation: tapecrawl 0.35s linear infinite; }
+#pause-case .pact-save.ok { color: #9be86a; border-color: #6fc84a; }
+#pause-case .pact-save.bad { color: #e05a44; border-color: #a8382c; }
+
+/* SETTINGS — a driver slot turns in the corner, like the case screws */
+#pause-case .pact-set { color: #b3ab89; border-color: #3a4034; padding-right: 30px; }
+#pause-case .pact-set .pact-key {
+  position: absolute; right: 8px; top: 50%; width: 11px; height: 11px; z-index: 2;
+  margin-top: -5.5px; border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #8d8d84, #4a4a44 55%, #1e1e1a);
+  box-shadow: inset 0 0 1px #000;
+  transition: transform 0.45s cubic-bezier(0.3, 1.2, 0.4, 1);
+}
+#pause-case .pact-set .pact-key::after {
+  content: ''; position: absolute; left: 1px; right: 1px; top: 5px; height: 1px; background: #14140f;
+}
+#pause-case .pact-set:hover, #pause-case .pact-set:focus-visible { color: #e3dbb8; border-color: #6a7462; }
+#pause-case .pact-set:hover .pact-key, #pause-case .pact-set:focus-visible .pact-key { transform: rotate(160deg); }
+
+/* QUIT — a guarded switch: hazard stripes wipe up under the label */
+#pause-case .pact-quit { color: #d98a7e; border-color: #5a2a22; }
+#pause-case .pact-quit .pact-wipe {
+  transform: scaleY(0); transform-origin: bottom;
+  transition: transform 0.2s cubic-bezier(0.3, 1.3, 0.4, 1);
+  background: repeating-linear-gradient(135deg, #7a2418 0 7px, #2a0f0a 7px 14px);
+}
+#pause-case .pact-quit:hover, #pause-case .pact-quit:focus-visible { color: #ffd8ce; border-color: #c23b2e; }
+#pause-case .pact-quit:hover .pact-wipe, #pause-case .pact-quit:focus-visible .pact-wipe { transform: scaleY(1); }
+
+.pause-foot {
+  font-size: 7px; letter-spacing: 2px; color: #5c6154; text-align: center;
+  border-top: 1px solid #0e0f0d; padding-top: 6px;
+}
+
+/* Short windows: drop the case to a single readable column of instruments
+   rather than letting the grid push the action row off the bottom. */
+@media (max-height: 660px) {
+  #pause-case { padding: 8px 12px 10px; gap: 7px; }
+  .pause-bays { grid-template-columns: 150px minmax(0, 1fr) 170px; gap: 6px; }
+  .cell-tube { height: 66px; }
+  .vtube { height: 32px; }
+  .bay-aim .dev-gauge-face, .bay-aim .dev-gauge-dial { width: 128px; height: 84px; }
+  .pact { padding: 7px 14px; min-width: 112px; font-size: 12px; }
+}
+
+/* the dead / victory screens still use the plain stat grid */
 
 /* developer console (` / ~) */
 #console {
@@ -975,10 +1364,12 @@ html, body {
 
 /* hide the combat chrome while the title menu is up (see HUD.showScreen) */
 #hud.on-menu #hud-dock, #hud.on-menu #crosshair, #hud.on-menu #weapon-menu,
-#hud.on-menu #notice, #hud.on-menu #prompt, #hud.on-menu #banner { display: none; }
+#hud.on-menu #notice, #hud.on-menu #prompt, #hud.on-menu #banner,
+#hud.on-pause #hud-dock, #hud.on-pause #crosshair, #hud.on-pause #weapon-menu,
+#hud.on-pause #notice, #hud.on-pause #prompt, #hud.on-pause #banner { display: none; }
 
-/* pause screen: action row under the stat rings */
-.pause-actions { display: flex; gap: 14px; flex-wrap: wrap; justify-content: center; }
+/* Secondary buttons on the plain screens (dead / victory / settings footers).
+   The pause screen's own actions are the .pact instruments above. */
 .screen button.btn-secondary {
   color: #a8b098; border-color: #4a5240; font-size: 15px; padding: 12px 22px;
 }
@@ -987,7 +1378,6 @@ html, body {
    the process-closing action, distinct from QUIT TO TITLE. */
 .screen button.btn-exit { color: #d98a7e; border-color: #7a3a30; }
 .screen button.btn-exit:hover { background: #7a3a30; color: #fbeae6; }
-.ring .arc.red { stroke: #c23b2e; }
 
 /* satchel: click-to-drop affordance on droppable items */
 .inv-slot.droppable { cursor: pointer; }

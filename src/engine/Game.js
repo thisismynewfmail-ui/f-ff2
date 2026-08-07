@@ -152,13 +152,35 @@ export class Game {
   _wire() {
     // Losing pointer lock while playing = pause (unless the satchel took it).
     this.input.onPointerLockChange = (locked) => {
-      if (!locked && this.state.is('playing') && !this.testMode && !this.inventory.open) this.pause();
+      if (locked || !this.state.is('playing') || this.testMode || this.inventory.open) return;
+      // An unlock that arrives while we are still ASKING for the pointer is
+      // not the player leaving — it is the tail of an exit we requested
+      // ourselves before they resumed (exitPointerLock reports back a frame or
+      // two later). Pausing on it would bounce them straight out of the game
+      // they just came back to.
+      if (this.input.lockWanted) return;
+      this.pause();
     };
+    /**
+     * Escape toggles the pause screen. In a real run this used to be gated on
+     * test mode, which meant the ONLY thing that ever closed the pause screen
+     * was the RESUME button — and the only thing that opened it was the
+     * browser dropping pointer lock. Between those two, a resume that failed
+     * to retake the pointer left the player in the game with a loose cursor
+     * and no key that did anything about it.
+     *
+     * While the pointer is locked the browser eats the Escape keydown itself
+     * (that IS how it leaves the lock), so the pause on the way in still comes
+     * from onPointerLockChange below; this handles the way back out, and the
+     * case where the game is running without a lock at all.
+     */
     document.addEventListener('keydown', (e) => {
-      if (e.code === 'Escape' && this.testMode && !this.devConsole.open) {
-        if (this.state.is('playing')) this.pause();
-        else if (this.state.is('paused')) this.startPlaying();
-      }
+      if (e.code !== 'Escape' || this.devConsole.open || this.inventory.open) return;
+      // The pause settings overlay eats Escape first (HUD._wire) to close
+      // itself; if it is open, this must not also fire.
+      if (this.hud.pauseSettingsEl && !this.hud.pauseSettingsEl.hidden) return;
+      if (this.state.is('paused')) this.startPlaying();
+      else if (this.state.is('playing')) this.pause();
     });
 
     // Checkpoint every tenth wave: snapshot the run so a death rolls back to it.
@@ -316,6 +338,16 @@ export class Game {
 
   pause() {
     if (!this.state.to('paused')) return;
+    // Give the pointer back, and — the part that matters — stop WANTING it.
+    // A resume whose lock request was refused leaves a standing request behind
+    // it (see Input.requestPointerLock); pausing again on top of that would
+    // otherwise have the retry pump grab the pointer back underneath the menu.
+    this.input.releasePointerLock();
+    // Show the case FIRST, then write the readouts into it. The instruments
+    // animate from a rest pose, and a transition cannot run on an element that
+    // was display:none when its "before" value was set — fill it while hidden
+    // and every needle, cell and tape snaps straight to its value instead.
+    this.hud.showScreen('pause');
     this.hud.fillPauseStats(this.score.stats(), {
       found: this.world.secrets.found.size,
       total: this.world.secrets.total,
@@ -328,7 +360,6 @@ export class Game {
         state: this.waves.state,
       },
     });
-    this.hud.showScreen('pause');
   }
 
   respawn() {
@@ -386,6 +417,10 @@ export class Game {
     // No first-person weapon floating over the title cinematic.
     this.renderer.overlayEnabled = !this.state.is('menu');
     this.renderer.render();
+    // Keep asking for the pointer if a resume did not get it first time (see
+    // Input.requestPointerLock), and tell the player while it has not landed.
+    this.input.pump();
+    this.hud.setLockHint(this.state.is('playing') && this.input.lockPending);
     this.input.endFrame();
   }
 

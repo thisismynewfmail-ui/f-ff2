@@ -127,8 +127,24 @@ export class Terrain {
     this.ramps.push({ x, z, hx, hz, axis, y0, y1 });
   }
 
-  /** Build the displaced, grass-textured ground mesh. Call after all pads. */
-  buildMesh(texLib) {
+  /**
+   * Build the displaced, grass-textured ground mesh. Call after all pads.
+   *
+   * `paint(x, z)` — supplied by World, which is the only thing that knows
+   * where the districts are — returns `{ dry, lush, wild, tint }` for a world
+   * point: three overlay weights (the kept lawn shows through as whatever is
+   * left of 1) and a brightness multiplier.
+   *
+   * The whole 640 m ground is one mesh with one material, so the four grasses
+   * cannot be separate draws; they are blended per fragment from a per-vertex
+   * weight, which is what makes the boundaries seamless — there is no seam to
+   * hide, the weights just interpolate across the lattice like everything else
+   * a vertex carries. `tint` is the other half of the job: a single tile
+   * repeated 107 times reads as a repeat no matter how well it is drawn, and
+   * varying the ground's tone over tens of metres is what breaks that read
+   * without costing a texture fetch.
+   */
+  buildMesh(texLib, paint = null) {
     const segs = MESH_SEGS;
     const geo = new THREE.PlaneGeometry(MAP_HALF * 2, MAP_HALF * 2, segs, segs);
     geo.rotateX(-Math.PI / 2);
@@ -147,10 +163,69 @@ export class Terrain {
     }
     this.grid = { segs, cell, h: grid };
     geo.computeVertexNormals();
-    const tex = texLib.tiled('grass', 160, 160);
-    this.mesh = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ map: tex }));
+    // 6 m per tile: blades come out roughly life-size at that scale, and the
+    // repeat lands often enough that no single tile can be picked out.
+    const R = (MAP_HALF * 2) / 6;
+    const mat = new THREE.MeshLambertMaterial({ map: texLib.tiled('grass', R, R) });
+    if (paint) this._splat(geo, mat, texLib, R, paint);
+    this.mesh = new THREE.Mesh(geo, mat);
     this.mesh.name = 'terrain';
     return this.mesh;
+  }
+
+  /** Bake the grass weights onto the geometry and blend them in the shader. */
+  _splat(geo, mat, texLib, R, paint) {
+    const pos = geo.attributes.position;
+    const w = new Float32Array(pos.count * 3);
+    const tint = new Float32Array(pos.count);
+    for (let i = 0; i < pos.count; i++) {
+      const p = paint(pos.getX(i), pos.getZ(i));
+      // Clamped and normalised here rather than trusted: a paint function that
+      // returns weights summing over 1 would brighten the ground wherever it
+      // did, which is exactly the kind of fault that reads as a lighting bug.
+      let d = Math.max(0, p.dry || 0), l = Math.max(0, p.lush || 0), v = Math.max(0, p.wild || 0);
+      const sum = d + l + v;
+      if (sum > 1) { d /= sum; l /= sum; v /= sum; }
+      w[i * 3] = d; w[i * 3 + 1] = l; w[i * 3 + 2] = v;
+      tint[i] = p.tint ?? 1;
+    }
+    geo.setAttribute('aGrass', new THREE.Float32BufferAttribute(w, 3));
+    geo.setAttribute('aTint', new THREE.Float32BufferAttribute(tint, 1));
+    const dry = texLib.tiled('grassDry', R, R);
+    const lush = texLib.tiled('grassLush', R, R);
+    const wild = texLib.tiled('grassWild', R, R);
+    mat.onBeforeCompile = (s) => {
+      s.uniforms.mapDry = { value: dry };
+      s.uniforms.mapLush = { value: lush };
+      s.uniforms.mapWild = { value: wild };
+      s.vertexShader = s.vertexShader
+        .replace('#include <common>', `#include <common>
+          attribute vec3 aGrass;
+          attribute float aTint;
+          varying vec3 vGrass;
+          varying float vTint;`)
+        .replace('#include <begin_vertex>', `#include <begin_vertex>
+          vGrass = aGrass;
+          vTint = aTint;`);
+      s.fragmentShader = s.fragmentShader
+        .replace('#include <common>', `#include <common>
+          uniform sampler2D mapDry;
+          uniform sampler2D mapLush;
+          uniform sampler2D mapWild;
+          varying vec3 vGrass;
+          varying float vTint;`)
+        .replace('#include <map_fragment>', `
+          vec4 gLawn = texture2D(map, vMapUv);
+          vec4 gDry  = texture2D(mapDry, vMapUv);
+          vec4 gLush = texture2D(mapLush, vMapUv);
+          vec4 gWild = texture2D(mapWild, vMapUv);
+          float wLawn = max(0.0, 1.0 - vGrass.x - vGrass.y - vGrass.z);
+          vec4 sampledDiffuseColor =
+            gLawn * wLawn + gDry * vGrass.x + gLush * vGrass.y + gWild * vGrass.z;
+          sampledDiffuseColor.rgb *= vTint;
+          diffuseColor *= sampledDiffuseColor;`);
+    };
+    mat.customProgramCacheKey = () => 'terrain-grass-splat';
   }
 
   /**

@@ -201,17 +201,116 @@ function save(name, img) {
 /* Ground textures                                                     */
 /* ------------------------------------------------------------------ */
 
-{ // grass
-  const img = new Img(128, 128);
-  const pal = [[38, 66, 30], [46, 82, 36], [58, 96, 42], [70, 110, 50], [88, 124, 60]];
-  noiseFill(img, pal, 101, { baseCell: 24, ditherAmp: 0.2 });
-  const rng = mulberry32(9);
-  for (let i = 0; i < 260; i++) { // blade flecks
-    const x = Math.floor(rng() * 128), y = Math.floor(rng() * 128);
-    img.set(x, y, [96, 134, 64]);
-    if (rng() < 0.5) img.set(x, y - 1, [104, 142, 70]);
+/**
+ * One tileable grass tile, built the way grass actually reads from above.
+ *
+ * Value noise over a green palette gives mottled soup — it has no blades in
+ * it, so at any distance the eye reads the repeat rather than the ground.
+ * These tiles are drawn instead: a soil layer with the field thinning over
+ * it, then several hundred short strokes at unbiased angles, tapered, with a
+ * lighter tip on some of them. From above a lawn is a dense mat of strokes
+ * pointing everywhere, which is also what stops the tile having a grain
+ * direction to give the tiling away.
+ *
+ * Img.set wraps, so a stroke that runs off an edge comes back on the other
+ * side and every tile stays seamless.
+ *
+ * o: { seed, soil[], greens[], tip, cell, blades, len:[min,max], curl,
+ *      lay (radians, 0 = no preferred direction), spread, bare, clover,
+ *      seeds, straw }
+ */
+function grassTile(name, size, o) {
+  const img = new Img(size, size);
+  const rng = mulberry32(o.seed);
+  // The base: soil at the dark end of the ramp so wherever the field thins
+  // you are looking at ground, not at a darker green.
+  noiseFill(img, [...o.soil, ...o.greens], o.seed + 7, {
+    baseCell: o.cell ?? 30, octaves: 3, ditherAmp: 0.2, curve: o.curve,
+  });
+  for (let i = 0; i < (o.bare ?? 0); i++) {           // scrapes worn to the dirt
+    img.disc(rng() * size, rng() * size, 1.5 + rng() * 4.5, o.soil[Math.floor(rng() * o.soil.length)]);
   }
-  save('grass.png', img);
+  const [lo, hi] = o.len;
+  for (let i = 0; i < o.blades; i++) {
+    const bx = rng() * size, by = rng() * size;
+    const len = lo + rng() * (hi - lo);
+    // Unbiased by default; a meadow gets a lay direction and a spread around
+    // it, which is what makes long grass read as combed by a wind.
+    const a = o.lay === undefined ? rng() * Math.PI * 2
+      : o.lay + (rng() - 0.5) * (o.spread ?? 1.2);
+    const curl = (rng() - 0.5) * (o.curl ?? 0.9);
+    const shade = o.greens[Math.floor(rng() * o.greens.length)];
+    const lit = rng() < 0.22;
+    for (let t = 0; t <= len; t++) {
+      const f = t / len;
+      const th = a + curl * f * f;
+      const x = Math.round(bx + Math.cos(th) * t);
+      const y = Math.round(by + Math.sin(th) * t);
+      const c = lit && f > 0.6 ? o.tip : shade;
+      img.set(x, y, c);
+      if (f < 0.4) img.set(x, y + 1, c);              // thicker at the root
+    }
+    if (o.seeds && rng() < o.seeds) {                 // seed head on the tip
+      const th = a + curl;
+      img.disc(bx + Math.cos(th) * len, by + Math.sin(th) * len, 1.2, o.straw ?? o.tip);
+    }
+  }
+  for (let i = 0; i < (o.clover ?? 0); i++) {         // clover: three lobes + a stem
+    const cx = rng() * size, cy = rng() * size;
+    const c = o.cloverCol ?? [104, 148, 68];
+    for (let k = 0; k < 3; k++) {
+      const a = (k / 3) * Math.PI * 2 + rng();
+      img.disc(cx + Math.cos(a) * 1.6, cy + Math.sin(a) * 1.6, 1.3, c);
+    }
+    img.set(Math.round(cx), Math.round(cy), o.soil[0]);
+  }
+  save(name, img);
+}
+
+const GRASS_PX = 256;
+
+{ // grass — the kept lawn. Town verges, gardens, the square. Short, even,
+  // still being cut by nobody, with clover coming through it.
+  grassTile('grass.png', GRASS_PX, {
+    seed: 101, cell: 40, blades: 3400, len: [4, 11], curl: 0.8, bare: 5,
+    clover: 90, cloverCol: [110, 156, 72],
+    soil: [[44, 48, 26], [52, 60, 30]],
+    greens: [[36, 62, 30], [46, 78, 36], [56, 92, 42], [68, 106, 50]],
+    tip: [96, 136, 64],
+  });
+}
+
+{ // grassDry — parched. The farm flats, the industrial fringe, anywhere the
+  // ground bakes: olive and straw over pale soil, thinner, with dead stalks.
+  grassTile('grass_dry.png', GRASS_PX, {
+    seed: 117, cell: 34, blades: 3000, len: [4, 13], curl: 1.1, bare: 20,
+    seeds: 0.22, straw: [166, 152, 92],
+    soil: [[54, 50, 30], [66, 60, 36]],
+    greens: [[70, 76, 36], [84, 88, 42], [100, 100, 50], [118, 112, 60]],
+    tip: [146, 136, 78],
+  });
+}
+
+{ // grassLush — deep, wet, uncut for a year but never dried out. Hollow Park
+  // and the pond bank: darker and far more saturated than the town lawn.
+  grassTile('grass_lush.png', GRASS_PX, {
+    seed: 131, cell: 40, blades: 3400, len: [5, 14], curl: 0.7, bare: 4,
+    clover: 150, cloverCol: [96, 150, 62],
+    soil: [[24, 30, 16], [32, 40, 22]],
+    greens: [[22, 54, 24], [30, 70, 30], [40, 88, 36], [52, 104, 44]],
+    tip: [84, 132, 56],
+  });
+}
+
+{ // grassWild — meadow. Long, unmown, laid over by a wind, going to seed:
+  // the rim of the map, the ridge, everything past the last kerb.
+  grassTile('grass_wild.png', GRASS_PX, {
+    seed: 149, cell: 30, blades: 2200, len: [9, 24], curl: 1.4,
+    lay: -0.55, spread: 1.5, bare: 10, seeds: 0.34, straw: [162, 152, 96],
+    soil: [[48, 42, 26], [62, 54, 34]],
+    greens: [[44, 66, 30], [58, 84, 38], [74, 100, 46], [96, 116, 54], [124, 132, 68]],
+    tip: [148, 148, 84],
+  });
 }
 
 { // dirt
@@ -796,22 +895,61 @@ const TREE_GREENS = [[36, 62, 30], [46, 78, 36], [58, 92, 42], [72, 106, 50]];
 foliage('leaves.png', 128, TREE_GREENS, 420, (a) => 0.72 + Math.sin(a * 3) * 0.14, 1701);
 foliage('bush.png', 64, [[40, 68, 32], [52, 84, 38], [64, 98, 44]], 160, (a) => 0.66 + Math.sin(a * 2 + 1) * 0.1 - Math.max(0, Math.sin(a)) * 0.25, 1702);
 
-{ // grass tuft sprite
+/**
+ * A clump of standing grass on a transparent field (the 3D ground cover).
+ *
+ * Blades are tapered and curved rather than one-pixel lines, and the clump is
+ * densest in the middle so it reads as a tuft rather than a comb. Three kinds,
+ * matched to the three ground textures they stand on — a tuft of parched straw
+ * in a lawn gives the region blend away instantly.
+ */
+function tuftSprite(name, o) {
   const img = new Img(64, 64, [0, 0, 0, 0]);
-  const rng = mulberry32(1801);
-  for (let i = 0; i < 26; i++) {
-    const bx = 8 + rng() * 48;
-    const h = 14 + rng() * 30;
-    const lean = (rng() - 0.5) * 12;
-    const c = [[58, 96, 42], [72, 110, 50], [88, 124, 60]][Math.floor(rng() * 3)];
+  const rng = mulberry32(o.seed);
+  for (let i = 0; i < o.blades; i++) {
+    const bx = 32 + (rng() - 0.5) * o.spread;
+    const h = o.len[0] + rng() * (o.len[1] - o.len[0]);
+    const lean = (rng() - 0.5) * o.lean;
+    const c = o.greens[Math.floor(rng() * o.greens.length)];
+    const lit = rng() < 0.3 ? o.tip : c;
     for (let t = 0; t < h; t++) {
-      const x = Math.round(bx + lean * (t / h) ** 2);
-      img.set(x, 63 - t, c);
-      if (t < h * 0.4) img.set(x + 1, 63 - t, c);
+      const f = t / h;
+      const x = Math.round(bx + lean * f * f);
+      const y = 63 - t;
+      const col = f > 0.68 ? lit : c;
+      img.rectC(x, y, 1, 1, col);
+      if (f < 0.62) img.rectC(x + 1, y, 1, 1, col);   // wider at the root
+      if (f < 0.22) img.rectC(x - 1, y, 1, 1, col);
+    }
+    if (o.seedHead && rng() < o.seedHead) {           // a head gone over
+      const x = Math.round(bx + lean), y = 63 - Math.round(h);
+      for (let k = 0; k < 4; k++) img.rectC(x + (k & 1), y - k, 1, 1, o.straw);
     }
   }
-  save('grass_tuft.png', img);
+  save(name, img);
 }
+
+// NOTE the palettes run much brighter than the ground tiles they stand on,
+// and deliberately: these blades are VERTICAL quads under a Lambert sun that
+// is mostly overhead, so they take a fraction of the light the ground does.
+// Matched to the ground on paper, a tuft comes out as a black spike punched
+// through the lawn. Matched by eye in the engine, it has to start about half
+// again as bright.
+tuftSprite('grass_tuft.png', {       // kept lawn
+  seed: 1801, blades: 42, spread: 40, len: [14, 40], lean: 11,
+  greens: [[74, 118, 54], [92, 140, 64], [110, 158, 74]], tip: [140, 188, 96],
+});
+tuftSprite('grass_tuft_dry.png', {   // parched: shorter, strawy, gone to seed
+  seed: 1803, blades: 34, spread: 42, len: [10, 30], lean: 15,
+  greens: [[136, 134, 70], [158, 152, 82], [178, 168, 96]], tip: [206, 192, 118],
+  seedHead: 0.45, straw: [216, 200, 132],
+});
+tuftSprite('grass_tuft_wild.png', {  // meadow: tall, laid over, seed heads
+  seed: 1805, blades: 48, spread: 46, len: [24, 58], lean: 20,
+  greens: [[82, 116, 52], [102, 136, 62], [126, 154, 74], [156, 172, 90]], tip: [196, 196, 116],
+  seedHead: 0.5, straw: [214, 200, 130],
+});
+
 
 { // vine strip (tiles vertically)
   const img = new Img(64, 128, [0, 0, 0, 0]);
@@ -2293,23 +2431,34 @@ foliage('hedge.png', 64, [[28, 52, 26], [36, 64, 30], [44, 76, 36], [54, 88, 42]
 }
 
 { // dry ragged weeds — what comes up through a pavement crack, not lawn
+  //
+  // Stalks are drawn TWO pixels wide, not one, and that is the whole reason
+  // these read as plants. img.outline puts a dark rim on every opaque pixel;
+  // on a one-pixel stalk the rim IS the stalk, so a sprite whose palette runs
+  // olive-to-straw came out as a black spike stuck in the lawn. At two pixels
+  // the outline is an edge again and the colour survives it.
+  //
+  // The palette also runs brighter than it reads on paper, for the same reason
+  // the grass tufts do: these are vertical quads under a mostly overhead sun.
   const img = new Img(64, 64, [0, 0, 0, 0]);
   const rng = mulberry32(3063);
-  const pal = [[92, 96, 52], [110, 112, 60], [128, 128, 72], [142, 138, 92]];
-  for (let s = 0; s < 26; s++) {
-    const x0 = 6 + rng() * 52, h = 22 + rng() * 34;
+  const pal = [[136, 140, 74], [158, 160, 86], [178, 176, 100], [196, 190, 126]];
+  for (let s = 0; s < 22; s++) {
+    const x0 = 7 + rng() * 50, h = 22 + rng() * 34;
     const lean = (rng() - 0.5) * 0.9;
     const c = pal[Math.floor(rng() * pal.length)];
     for (let t = 0; t < h; t++) {
-      const x = Math.round(x0 + lean * t * (t / h));
+      const f = t / h;
+      const x = Math.round(x0 + lean * t * f);
       const y = 63 - t;
-      if (x < 0 || x > 63) continue;
-      img.set(x, y, c);
-      if (t > h * 0.55 && rng() < 0.35) img.set(x + (rng() < 0.5 ? 1 : -1), y, c);
-      if (t > h * 0.86) img.set(x, y, [166, 158, 118]);   // seed head gone over
+      const head = f > 0.86;
+      const col = head ? [214, 204, 152] : c;
+      img.rectC(x, y, 2, 1, col);
+      if (f < 0.4) img.rectC(x - 1, y, 1, 1, col);              // thicker at the root
+      if (head) img.rectC(x - 1, y, 4, 1, col);                 // seed head gone over
     }
   }
-  img.outline([32, 34, 20, 255]);
+  img.outline([38, 40, 24, 255]);
   save('weeds.png', img);
 }
 

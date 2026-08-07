@@ -459,7 +459,7 @@ const fx = await page.evaluate(async () => {
   // 8. Stats are OFF the HUD and rendered as circular gauges on pause.
   out.noHudStats = document.getElementById('hud-tr') === null && document.getElementById('acc') === null;
   g.state.state = 'playing'; g.pause();
-  out.pauseRings = document.querySelectorAll('#pause-stats .ring').length >= 3;
+  out.pauseBays = document.querySelectorAll('#pause-stats .bay').length >= 7;
   g.hud.showScreen(null);
 
   // restore for the win-condition test
@@ -476,7 +476,7 @@ check('cockroach hides by day, roams by night', fx.roachDayNight);
 check('zombies have varied size + individual gait', fx.zombieVary);
 check('graphic death FX pools present', fx.deathFx);
 check('run stats are not on the HUD', fx.noHudStats);
-check('pause screen shows circular stat gauges', fx.pauseRings);
+check('run stats live on the pause screen instead', fx.pauseBays);
 
 // SPITTER: the CS:GO-styled dual-pistol ranged enemy. Spawn gate at 100 kills,
 // a kited ~6–8 ft standoff band, a slightly-slower-than-player walk, a planted
@@ -1078,6 +1078,279 @@ check('an isolated movement spike is rejected', look.withSpike === 18, `${look.w
 check('a genuine hard flick is not eaten as a spike', look.flick === look.flickWant,
   `${look.flick} vs ${look.flickWant}`);
 check('one frame cannot turn the view without limit', look.clamped <= 1430, `${look.clamped}px`);
+
+/* ------------------------------------------------------------------ */
+/* the pause screen: seven instruments, all of them live                */
+/* ------------------------------------------------------------------ */
+// Staged against known values so every readout can be checked against the
+// number it is supposed to be showing — a panel that animates beautifully and
+// reports the wrong health is worse than one that does neither.
+const pauseData = await page.evaluate(async () => {
+  const g = window.__game;
+  g.state.state = 'playing';
+  g.player.health = 41; g.player.maxHealth = 100;
+  g.score.kills = 1180; g.score.points = 14820;
+  g.score.shotsFired = 612; g.score.shotsHit = 389; g.score.timePlayed = 3742;
+  g.waves.wave = 12; g.waves.quota = 26; g.waves.killsThisWave = 17; g.waves.state = 'active';
+  for (const id of ['a', 'b', 'c', 'd', 'e', 'f', 'g']) g.world.secrets.found.add(id);
+  g.hud.showScreen(null);
+  g.pause();
+  const q = (s) => document.querySelector(s);
+  const out = {
+    shown: getComputedStyle(q('#screen-pause')).display,
+    dockHidden: getComputedStyle(document.getElementById('hud-dock')).display === 'none',
+    bays: [...document.querySelectorAll('.bay')].map((b) => b.className.split(' ')[1]),
+    // Every bay must carry its own KIND of instrument. Two counters may both
+    // use odometer wheels — a count is a count — so the signature is the whole
+    // set of parts in the bay, which is what makes each readout its own thing.
+    instruments: [...document.querySelectorAll('.bay')].map((b) =>
+      [...b.querySelectorAll('.bay-body > *')].map((e) => e.className.split(' ')[0]).join('+')),
+    secretsWanted: window.__game.world.secrets.found.size,
+    // the rest pose, before arming: every driven instrument sits at zero
+    restCell: parseFloat(q('.cell-fill').style.height),
+    restTape: parseFloat(q('.tape-run').style.width),
+    restTapePx: q('.tape-run').getBoundingClientRect().width,
+  };
+  // Arm, then read what is actually RUNNING. A style that snapped to its value
+  // produces no Animation object at all, which is the difference between a
+  // panel that animates and one that merely ends up correct.
+  await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(r))));
+  const running = (sel) => (q(sel)?.getAnimations() ?? []).map((a) => a.animationName || 'transition');
+  out.armed = q('#pause-case').classList.contains('armed');
+  out.setCell = parseFloat(q('.cell-fill').style.height);
+  out.setTape = parseFloat(q('.tape-run').style.width);
+  out.moving = {
+    cell: running('.cell-fill'),
+    needle: running('.bay-aim .dev-needle'),
+    tape: running('.tape-head'),
+    bay: running('.bay-vitals'),
+    lamp: running('.pause-lamp'),
+    punch: running('.tape-punch'),
+    button: running('#btn-resume'),
+  };
+  out.tubesLit = document.querySelectorAll('.vtube.lit').length;
+  out.lampsLit = document.querySelectorAll('.sec-lamp.lit').length;
+  out.secretsTotal = document.querySelectorAll('.sec-lamp').length;
+  // and the readouts, once everything has landed
+  await new Promise((r) => setTimeout(r, 1100));
+  out.health = q('.bay-vitals .odometer').textContent;
+  out.wave = q('.tube-num').textContent;
+  out.waveState = q('.tube-state').textContent;
+  out.kills = q('.bay-progress .odometer').textContent;
+  out.aim = q('.bay-aim .dev-gauge-cap').textContent.replace(/\s+/g, ' ').trim();
+  out.clock = [...document.querySelectorAll('.flap')].map((f) => f.textContent).join('');
+  out.score = q('.bay-score .odometer').textContent;
+  return out;
+});
+check('pause opens the instrument case', pauseData.shown === 'flex' && pauseData.dockHidden,
+  `display ${pauseData.shown}, dock hidden ${pauseData.dockHidden}`);
+check('all seven readouts are present', pauseData.bays.length === 7,
+  pauseData.bays.join(' '));
+check('and every one of them is a different instrument',
+  new Set(pauseData.instruments).size === pauseData.instruments.length,
+  pauseData.instruments.join(' '));
+check('the readouts show the run that is actually being played',
+  pauseData.health === '041' && pauseData.wave === '12' && pauseData.waveState === 'ENGAGED'
+  && pauseData.kills === '001180' && /389 \/ 612/.test(pauseData.aim)
+  && pauseData.tubesLit === 7 && pauseData.lampsLit === pauseData.secretsWanted
+  && pauseData.clock === '010222',
+  `hp ${pauseData.health} wave ${pauseData.wave}/${pauseData.waveState} kills ${pauseData.kills}`
+  + ` aim "${pauseData.aim}" tubes ${pauseData.tubesLit}`
+  + ` secrets ${pauseData.lampsLit}/${pauseData.secretsTotal} (want ${pauseData.secretsWanted})`
+  + ` clock ${pauseData.clock}`);
+check('the instruments start at rest and are driven to their values',
+  pauseData.restCell === 0 && pauseData.restTape === 0
+  && pauseData.armed && Math.abs(pauseData.setCell - 41) < 0.05 && pauseData.setTape > 0,
+  `rest ${pauseData.restCell}/${pauseData.restTape} → cell ${pauseData.setCell}%`
+  + ` tape ${pauseData.setTape}%, armed ${pauseData.armed}`);
+check('every moving part is really animating, not snapping',
+  ['cell', 'needle', 'tape', 'bay', 'lamp', 'punch', 'button']
+    .every((k) => pauseData.moving[k].length > 0),
+  Object.entries(pauseData.moving).map(([k, v]) => `${k}:${v.join('+') || 'NONE'}`).join(' '));
+check('the odometer rolls up to the score', pauseData.score === '014820', pauseData.score);
+
+// Each action must carry its OWN mechanism, not one shared hover colour: the
+// four are compared against each other and against their own resting state.
+// Driven by real pointer moves rather than element.focus(), because
+// :focus-visible is a heuristic and a scripted focus does not always trip it.
+const readPact = () => window.__game && [...document.querySelectorAll('.pact')].map((b) => {
+  const w = b.querySelector('.pact-wipe'), k = b.querySelector('.pact-key');
+  const cs = getComputedStyle(b);
+  return [cs.color, cs.borderTopColor,
+    w ? getComputedStyle(w).transform + '|' + getComputedStyle(w).opacity : '',
+    k ? getComputedStyle(k).transform : ''].join('|');
+});
+await page.mouse.move(4, 4);
+await page.waitForTimeout(320);
+const pauseBtns = { rest: await page.evaluate(readPact), hover: [], who: [] };
+const IDS = ['btn-resume', 'btn-save', 'btn-pause-settings', 'btn-quit'];
+for (const id of IDS) {
+  await page.hover('#' + id);
+  // Wait for the hover transition to START and then FINISH, rather than for a
+  // fixed number of milliseconds. getComputedStyle during a transition returns
+  // the interpolated value, so on a software renderer running at a few frames
+  // a second a timed wait reads the resting colour back and calls the button
+  // dead — which is a bug in the test, not in the button.
+  await page.waitForFunction((sel) => {
+    const b = document.querySelector(sel);
+    const t = [b, ...b.querySelectorAll('*')].flatMap((e) => e.getAnimations())
+      .filter((a) => a.constructor.name === 'CSSTransition');
+    return t.length > 0 && t.every((a) => a.playState === 'finished');
+  }, '#' + id, { timeout: 8000 }).catch(() => {});
+  pauseBtns.who.push(`${id}->${await page.evaluate(() => [...document.querySelectorAll('.pact:hover')].map((b) => b.id).join(',') || 'NOBODY')}`);
+  pauseBtns.hover.push((await page.evaluate(readPact))[IDS.indexOf(id)]);
+}
+await page.mouse.move(4, 4);
+pauseBtns.focused = await page.evaluate(() => {
+  document.getElementById('btn-resume').focus();
+  for (const code of ['ArrowRight', 'ArrowRight']) {
+    document.dispatchEvent(new KeyboardEvent('keydown', { code, bubbles: true }));
+  }
+  return document.activeElement.id;
+});
+check('every action button reacts to being selected',
+  pauseBtns.rest.every((r, i) => r !== pauseBtns.hover[i]),
+  pauseBtns.rest.map((r, i) => (r === pauseBtns.hover[i] ? 'DEAD' : 'ok')).join(' ')
+  + ' | ' + pauseBtns.who.join(' '));
+check('and each one reacts in its own way',
+  new Set(pauseBtns.hover).size === pauseBtns.hover.length,
+  `${new Set(pauseBtns.hover).size} distinct of ${pauseBtns.hover.length}`);
+check('the action row can be walked from the keyboard',
+  pauseBtns.focused === 'btn-pause-settings', `focus landed on ${pauseBtns.focused}`);
+await page.evaluate(() => { window.__game.hud.showScreen(null); window.__game.state.state = 'playing'; });
+
+/* ------------------------------------------------------------------ */
+/* pausing and resuming always gives the mouse back                     */
+/* ------------------------------------------------------------------ */
+// The harness normally runs with pointer lock switched off entirely, which is
+// exactly why this shipped broken: the one path that decides whether a player
+// can carry on playing was the one path never exercised. So turn the real
+// pointer handling back on for this block and make the browser REFUSE the
+// first few requests, the way it refuses any re-lock inside its cooldown after
+// the user pressed Escape to leave one — which is the situation every single
+// resume is in, because Escape is how you paused.
+const lockFix = await page.evaluate(async () => {
+  const g = window.__game;
+  const canvas = document.getElementById('game-canvas');
+  const out = {};
+  const wasTest = g.testMode;
+  g.testMode = false;
+  const real = canvas.requestPointerLock.bind(canvas);
+  let refuse = 4;
+  let asked = 0;
+  canvas.requestPointerLock = () => {
+    asked++;
+    if (refuse-- > 0) return Promise.reject(new Error('refused (cooldown)'));
+    return real();
+  };
+  const frame = () => new Promise((r) => requestAnimationFrame(r));
+  const esc = () => document.dispatchEvent(
+    new KeyboardEvent('keydown', { code: 'Escape', key: 'Escape', bubbles: true }));
+
+  // pause → resume → pause → resume, the sequence in the report
+  g.hud.showScreen(null);
+  g.state.state = 'playing';
+  g.pause();
+  out.paused1 = g.state.state;
+  out.wantsNothingWhilePaused = g.input.lockWanted === false;
+
+  // Escape must close the pause screen. It used not to: the handler was gated
+  // on test mode, so in a real run the only thing that ever left this screen
+  // was the RESUME button.
+  esc();
+  out.escResumed = g.state.state;
+  out.wantsPointer = g.input.lockWanted === true;
+  const askedAtResume = asked;
+
+  // ...and the refused request must not be the end of it: the pump keeps
+  // asking, and while it is asking the player is told why the mouse has not
+  // come back yet rather than being left to guess the game has hung.
+  refuse = 999;
+  for (let i = 0; i < 6; i++) { await frame(); await new Promise((r) => setTimeout(r, 300)); }
+  out.retried = asked - askedAtResume;
+  out.hinted = document.getElementById('lock-hint').classList.contains('on');
+  out.lockedWhileRefused = document.pointerLockElement === canvas;
+  // Let it through. Whether a headless browser actually grants the pointer is
+  // its business, so assert the outcome either way: if it lands the request is
+  // satisfied and the prompt goes, and if it does not the game is still ASKING
+  // rather than sitting there stuck and silent, which is the whole failure.
+  refuse = 0;
+  const askedBeforeGrant = asked;
+  for (let i = 0; i < 4; i++) { await frame(); await new Promise((r) => setTimeout(r, 300)); }
+  out.locked = document.pointerLockElement === canvas;
+  out.settled = out.locked
+    ? g.input.lockWanted === false && !document.getElementById('lock-hint').classList.contains('on')
+    : asked > askedBeforeGrant && g.input.lockWanted === true;
+
+  // Pausing again has to CANCEL the outstanding request. Otherwise the pump
+  // reaches around the menu and takes the pointer back under it.
+  g.pause();
+  out.paused2 = g.state.state;
+  out.requestDropped = g.input.lockWanted === false;
+  const askedAtPause = asked;
+  for (let i = 0; i < 4; i++) { await frame(); await new Promise((r) => setTimeout(r, 300)); }
+  out.askedWhilePaused = asked - askedAtPause;
+  out.hintGoneWhilePaused = !document.getElementById('lock-hint').classList.contains('on');
+
+  // and Escape gets back out of it a second time, which is the exact sequence
+  // in the report: pause, resume, pause, and then stuck.
+  esc();
+  out.escResumed2 = g.state.state;
+
+  // The RESUME button is the other way out, and it has to ask for the pointer
+  // the same way — it was reported stuck too.
+  g.pause();
+  // exitPointerLock reports back asynchronously; wait for the pointer to
+  // actually be gone before resuming, or this is testing a different thing.
+  for (let i = 0; i < 30 && document.pointerLockElement; i++) {
+    await frame(); await new Promise((r) => setTimeout(r, 30));
+  }
+  out.unlockedBeforeClick = !document.pointerLockElement;
+  const askedAtClick = asked;
+  refuse = 999;
+  document.getElementById('btn-resume').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+  out.btnResumed = g.state.state;
+  for (let i = 0; i < 3; i++) { await frame(); await new Promise((r) => setTimeout(r, 300)); }
+  out.btnAsked = asked - askedAtClick;
+  refuse = 0;
+  const askedBeforeBtnGrant = asked;
+  for (let i = 0; i < 3; i++) { await frame(); await new Promise((r) => setTimeout(r, 300)); }
+  out.btnLocked = document.pointerLockElement === canvas;
+  out.btnStillAsking = asked > askedBeforeBtnGrant && g.input.lockWanted === true;
+
+  // put everything back the way the rest of the run expects it
+  canvas.requestPointerLock = real;
+  g.input.releasePointerLock();
+  g.testMode = wasTest;
+  g.hud.showScreen(null);
+  g.state.state = 'playing';
+  g.hud.setLockHint(false);
+  return out;
+});
+check('Escape closes the pause screen', lockFix.escResumed === 'playing' && lockFix.escResumed2 === 'playing',
+  `first ${lockFix.escResumed}, after a second pause ${lockFix.escResumed2}`);
+check('resuming asks for the pointer, and keeps asking when refused',
+  lockFix.wantsPointer && lockFix.retried >= 2,
+  `wanted ${lockFix.wantsPointer}, ${lockFix.retried} retries after the refusal`);
+check('the player is told while the mouse has not come back yet',
+  lockFix.hinted && !lockFix.lockedWhileRefused,
+  `hint shown ${lockFix.hinted} while refused (locked ${lockFix.lockedWhileRefused})`);
+check('a granted lock settles the request; a denied one keeps it alive',
+  lockFix.settled,
+  lockFix.locked ? 'pointer granted, request cleared' : 'pointer denied, still asking');
+check('pausing cancels an outstanding pointer request',
+  lockFix.requestDropped && lockFix.askedWhilePaused === 0 && lockFix.hintGoneWhilePaused,
+  `dropped ${lockFix.requestDropped}, ${lockFix.askedWhilePaused} asks while paused`);
+check('and pausing while unlocked still works', lockFix.paused1 === 'paused' && lockFix.paused2 === 'paused',
+  `${lockFix.paused1} / ${lockFix.paused2}`);
+check('RESUME gets the pointer back too, refusals and all',
+  // The retry pump itself is proven by the Escape path above; what this adds
+  // is that the button enters the same pump rather than asking once and
+  // shrugging.
+  lockFix.unlockedBeforeClick && lockFix.btnResumed === 'playing' && lockFix.btnAsked >= 1
+  && (lockFix.btnLocked || lockFix.btnStillAsking),
+  `unlocked first ${lockFix.unlockedBeforeClick}, state ${lockFix.btnResumed},`
+  + ` ${lockFix.btnAsked} asks, locked ${lockFix.btnLocked}`);
 
 check('no console errors across the whole run', errors.length === 0, errors.slice(0, 3).join(' | '));
 
