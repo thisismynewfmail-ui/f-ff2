@@ -1391,6 +1391,546 @@ export class PropKit {
     return { group: g, collide: [len / 2, 0.35, 0.95] };
   }
 
+  /* ---- residential: the things a street of houses is actually made of ----
+   *
+   * Everything below exists because a suburb is not a commercial district
+   * with smaller buildings — it is a place people lived in the open air.
+   * Front gardens, back gardens, boundary fences, and the objects that stop
+   * halfway through what they were doing when the town emptied.
+   *
+   * A dozen of these MOVE. That is deliberate and load-bearing: in a town
+   * where the only motion is the horde, a turning weather vane at the end of
+   * a still street is the cheapest unease in the game, and a swing that keeps
+   * its arc is worse. Movers return their moving part so World can register
+   * it (see World._animate).
+   */
+
+  /**
+   * Picket fence run: a real garden boundary rather than a farm rail. The
+   * pickets are one texture-mapped ribbon, so a forty-metre run is two
+   * triangles per metre instead of a mesh per board.
+   */
+  picketFence(x1, z1, x2, z2, parent, { h = 1.05, gate = null } = {}) {
+    const len = Math.hypot(x2 - x1, z2 - z1);
+    const yaw = Math.atan2(-(z2 - z1), x2 - x1);
+    const g = new THREE.Group();
+    const mkPanel = (from, to) => {
+      const L = to - from;
+      if (L < 0.2) return;
+      const geo = new THREE.PlaneGeometry(L, h);
+      const uv = geo.attributes.uv;
+      for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * L * 0.55, uv.getY(i));
+      uv.needsUpdate = true;
+      const panel = new THREE.Mesh(geo, this.mat('picketFence', { side: THREE.DoubleSide, alphaTest: 0.5 }));
+      panel.position.set(-len / 2 + (from + to) / 2, h / 2, 0);
+      g.add(panel);
+    };
+    if (gate === null) mkPanel(0, len);
+    else { mkPanel(0, gate - 0.55); mkPanel(gate + 0.55, len); }
+    for (let t = 0; t <= len + 0.01; t += 2.4) {
+      const post = this.box(0.11, h + 0.16, 0.11, 'wallWood');
+      post.position.set(-len / 2 + Math.min(t, len), (h + 0.16) / 2, 0);
+      g.add(post);
+    }
+    const mx = (x1 + x2) / 2, mz = (z1 + z2) / 2;
+    this.place(g, mx, mz, { yaw });
+    parent.add(g);
+    const y = this.terrain.heightAt(mx, mz);
+    const pad = 0.26;
+    this.collision.addBox(Math.min(x1, x2) - pad, y - 0.5, Math.min(z1, z2) - pad,
+      Math.max(x1, x2) + pad, y + h, Math.max(z1, z2) + pad, 'fence');
+    return g;
+  }
+
+  /** Garden gate, hung on one post. Returns the leaf pivot: it swings. */
+  gardenGate() {
+    const g = new THREE.Group();
+    for (const s of [-0.62, 0.62]) {
+      const post = this.box(0.13, 1.35, 0.13, 'wallWood');
+      post.position.set(s, 0.67, 0);
+      g.add(post);
+    }
+    const pivot = new THREE.Group();
+    pivot.position.set(-0.58, 0, 0);
+    const leaf = new THREE.Mesh(new THREE.PlaneGeometry(1.1, 0.95),
+      this.mat('picketFence', { side: THREE.DoubleSide, alphaTest: 0.5 }));
+    leaf.position.set(0.55, 0.55, 0);
+    pivot.add(leaf);
+    g.add(pivot);
+    return { group: g, pivot };
+  }
+
+  /**
+   * Washing line between two posts, still hung. The sheets move — and they
+   * move whichever way the wind in the grass is not.
+   */
+  clothesLine(len = 5) {
+    const g = new THREE.Group();
+    for (const s of [-1, 1]) {
+      const post = this.box(0.11, 2.0, 0.11, 'wallWood');
+      post.position.set(s * len / 2, 1.0, 0);
+      const arm = this.box(0.7, 0.08, 0.08, 'wallWood');
+      arm.position.set(s * len / 2, 1.92, 0);
+      g.add(post, arm);
+    }
+    for (const oz of [-0.22, 0.22]) {
+      const line = this.box(len, 0.02, 0.02, this.colorMat(0x9a9384));
+      line.position.set(0, 1.86, oz);
+      g.add(line);
+    }
+    const sheets = [];
+    const cols = [0xcfcabb, 0x8fa2ae, 0xc0b294, 0xb8bfae, 0xa89a8c];
+    for (let i = 0; i < 5; i++) {
+      const pivot = new THREE.Group();
+      pivot.position.set(-len / 2 + 0.8 + i * (len - 1.6) / 4, 1.86, (i % 2 ? 0.22 : -0.22));
+      const hgt = 0.75 + (i % 3) * 0.28;
+      const cloth = new THREE.Mesh(new THREE.PlaneGeometry(0.72, hgt), this.colorMat(cols[i]));
+      cloth.material.side = THREE.DoubleSide;
+      cloth.position.y = -hgt / 2;
+      pivot.add(cloth);
+      g.add(pivot);
+      sheets.push(pivot);
+    }
+    return { group: g, collide: [len / 2, 1.0, 0.2], sheets };
+  }
+
+  /** Wind chime on a hook. Returns the pivot; also worth listening to. */
+  windChime() {
+    const g = new THREE.Group();
+    const hook = this.box(0.05, 0.3, 0.05, this.colorMat(0x6b6257));
+    hook.position.y = 0.85;
+    g.add(hook);
+    const pivot = new THREE.Group();
+    pivot.position.y = 0.72;
+    const disc = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.13, 0.02, 8), this.mat('bark'));
+    disc.position.y = -0.06;
+    pivot.add(disc);
+    for (let i = 0; i < 5; i++) {
+      const a = (i / 5) * Math.PI * 2;
+      const tube = new THREE.Mesh(new THREE.CylinderGeometry(0.017, 0.017, 0.22 + i * 0.05, 5),
+        this.colorMat(0xa89a6e));
+      tube.position.set(Math.cos(a) * 0.1, -0.2 - i * 0.025, Math.sin(a) * 0.1);
+      pivot.add(tube);
+    }
+    g.add(pivot);
+    return { group: g, pivot };
+  }
+
+  /** Weather vane on a post. It turns. The air does not. */
+  weatherVane(postH = 1.9) {
+    const g = new THREE.Group();
+    const post = this.box(0.09, postH, 0.09, 'metalRust');
+    post.position.y = postH / 2;
+    g.add(post);
+    for (const [a, ox, oz] of [[0, 0.18, 0], [Math.PI / 2, 0, 0.18]]) {
+      const bar = this.box(0.36, 0.03, 0.03, 'metalRust');
+      bar.position.set(ox - 0.18, postH - 0.06, oz - (a ? 0.18 : 0));
+      bar.rotation.y = a;
+      g.add(bar);
+    }
+    const rotor = new THREE.Group();
+    rotor.position.y = postH + 0.12;
+    const body = this.box(0.34, 0.2, 0.03, 'metalRust');
+    body.position.x = 0.05;
+    const tail = this.box(0.22, 0.24, 0.02, 'metalRust');
+    tail.position.set(-0.18, 0.04, 0);
+    const head = this.box(0.1, 0.12, 0.03, 'metalRust');
+    head.position.set(0.24, 0.11, 0);
+    rotor.add(body, tail, head);
+    g.add(rotor);
+    return { group: g, rotor, collide: [0.1, postH / 2, 0.1] };
+  }
+
+  /** Garden pinwheel on a cane. Spins in perfectly still air. */
+  pinwheel() {
+    const g = new THREE.Group();
+    const cane = this.box(0.025, 0.95, 0.025, 'bark');
+    cane.position.y = 0.48;
+    g.add(cane);
+    const rotor = new THREE.Group();
+    rotor.position.y = 0.95;
+    const cols = [0xc25a4a, 0x4a7ac2, 0xd0b44a, 0x5aa85e];
+    for (let i = 0; i < 4; i++) {
+      const vane = new THREE.Mesh(new THREE.PlaneGeometry(0.13, 0.13),
+        this.colorMat(cols[i]));
+      vane.material.side = THREE.DoubleSide;
+      const a = (i / 4) * Math.PI * 2;
+      vane.position.set(Math.cos(a) * 0.09, Math.sin(a) * 0.09, 0.01);
+      vane.rotation.z = a;
+      rotor.add(vane);
+    }
+    g.add(rotor);
+    return { group: g, rotor };
+  }
+
+  /** Tyre on a rope. Hang it under a bough; it keeps an arc. */
+  tireSwing(drop = 2.4) {
+    const g = new THREE.Group();
+    const pivot = new THREE.Group();
+    pivot.position.y = drop;
+    const rope = this.box(0.04, drop - 0.4, 0.04, this.colorMat(0x8a7c62));
+    rope.position.y = -(drop - 0.4) / 2;
+    pivot.add(rope);
+    const tyre = new THREE.Mesh(new THREE.TorusGeometry(0.32, 0.11, 5, 10), this.colorMat(0x22201f));
+    tyre.position.y = -drop + 0.44;
+    tyre.rotation.x = Math.PI / 2;
+    pivot.add(tyre);
+    g.add(pivot);
+    return { group: g, pivot };
+  }
+
+  /**
+   * Porch swing: a bench hung from the porch beam on two chains. The pivot
+   * sits just under a porch canopy (~2.5 m over the deck), so the seat lands
+   * at sitting height rather than swinging round somebody's head.
+   */
+  porchSwing() {
+    const g = new THREE.Group();
+    const pivot = new THREE.Group();
+    pivot.position.y = 2.5;
+    for (const s of [-0.72, 0.72]) {
+      const chain = this.box(0.03, 1.9, 0.03, this.colorMat(0x3a4148));
+      chain.position.set(s, -0.95, 0);
+      pivot.add(chain);
+    }
+    const seat = this.box(1.7, 0.08, 0.5, 'wallWood');
+    seat.position.y = -1.95;
+    const back = this.box(1.7, 0.45, 0.07, 'wallWood');
+    back.position.set(0, -1.71, -0.22);
+    pivot.add(seat, back);
+    g.add(pivot);
+    return { group: g, pivot };
+  }
+
+  /** Lawn sprinkler. The head turns. Nothing comes out of it. */
+  sprinkler() {
+    const g = new THREE.Group();
+    const base = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.2, 0.09, 8), this.colorMat(0x3c5a3a));
+    base.position.y = 0.05;
+    g.add(base);
+    const rotor = new THREE.Group();
+    rotor.position.y = 0.12;
+    const arm = this.box(0.42, 0.035, 0.035, this.colorMat(0x8a8d84));
+    arm.position.y = 0.05;
+    const jet = this.box(0.06, 0.06, 0.06, this.colorMat(0x6b7280));
+    jet.position.set(0.21, 0.07, 0);
+    rotor.add(arm, jet);
+    g.add(rotor);
+    const hose = new THREE.Mesh(new THREE.TorusGeometry(0.3, 0.035, 4, 9), this.colorMat(0x2c4a2c));
+    hose.position.set(-0.42, 0.04, 0.2);
+    hose.rotation.x = Math.PI / 2;
+    g.add(hose);
+    return { group: g, rotor };
+  }
+
+  /** A bicycle dropped on a lawn. The front wheel is still turning. */
+  bicycle(paint = 0x7a3b30) {
+    const g = new THREE.Group();
+    const lean = new THREE.Group();
+    lean.rotation.z = 0.34;
+    const frame = this.box(1.05, 0.05, 0.05, this.colorMat(paint));
+    frame.position.set(0, 0.52, 0);
+    const down = this.box(0.05, 0.44, 0.05, this.colorMat(paint));
+    down.position.set(0.16, 0.34, 0);
+    down.rotation.z = 0.5;
+    const seat = this.box(0.22, 0.06, 0.11, this.colorMat(0x24211e));
+    seat.position.set(-0.44, 0.62, 0);
+    const bars = this.box(0.06, 0.06, 0.46, this.colorMat(0x8a8d84));
+    bars.position.set(0.5, 0.66, 0);
+    lean.add(frame, down, seat, bars);
+    const mkWheel = (ox) => {
+      const w = new THREE.Mesh(new THREE.TorusGeometry(0.32, 0.035, 4, 12), this.colorMat(0x1e1c1a));
+      w.position.set(ox, 0.33, 0);
+      for (let i = 0; i < 3; i++) {
+        const spoke = this.box(0.62, 0.012, 0.012, this.colorMat(0x9a9d96));
+        spoke.rotation.z = (i / 3) * Math.PI;
+        w.add(spoke);
+      }
+      return w;
+    };
+    const front = mkWheel(0.55);
+    lean.add(front, mkWheel(-0.5));
+    g.add(lean);
+    return { group: g, rotor: front };
+  }
+
+  /** Roof dish, aimed at something. It creeps round over minutes. */
+  satelliteDish() {
+    const g = new THREE.Group();
+    const mast = this.box(0.07, 0.5, 0.07, 'metalRust');
+    mast.position.y = 0.25;
+    g.add(mast);
+    const rotor = new THREE.Group();
+    rotor.position.y = 0.5;
+    const dish = new THREE.Mesh(new THREE.SphereGeometry(0.42, 9, 5, 0, Math.PI * 2, 0, Math.PI / 2.6),
+      this.mat('wallMetal', { side: THREE.DoubleSide }));
+    dish.rotation.x = -1.05;
+    dish.position.y = 0.1;
+    const arm = this.box(0.34, 0.03, 0.03, this.colorMat(0x8a8d84));
+    arm.position.set(0.1, 0.34, 0);
+    arm.rotation.z = -0.5;
+    rotor.add(dish, arm);
+    g.add(rotor);
+    return { group: g, rotor };
+  }
+
+  /** Driveway basketball hoop. The net still moves when nothing hits it. */
+  basketballHoop() {
+    const g = new THREE.Group();
+    const post = this.box(0.13, 3.0, 0.13, 'metalRust');
+    post.position.y = 1.5;
+    g.add(post);
+    const board = this.box(1.5, 0.95, 0.07, 'wallWood');
+    board.position.set(0, 2.95, 0.3);
+    const paint = this.box(0.6, 0.44, 0.02, this.colorMat(0xc4402e));
+    paint.position.set(0, 2.8, 0.35);
+    g.add(board, paint);
+    const hoop = new THREE.Mesh(new THREE.TorusGeometry(0.23, 0.025, 4, 10), this.colorMat(0xc4622e));
+    hoop.position.set(0, 2.62, 0.56);
+    hoop.rotation.x = Math.PI / 2;
+    g.add(hoop);
+    const net = new THREE.Group();
+    net.position.set(0, 2.6, 0.56);
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * Math.PI * 2;
+      const strand = this.box(0.015, 0.34, 0.015, this.colorMat(0xd8d4c6));
+      strand.position.set(Math.cos(a) * 0.19, -0.18, Math.sin(a) * 0.19);
+      strand.rotation.z = -Math.cos(a) * 0.22;
+      strand.rotation.x = Math.sin(a) * 0.22;
+      net.add(strand);
+    }
+    g.add(net);
+    return { group: g, collide: [0.24, 1.1, 0.24], pivot: net };
+  }
+
+  /** Kennel with a chain. The chain is not attached to anything now. */
+  doghouse() {
+    const g = new THREE.Group();
+    const body = this.box(0.95, 0.7, 1.15, 'wallWood');
+    body.position.y = 0.35;
+    g.add(body);
+    const hole = this.box(0.42, 0.5, 0.06, this.colorMat(0x100e0c));
+    hole.position.set(0, 0.3, 0.58);
+    g.add(hole);
+    for (const s of [-1, 1]) {
+      const panel = this.box(0.72, 0.11, 1.3, 'roofShingleBrown');
+      panel.position.set(s * 0.26, 0.87, 0);
+      panel.rotation.z = -s * 0.62;
+      g.add(panel);
+    }
+    const chain = this.box(1.5, 0.03, 0.03, this.colorMat(0x4a4a48));
+    chain.position.set(0.9, 0.03, 0.5);
+    chain.rotation.y = 0.6;
+    g.add(chain);
+    const bowl = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.11, 0.07, 8), this.colorMat(0x7a4438));
+    bowl.position.set(-0.75, 0.04, 0.5);
+    g.add(bowl);
+    return { group: g, collide: [0.5, 0.5, 0.6] };
+  }
+
+  /** Kettle barbecue, lid off, ashes cold. */
+  bbqGrill() {
+    const g = new THREE.Group();
+    for (let i = 0; i < 3; i++) {
+      const a = (i / 3) * Math.PI * 2;
+      const leg = this.box(0.05, 0.72, 0.05, this.colorMat(0x3a3d40));
+      leg.position.set(Math.cos(a) * 0.24, 0.36, Math.sin(a) * 0.24);
+      leg.rotation.z = -Math.cos(a) * 0.16;
+      leg.rotation.x = Math.sin(a) * 0.16;
+      g.add(leg);
+    }
+    const bowl = new THREE.Mesh(new THREE.SphereGeometry(0.33, 10, 6, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2),
+      this.mat('metalRust', { side: THREE.DoubleSide }));
+    bowl.position.y = 0.8;
+    const grate = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 0.02, 10), this.colorMat(0x2c2e30));
+    grate.position.y = 0.79;
+    g.add(bowl, grate);
+    const lid = new THREE.Mesh(new THREE.SphereGeometry(0.34, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2),
+      this.mat('metalRust', { side: THREE.DoubleSide }));
+    lid.position.set(0.55, 0.16, 0.2);
+    lid.rotation.z = 1.9;
+    g.add(lid);
+    return { group: g, collide: [0.34, 0.45, 0.34] };
+  }
+
+  /**
+   * A child's paddling pool, still full. Returns the water plane so the
+   * surface can be given something to do — nobody has touched this water in
+   * a year and it will not hold still.
+   */
+  paddlingPool() {
+    const g = new THREE.Group();
+    const wall = new THREE.Mesh(new THREE.CylinderGeometry(1.15, 1.1, 0.34, 14, 1, true),
+      this.mat('tarpBlue', { side: THREE.DoubleSide }));
+    wall.position.y = 0.17;
+    const floor = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 1.1, 0.03, 14), this.mat('tarpBlue'));
+    floor.position.y = 0.02;
+    g.add(wall, floor);
+    const water = new THREE.Mesh(new THREE.CircleGeometry(1.06, 16),
+      new THREE.MeshLambertMaterial({ map: this.texLib.tiled('water', 1.4, 1.4), transparent: true, opacity: 0.85 }));
+    water.rotation.x = -Math.PI / 2;
+    water.position.y = 0.23;
+    g.add(water);
+    return { group: g, collide: [1.15, 0.2, 1.15], water };
+  }
+
+  /** A garden gnome. Eleven inches of painted concrete, watching the path. */
+  gardenGnome() {
+    const g = new THREE.Group();
+    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.13, 0.24, 7), this.colorMat(0x2f5f8a));
+    body.position.y = 0.12;
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.075, 7, 5), this.colorMat(0xd8b49a));
+    head.position.y = 0.29;
+    const beard = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.13, 6), this.colorMat(0xe4e0d6));
+    beard.position.set(0, 0.24, 0.045);
+    beard.rotation.x = Math.PI;
+    const hat = new THREE.Mesh(new THREE.ConeGeometry(0.09, 0.2, 7), this.colorMat(0xb03a2e));
+    hat.position.y = 0.42;
+    g.add(body, head, beard, hat);
+    return { group: g };
+  }
+
+  /** Birdhouse on a pole. Whatever is in there is not a bird. */
+  birdhouse() {
+    const g = new THREE.Group();
+    const pole = this.box(0.07, 1.85, 0.07, 'wallWood');
+    pole.position.y = 0.92;
+    g.add(pole);
+    const box = this.box(0.32, 0.34, 0.28, 'wallWood');
+    box.position.y = 2.0;
+    g.add(box);
+    const hole = new THREE.Mesh(new THREE.CircleGeometry(0.055, 8), this.colorMat(0x0a0908));
+    hole.position.set(0, 2.04, 0.142);
+    g.add(hole);
+    for (const s of [-1, 1]) {
+      const panel = this.box(0.26, 0.05, 0.36, 'roofShakeWood');
+      panel.position.set(s * 0.09, 2.24, 0);
+      panel.rotation.z = -s * 0.66;
+      g.add(panel);
+    }
+    return { group: g, collide: [0.09, 0.9, 0.09] };
+  }
+
+  /** Sandpit with a bucket and a spade left in it. */
+  sandbox() {
+    const g = new THREE.Group();
+    for (const [ox, oz, w, d] of [[0, -0.95, 2.0, 0.14], [0, 0.95, 2.0, 0.14], [-0.95, 0, 0.14, 2.0], [0.95, 0, 0.14, 2.0]]) {
+      const board = this.box(w, 0.2, d, 'wallWood');
+      board.position.set(ox, 0.1, oz);
+      g.add(board);
+    }
+    const sand = new THREE.Mesh(new THREE.PlaneGeometry(1.9, 1.9), this.mat('dirt'));
+    sand.rotation.x = -Math.PI / 2;
+    sand.position.y = 0.15;
+    g.add(sand);
+    const bucket = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.09, 0.16, 8), this.colorMat(0xc4552e));
+    bucket.position.set(0.4, 0.23, -0.3);
+    bucket.rotation.z = 1.4;
+    const spade = this.box(0.28, 0.02, 0.06, this.colorMat(0x3a6ab0));
+    spade.position.set(-0.35, 0.17, 0.35);
+    spade.rotation.y = 0.7;
+    g.add(bucket, spade);
+    return { group: g, collide: [1.0, 0.12, 1.0] };
+  }
+
+  /** Wheelbarrow, tipped forward where it was set down. */
+  wheelbarrow() {
+    const g = new THREE.Group();
+    const tray = this.box(0.62, 0.3, 0.85, 'metalRust');
+    tray.position.set(0, 0.42, 0);
+    tray.rotation.x = -0.18;
+    g.add(tray);
+    for (const s of [-1, 1]) {
+      const handle = this.box(0.05, 0.05, 1.35, 'wallWood');
+      handle.position.set(s * 0.26, 0.4, -0.5);
+      handle.rotation.x = 0.2;
+      const leg = this.box(0.05, 0.3, 0.05, 'metalRust');
+      leg.position.set(s * 0.26, 0.15, -0.42);
+      g.add(handle, leg);
+    }
+    const wheel = new THREE.Mesh(new THREE.CylinderGeometry(0.19, 0.19, 0.09, 9), this.colorMat(0x24211e));
+    wheel.position.set(0, 0.19, 0.56);
+    wheel.rotation.z = Math.PI / 2;
+    g.add(wheel);
+    return { group: g, collide: [0.4, 0.3, 0.7] };
+  }
+
+  /** Push mower, abandoned mid-stripe. */
+  lawnMower() {
+    const g = new THREE.Group();
+    const deck = this.box(0.62, 0.2, 0.5, this.colorMat(0x2f6a52));
+    deck.position.y = 0.24;
+    const engine = this.box(0.3, 0.24, 0.28, this.colorMat(0x4a4d50));
+    engine.position.y = 0.45;
+    g.add(deck, engine);
+    for (const [ox, oz] of [[-0.28, -0.22], [0.28, -0.22], [-0.28, 0.22], [0.28, 0.22]]) {
+      const w = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.11, 0.07, 8), this.colorMat(0x24211e));
+      w.position.set(ox, 0.11, oz);
+      w.rotation.z = Math.PI / 2;
+      g.add(w);
+    }
+    for (const s of [-1, 1]) {
+      const bar = this.box(0.04, 0.04, 0.95, this.colorMat(0x8a8d84));
+      bar.position.set(s * 0.26, 0.62, -0.42);
+      bar.rotation.x = 0.75;
+      g.add(bar);
+    }
+    return { group: g, collide: [0.36, 0.3, 0.34] };
+  }
+
+  /** Something under a tarpaulin. It is the right size and the wrong shape. */
+  tarpPile(w = 1.8, h = 1.0, d = 1.3) {
+    const g = new THREE.Group();
+    const lump = new THREE.Mesh(new THREE.SphereGeometry(0.5, 8, 5), this.mat('tarpBlue'));
+    lump.scale.set(w, h * 1.5, d);
+    lump.position.y = h * 0.18;
+    g.add(lump);
+    for (const [ox, oz] of [[-w * 0.42, -d * 0.42], [w * 0.42, d * 0.42]]) {
+      const brick = this.box(0.24, 0.12, 0.16, 'brickGray');
+      brick.position.set(ox, 0.06, oz);
+      g.add(brick);
+    }
+    return { group: g, collide: [w * 0.45, h * 0.45, d * 0.45] };
+  }
+
+  /**
+   * A treehouse: a plank deck lashed into a bough with a nailed ladder. The
+   * deck is returned so the caller can make it real ground — it is meant to
+   * be climbed, and what is up there is worth the climb.
+   */
+  treehouse(deckY = 3.2) {
+    const g = new THREE.Group();
+    const deck = this.box(2.6, 0.16, 2.4, 'floorWood');
+    deck.position.y = deckY;
+    g.add(deck);
+    for (const [ox, oz] of [[-1.15, -1.05], [1.15, -1.05], [-1.15, 1.05], [1.15, 1.05]]) {
+      const brace = this.box(0.12, deckY, 0.12, 'bark');
+      brace.position.set(ox, deckY / 2, oz);
+      brace.rotation.z = -Math.sign(ox) * 0.06;
+      g.add(brace);
+    }
+    for (const [ox, oz, w, d] of [[0, -1.16, 2.6, 0.1], [-1.28, 0, 0.1, 2.4], [1.28, 0, 0.1, 2.4]]) {
+      const rail = this.box(w, 0.85, d, 'wallWood');
+      rail.position.set(ox, deckY + 0.5, oz);
+      g.add(rail);
+    }
+    const roof = this.box(2.7, 0.1, 2.5, 'roofShakeWood');
+    roof.position.y = deckY + 1.7;
+    roof.rotation.x = 0.1;
+    g.add(roof);
+    for (const s of [-1, 1]) {
+      const post = this.box(0.1, 1.2, 0.1, 'wallWood');
+      post.position.set(s * 1.2, deckY + 1.1, -1.1);
+      g.add(post);
+    }
+    for (let i = 0; i < Math.floor(deckY / 0.42); i++) {   // the nailed ladder
+      const rung = this.box(0.5, 0.05, 0.05, 'wallWood');
+      rung.position.set(0, 0.35 + i * 0.42, 1.32);
+      g.add(rung);
+    }
+    return { group: g, deck: { hx: 1.3, hz: 1.2, y: deckY + 0.16 }, ladder: { z: 1.5 } };
+  }
+
   /** Fence run between two points; registers thin collider. */
   fenceRun(x1, z1, x2, z2, parent) {
     const len = Math.hypot(x2 - x1, z2 - z1);

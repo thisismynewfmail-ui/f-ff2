@@ -11,14 +11,21 @@ import * as THREE from '../../lib/three.module.js';
  * material per texture tiles correctly on every segment.
  *
  * Spec fields beyond the basics:
- *   roof: 'gable' | 'flat' | 'shed'   ridge: 'x' | 'z' (default: long axis)
+ *   roof: 'gable' | 'hip' | 'flat' | 'shed'
+ *   ridge: 'x' | 'z'                  gable/hip ridge axis (default: long axis)
+ *   roofPitch: number                 rise per half-span; steeper sheds snow
+ *   shedTo: 'N'|'S'|'E'|'W'           which way a shed roof drains
+ *   dormers: number                   dormer windows on the street-facing slope
  *   chimney: true                     residential detail on gable roofs
+ *   porch: true | {depth, width}      covered porch over the door
  *   doorTex: 'doorWood' | 'doorMetal' | 'doorShop'
+ *   doorW: number                     opening width (garage bays are wider)
  *   shopfront: true                   display windows + no ground windows on
  *                                     the door side
  *   awning: true                      canvas awnings over door/shopfront
  *   derelict: 0..1                    drives broken + boarded window mix
  *   foundation: false                 suppress the footing plinth
+ *   windowPitch: number               spacing between windows within a bay
  *   foundationTex/trimTex/windowTex   from the building's material set
  *                                     (src/world/Materials.js)
  *   partitions: [{axis:'x'|'z', at, from, to, gapAt, gapW, tex}]
@@ -44,10 +51,11 @@ const PLINTH_DEEP = 1.1;   // depth below grade
 const STOREY = 2.7;        // window-row pitch; belt courses land between rows
 
 export class BuildingKit {
-  constructor(texLib, collision, nav) {
+  constructor(texLib, collision, nav, terrain) {
     this.texLib = texLib;
     this.collision = collision;
     this.nav = nav;
+    this.terrain = terrain;
     this.materials = new Map();
   }
 
@@ -121,25 +129,27 @@ export class BuildingKit {
         for (const side of sides) this._windows(group, windowBatch, side, spec, h, rand, derelict, null);
       }
     } else {
+      const doorW = spec.doorW ?? DOOR_W;
       for (const side of sides) {
         const hasDoor = spec.door === side.id;
         if (!hasDoor) {
           this._wallSegment(group, spec, rot, side, -side.len / 2, side.len / 2, 0, h, wallTex);
         } else {
           const doorOff = (spec.doorOffset ?? 0) * side.len * 0.5;
-          const a = doorOff - DOOR_W / 2, b = doorOff + DOOR_W / 2;
+          const a = doorOff - doorW / 2, b = doorOff + doorW / 2;
           this._wallSegment(group, spec, rot, side, -side.len / 2, a, 0, h, wallTex);
           this._wallSegment(group, spec, rot, side, b, side.len / 2, 0, h, wallTex);
           this._wallSegment(group, spec, rot, side, a, b, DOOR_H, h - DOOR_H, wallTex, DOOR_H);
           // Door leaf hanging open against the inside wall.
           const doorTex = spec.doorTex || 'doorWood';
-          const leaf = new THREE.Mesh(new THREE.PlaneGeometry(DOOR_W * 0.95, DOOR_H * 0.95), this.mat(doorTex, { side: THREE.DoubleSide }));
+          const leaf = new THREE.Mesh(new THREE.PlaneGeometry(doorW * 0.95, DOOR_H * 0.95), this.mat(doorTex, { side: THREE.DoubleSide }));
           const s = side.axis === 'x' ? [a + 0.1, DOOR_H / 2, side.cz - Math.sign(side.cz) * 0.5] : [side.cx - Math.sign(side.cx) * 0.5, DOOR_H / 2, a + 0.1];
           leaf.position.set(s[0], s[1], s[2]);
           leaf.rotation.y = side.axis === 'x' ? Math.PI / 2.3 : 0.2;
           group.add(leaf);
+          if (spec.porch) this._porch(group, spec, rot, side, doorOff, h);
           if (spec.awning) {
-            this._awning(group, side, doorOff, DOOR_W + 1.0);
+            this._awning(group, side, doorOff, doorW + 1.0);
             if (spec.shopfront) {
               for (const sgn of [-1, 1]) {
                 const at = doorOff + sgn * (DOOR_W / 2 + 2.0);
@@ -192,11 +202,13 @@ export class BuildingKit {
 
     // ---- roof -------------------------------------------------------
     const roofKind = spec.roof || 'gable';
-    const roofTex = spec.roofTex || (roofKind === 'gable' ? 'roofShingle' : 'roofTar');
+    const roofTex = spec.roofTex || (roofKind === 'gable' || roofKind === 'hip' ? 'roofShingle' : 'roofTar');
     if (roofKind === 'gable') {
       this._gableRoof(group, spec, w, d, h, roofTex, wallTex);
+    } else if (roofKind === 'hip') {
+      this._hipRoof(group, spec, w, d, h, roofTex);
     } else if (roofKind === 'shed') {
-      this._shedRoof(group, w, d, h, roofTex, wallTex);
+      this._shedRoof(group, spec, w, d, h, roofTex, wallTex);
     } else {
       const slab = this.box(w + 0.4, 0.25, d + 0.4, roofTex);
       slab.position.y = h + 0.13;
@@ -222,7 +234,7 @@ export class BuildingKit {
     // either side always meet in the middle). Declare the openings we just
     // built from the very coordinates we built them from, now that those walls
     // are registered, so pathing can actually route in and out of the building.
-    const portals = spec.solid ? [] : this._registerPortals(spec, rot, doorWorld, w, d);
+    const portals = spec.solid ? [] : this._registerPortals(spec, rot, doorWorld);
 
     return { group, lootPoints, spawnPoints, doorWorld, portals };
   }
@@ -232,14 +244,14 @@ export class BuildingKit {
    * the nav grid, and hand the list back so NPCs can route through the exact
    * same points (see Citizen's escape chain).
    */
-  _registerPortals(spec, rot, doorWorld, w, d) {
+  _registerPortals(spec, rot, doorWorld) {
     const portals = [];
     if (doorWorld) {
       const side = spec.door;
       const n = localDir2world(rot,
         side === 'E' ? 1 : side === 'W' ? -1 : 0,
         side === 'S' ? 1 : side === 'N' ? -1 : 0);
-      portals.push(this.nav.addPortal(doorWorld.x, doorWorld.z, n.x, n.z, DOOR_W, 'door'));
+      portals.push(this.nav.addPortal(doorWorld.x, doorWorld.z, n.x, n.z, spec.doorW ?? DOOR_W, 'door'));
     }
     for (const p of spec.partitions ?? []) {
       const gapAt = p.gapAt ?? (p.from + p.to) / 2;
@@ -285,7 +297,7 @@ export class BuildingKit {
     ];
     for (const s of sides) {
       const L = s.len + out * 2;
-      const gap = low && spec.door === s.id ? DOOR_W / 2 + 0.14 : 0;
+      const gap = low && spec.door === s.id ? (spec.doorW ?? DOOR_W) / 2 + 0.14 : 0;
       const at = gap ? (spec.doorOffset ?? 0) * s.len * 0.5 : 0;
       const runs = gap
         ? [[-L / 2, at - gap], [at + gap, L / 2]]
@@ -318,42 +330,86 @@ export class BuildingKit {
   }
 
   /**
-   * Windows for one facade. Rows stack every 2.7 m so tall buildings read as
-   * multi-storey; the derelict factor mixes in broken and boarded panes.
-   * A shopfront door side swaps its ground row for wide display windows.
-   * Quads are batched per texture and merged into one mesh per building.
+   * Where the interior partitions meet this facade, in the wall's own
+   * along-axis coordinate.
+   *
+   * A partition declared `axis:'x'` runs along local X at z = at, so it lands
+   * on the E and W walls (which run along Z) at coordinate `at` — and only if
+   * it actually reaches them. This is the whole basis of window alignment: a
+   * window centred on one of these coordinates would be a window with an
+   * interior wall down the middle of it, which is the single most obvious way
+   * a generated building gives itself away from the inside.
+   */
+  _wallJunctions(spec, side) {
+    const cuts = [];
+    const half = side.axis === 'x' ? spec.d / 2 : spec.w / 2;   // wall this side sits at
+    const reach = side.axis === 'x' ? spec.w / 2 : spec.d / 2;  // wall this side spans
+    for (const p of spec.partitions ?? []) {
+      // A partition only crosses a facade it runs INTO, so an 'x' partition
+      // can only meet the walls that run along Z, and vice versa.
+      const meets = side.axis === 'x' ? p.axis === 'z' : p.axis === 'x';
+      if (!meets) continue;
+      // ...and only if its span actually runs out as far as this wall.
+      const near = side.id === 'S' || side.id === 'E' ? half : -half;
+      if (near > 0 ? p.to < near - 0.7 : p.from > near + 0.7) continue;
+      if (Math.abs(p.at) < reach - 0.4) cuts.push(p.at);
+    }
+    return cuts;
+  }
+
+  /**
+   * Windows for one facade, laid out ROOM BY ROOM.
+   *
+   * The facade is first cut into bays at every point where an interior
+   * partition lands on it (see _wallJunctions) and, on the ground floor, at
+   * the doorway. Each bay is then glazed on its own: a bay narrower than a
+   * window gets none, a wide one gets several evenly spaced. That is what
+   * makes the elevation agree with the plan — every window belongs to exactly
+   * one room, and no wall inside the building runs through a pane.
+   *
+   * Rows stack every 2.7 m so tall buildings read as multi-storey; the
+   * derelict factor mixes in broken and boarded panes. A shopfront door side
+   * swaps its ground row for wide display windows. Quads are batched per
+   * texture and merged into one mesh per building.
    *
    * Intact glass comes from the building's material set (`spec.windowTex`):
-   * curtains behind a house's sashes, dark grid glass in an office, leaded
-   * lights in a church. Every opening also gets a real sill and lintel in the
-   * trim material — a hole in a wall does not read as a window without them.
+   * curtains behind a house's sashes, shuttered sashes on a suburban street,
+   * dark grid glass in an office, leaded lights in a church. Every opening
+   * also gets a real sill and lintel in the trim material — a hole in a wall
+   * does not read as a window without them.
    */
   _windows(group, batch, side, spec, h, rand, derelict, doorOff) {
-    const usable = side.len - 2.4;
-    const count = Math.max(0, Math.floor(usable / 3.6));
-    if (!count) return;
     const out = Math.sign(side.cx + side.cz) * (WALL_T / 2 + 0.03);
     const shopSide = !!spec.shopfront && spec.door === side.id;
     const glass = spec.windowTex || 'window';
+    const doorW = spec.doorW ?? DOOR_W;
+    const pitch = spec.windowPitch ?? 3.6;
     const rows = [];
     for (let yRow = Math.min(h - 1.1, 1.9); yRow <= h - 1.3; yRow += STOREY) rows.push(yRow);
     if (!rows.length) rows.push(Math.min(h - 1.1, 1.9));
+    const junctions = this._wallJunctions(spec, side);
     for (let ri = 0; ri < rows.length; ri++) {
       if (shopSide && ri === 0) continue;
-      for (let i = 0; i < count; i++) {
-        const t = (i + 0.5) / count - 0.5;
-        const at = t * usable;
-        if (ri === 0 && doorOff !== null && Math.abs(at - doorOff) < DOOR_W * 0.5 + 0.9) continue;
-        const r = rand();
-        const tex = r < derelict * 0.45 ? 'windowBroken' : r < derelict * 0.8 ? 'windowBoarded' : glass;
-        this._pushQuad(batch, tex, side, at, rows[ri], out, 1.2, 1.3);
-        this._surround(group, spec, side, at, rows[ri], 1.2, 1.3);
+      // Every interior wall landing on this facade blocks out a strip of it,
+      // and on the ground floor the doorway blocks out another.
+      const blocks = junctions.map((j) => [j - 0.42, j + 0.42]);
+      if (ri === 0 && doorOff !== null) blocks.push([doorOff - doorW / 2 - 0.75, doorOff + doorW / 2 + 0.75]);
+      for (const [a, b] of this._bays(side.len, blocks)) {
+        const len = b - a;
+        const n = Math.max(1, Math.floor((len - 0.6) / pitch));
+        for (let i = 0; i < n; i++) {
+          const at = a + len * (i + 0.5) / n;
+          const r = rand();
+          const tex = r < derelict * 0.45 ? 'windowBroken' : r < derelict * 0.8 ? 'windowBoarded' : glass;
+          this._pushQuad(batch, tex, side, at, rows[ri], out, 1.2, 1.3);
+          this._surround(group, spec, side, at, rows[ri], 1.2, 1.3);
+        }
       }
     }
     if (shopSide) {
       const doorAt = doorOff ?? 0;
       for (const sgn of [-1, 1]) {
-        const at = doorAt + sgn * (DOOR_W / 2 + 2.0);
+        const at = doorAt + sgn * (doorW / 2 + 2.0);
         if (Math.abs(at) + 1.7 > side.len / 2 - 0.4) continue;
         const tex = rand() < derelict * 0.5 ? 'windowBoarded' : 'windowShop';
         const qw = tex === 'windowShop' ? 3.0 : 1.4;
@@ -361,6 +417,27 @@ export class BuildingKit {
         this._surround(group, spec, side, at, 1.35, qw, 1.5);
       }
     }
+  }
+
+  /**
+   * Split a wall of length `len` into glazable bays, given the spans that are
+   * spoken for (interior walls, the doorway). Corners keep 0.85 m clear — or
+   * proportionally less on a wall too short to afford it, which is what lets a
+   * garden shed have a window at all — and a bay under 1.8 m has no room for a
+   * window with its sill and lintel, so it is dropped rather than squeezed.
+   */
+  _bays(len, blocks) {
+    const margin = Math.min(0.85, len * 0.22);
+    const lo = -len / 2 + margin, hi = len / 2 - margin;
+    const bays = [];
+    let s = lo;
+    for (const [a, b] of [...blocks].sort((p, q) => p[0] - q[0])) {
+      if (b <= lo || a >= hi) continue;
+      if (a - s >= 1.8) bays.push([s, a]);
+      s = Math.max(s, b);
+    }
+    if (hi - s >= 1.8) bays.push([s, hi]);
+    return bays;
   }
 
   /** Sill under an opening and lintel over it, in the building's trim. */
@@ -432,13 +509,27 @@ export class BuildingKit {
     }
   }
 
+  /**
+   * How far a pitched roof rises over half its span.
+   *
+   * Climate logic, and it is not decoration: this town gets snow. A shallow
+   * roof holds it, a steep one drops it, so anything that has to shrug off a
+   * winter — every house on the exposed Eastgate knoll — pitches steeply
+   * (`roofPitch` up around 0.45 of the span), while a commercial box downtown
+   * that gets swept by somebody stays at the gentler default. The absolute cap
+   * keeps a wide building from growing a spire.
+   */
+  _roofRise(spec, span) {
+    return Math.min(spec.roofCap ?? 2.6, span * (spec.roofPitch ?? 0.3));
+  }
+
   _gableRoof(group, spec, w, d, h, roofTex, wallTex) {
-    // Climate logic: the ridge runs along the long axis so both slopes shed
-    // toward the eaves; specs can pin `ridge` explicitly.
+    // The ridge runs along the long axis so both slopes shed to the eaves;
+    // specs can pin `ridge` explicitly.
     const ridge = spec.ridge ?? (w > d ? 'x' : 'z');
     const rw = ridge === 'x' ? d : w, rd = ridge === 'x' ? w : d;
     const rg = new THREE.Group();
-    const rise = Math.min(2.6, rw * 0.3);
+    const rise = this._roofRise(spec, rw);
     const panelW = Math.hypot(rw / 2 + 0.3, rise);
     for (const s of [-1, 1]) {
       const panel = this.box(panelW, 0.18, rd + 0.6, roofTex);
@@ -463,32 +554,225 @@ export class BuildingKit {
       ch.position.set(rw * 0.1, h + rise * 0.55 + 0.55, rd * 0.26);
       rg.add(ch);
     }
+    if (spec.dormers) this._dormers(rg, spec, ridge, rw, rd, h, rise, roofTex, wallTex);
     if (ridge === 'x') rg.rotation.y = Math.PI / 2;
     group.add(rg);
   }
 
-  /** Single-slope lean-to roof, high edge at the back (-Z). */
-  _shedRoof(group, w, d, h, roofTex, wallTex) {
-    const rise = Math.min(1.7, d * 0.24);
-    const panelD = Math.hypot(d + 0.5, rise);
-    const panel = this.box(w + 0.5, 0.16, panelD, roofTex);
+  /**
+   * Dormer windows punched through the street-facing slope.
+   *
+   * The one detail that most separates a house from a shed at fifty metres:
+   * it says there is a floor up there under the roof. Only the slope that
+   * faces the front door gets them — a dormer over the back garden is
+   * somebody else's view — so a building whose door is in a gable end gets
+   * none, which is correct.
+   *
+   * Coordinates are the gable group's own: local +X is the E facade when the
+   * ridge runs along Z, and (because the group is later yawed by 90°) the N
+   * facade when it runs along X.
+   */
+  _dormers(rg, spec, ridge, rw, rd, h, rise, roofTex, wallTex) {
+    const facing = ridge === 'z'
+      ? { E: 1, W: -1 }[spec.door]
+      : { N: 1, S: -1 }[spec.door];
+    if (!facing) return;                     // door is in a gable end
+    const n = Math.min(spec.dormers, Math.floor(rd / 3.2));
+    if (n < 1) return;
+    const dw = 1.5, dh = 1.25;
+    const slope = Math.atan2(rise, rw / 2 + 0.3);
+    for (let i = 0; i < n; i++) {
+      const along = rd * ((i + 0.5) / n - 0.5);
+      const g = new THREE.Group();
+      // seat the box astride the slope, a third of the way up from the eaves
+      const t = 0.34;
+      const x = facing * (rw / 2) * (1 - t);
+      const y = h + rise * t;
+      const cheek = this.box(0.14, dh, 1.35, wallTex);
+      cheek.position.set(0, dh / 2 - 0.15, 0);
+      const face = this.box(0.12, dh, dw, wallTex);
+      face.position.set(facing * 0.62, dh / 2 - 0.15, 0);
+      const glass = new THREE.Mesh(new THREE.PlaneGeometry(dw * 0.62, dh * 0.6),
+        this.mat(spec.windowTex || 'window', { side: THREE.DoubleSide }));
+      glass.position.set(facing * 0.7, dh / 2 - 0.12, 0);
+      glass.rotation.y = facing > 0 ? Math.PI / 2 : -Math.PI / 2;
+      g.add(cheek, face, glass);
+      for (const s of [-1, 1]) {             // its own little gabled cap
+        const cap = this.box(1.5, 0.12, 0.9, roofTex);
+        cap.position.set(facing * 0.1, dh + 0.14, s * 0.34);
+        cap.rotation.x = s * 0.5;
+        g.add(cap);
+      }
+      g.position.set(x, y, along);
+      g.rotation.z = -facing * slope * 0.5;  // sit into the pitch, not on top of it
+      rg.add(g);
+    }
+  }
+
+  /**
+   * Four-sided hip roof: a ridge over the middle of the long axis with all
+   * four faces sloping to the eaves. Built from the real footprint, so the
+   * eaves line follows the walls exactly on every side — which is the whole
+   * reason to have it: a hipped house never reads as a box with a lid.
+   */
+  _hipRoof(group, spec, w, d, h, roofTex) {
+    const ridge = spec.ridge ?? (w > d ? 'x' : 'z');
+    const ov = 0.45;                                   // eaves overhang
+    const L = (ridge === 'x' ? w : d) / 2 + ov;        // half length along the ridge
+    const W = (ridge === 'x' ? d : w) / 2 + ov;        // half span across it
+    const rise = this._roofRise(spec, W * 2);
+    const rl = Math.max(0.4, L - W);                   // half length of the ridge itself
+    // Along the ridge is local X, across it local Z; yawed at the end if needed.
+    const A = [-L, h, -W], B = [L, h, -W], C = [L, h, W], D = [-L, h, W];
+    const P = [-rl, h + rise, 0], Q = [rl, h + rise, 0];
+    const geo = new THREE.BufferGeometry();
+    const pos = [], uv = [];
+    const face = (verts, uvs) => {
+      for (const v of verts) pos.push(v[0], v[1], v[2]);
+      for (const t of uvs) uv.push(t[0], t[1]);
+    };
+    const slopeLen = Math.hypot(W, rise);
+    // two trapezoids along the ridge...
+    face([A, B, Q, A, Q, P],
+      [[0, 0], [L * 2 * TEXEL, 0], [(L + rl) * TEXEL, slopeLen * TEXEL],
+       [0, 0], [(L + rl) * TEXEL, slopeLen * TEXEL], [(L - rl) * TEXEL, slopeLen * TEXEL]]);
+    face([C, D, P, C, P, Q],
+      [[0, 0], [L * 2 * TEXEL, 0], [(L + rl) * TEXEL, slopeLen * TEXEL],
+       [0, 0], [(L + rl) * TEXEL, slopeLen * TEXEL], [(L - rl) * TEXEL, slopeLen * TEXEL]]);
+    // ...and the two hipped ends
+    face([D, A, P], [[0, 0], [W * 2 * TEXEL, 0], [W * TEXEL, slopeLen * TEXEL]]);
+    face([B, C, Q], [[0, 0], [W * 2 * TEXEL, 0], [W * TEXEL, slopeLen * TEXEL]]);
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+    geo.computeVertexNormals();
+    const rg = new THREE.Group();
+    rg.add(new THREE.Mesh(geo, this.mat(roofTex, { side: THREE.DoubleSide })));
+    // a fascia board closing the eaves so you never see under the edge
+    for (const [px, pz, bw, bd] of [[0, -W, L * 2, 0.12], [0, W, L * 2, 0.12],
+      [-L, 0, 0.12, W * 2], [L, 0, 0.12, W * 2]]) {
+      const fascia = this.box(bw, 0.26, bd, spec.trimTex || 'trimStone');
+      fascia.position.set(px, h - 0.05, pz);
+      rg.add(fascia);
+    }
+    if (spec.chimney) {
+      const ch = this.box(0.7, rise + 1.6, 0.7, spec.chimneyTex || 'brickRed');
+      ch.position.set(rl * 0.6, h + rise * 0.5 + 0.5, 0);
+      rg.add(ch);
+    }
+    if (ridge === 'x') rg.rotation.y = Math.PI / 2;
+    group.add(rg);
+  }
+
+  /**
+   * Single-slope lean-to roof.
+   *
+   * It drains DOWNHILL AWAY FROM THE DOOR unless a spec says otherwise: a
+   * shed roof pitched the other way dumps a winter's snow and every
+   * rainstorm straight onto its own threshold, which is why no one builds
+   * them that way. `shedTo` names the low side.
+   */
+  _shedRoof(group, spec, w, d, h, roofTex, wallTex) {
+    const low = spec.shedTo ?? { S: 'N', N: 'S', E: 'W', W: 'E' }[spec.door] ?? 'N';
+    const alongX = low === 'E' || low === 'W';
+    const span = alongX ? w : d;
+    const cross = alongX ? d : w;
+    const rise = Math.min(spec.roofCap ?? 1.7, span * (spec.roofPitch ?? 0.24));
+    const sgn = low === 'S' || low === 'E' ? 1 : -1;   // which way is downhill
+    const rg = new THREE.Group();
+    const panelD = Math.hypot(span + 0.5, rise);
+    const panel = this.box(cross + 0.5, 0.16, panelD, roofTex);
     panel.position.y = h + rise / 2 + 0.05;
-    panel.rotation.x = Math.atan2(rise, d + 0.5);
-    group.add(panel);
+    // The panel's HIGH end must be the end the riser wall stands under. Get
+    // this sign wrong and the roof slopes one way while the wall that closes
+    // it slopes the other, which leaves the whole eaves line open to the sky
+    // from inside — a shed with a slot cut round the top of it.
+    panel.rotation.x = sgn * Math.atan2(rise, span + 0.5);
+    rg.add(panel);
+    // Fascia along the low eave. The panel's underside clears the wall head by
+    // a few centimetres wherever it crosses it, and at a grazing angle from
+    // inside those few centimetres are a hairline of daylight all the way
+    // round the building. The board closes it and reads as an eaves board.
+    const fascia = this.box(cross + 0.5, 0.34, 0.14, spec.trimTex || 'trimStone');
+    fascia.position.set(0, h + 0.1, sgn * (span / 2 + 0.16));
+    rg.add(fascia);
     for (const s of [-1, 1]) { // right-triangle side caps
       const tri = new THREE.BufferGeometry();
       tri.setAttribute('position', new THREE.Float32BufferAttribute([
-        0, h, -d / 2, 0, h, d / 2, 0, h + rise, -d / 2,
+        0, h, sgn * span / 2, 0, h, -sgn * span / 2, 0, h + rise, -sgn * span / 2,
       ], 3));
-      tri.setAttribute('uv', new THREE.Float32BufferAttribute([0, 0, d * TEXEL, 0, 0, rise * TEXEL], 2));
+      tri.setAttribute('uv', new THREE.Float32BufferAttribute([0, 0, span * TEXEL, 0, 0, rise * TEXEL], 2));
       tri.computeVertexNormals();
       const cap = new THREE.Mesh(tri, this.mat(wallTex, { side: THREE.DoubleSide }));
-      cap.position.x = s * (w / 2 - WALL_T / 2);
-      group.add(cap);
+      cap.position.x = s * (cross / 2 - WALL_T / 2);
+      rg.add(cap);
     }
-    const riser = this.box(w, rise + 0.2, WALL_T, wallTex);
-    riser.position.set(0, h + rise / 2, -d / 2 + WALL_T / 2);
-    group.add(riser);
+    const riser = this.box(cross, rise + 0.2, WALL_T, wallTex);
+    riser.position.set(0, h + rise / 2, -sgn * (span / 2 - WALL_T / 2));
+    rg.add(riser);
+    if (alongX) rg.rotation.y = Math.PI / 2;
+    group.add(rg);
+  }
+
+  /**
+   * A covered porch over the front door: deck, posts, balustrade, a lattice
+   * skirt and a shallow roof draining to the front.
+   *
+   * The deck is a real walkable platform, so you can stand on it and shoot
+   * down the street, and the posts are real cover — but nothing is ever
+   * placed within the entry lane, because a porch that you cannot walk
+   * through is a front door that does not work. Terrain platform + collider
+   * are registered in world space; everything drawn is in building-local
+   * space, which is why both frames appear here.
+   */
+  _porch(group, spec, rot, side, doorOff, h) {
+    const o = spec.porch === true ? {} : spec.porch;
+    const depth = o.depth ?? 2.0;
+    const width = Math.min(o.width ?? 4.4, side.len - 1.0);
+    const deckY = 0.28;
+    const alongX = side.axis === 'x';
+    const outSign = Math.sign(side.cx + side.cz);
+    // centre of the deck, in building-local coordinates
+    const near = alongX ? Math.abs(side.cz) : Math.abs(side.cx);
+    const mid = near + depth / 2 - WALL_T / 2;
+    const put = (mesh, along, outward, y) => {
+      mesh.position.set(alongX ? along : outSign * outward, y, alongX ? outSign * outward : along);
+      group.add(mesh);
+    };
+    const deck = alongX ? this.box(width, 0.16, depth, 'floorWood') : this.box(depth, 0.16, width, 'floorWood');
+    put(deck, doorOff, mid, deckY);
+    const skirt = alongX ? this.box(width, deckY, 0.14, spec.foundationTex || 'foundLattice')
+                         : this.box(0.14, deckY, width, spec.foundationTex || 'foundLattice');
+    put(skirt, doorOff, near + depth - WALL_T / 2, deckY / 2);
+    // posts and balustrade, kept clear of the doorway itself
+    const postAt = width / 2 - 0.18;
+    const roofY = Math.min(h - 0.35, DOOR_H + 0.62);
+    for (const s of [-1, 1]) {
+      const post = this.box(0.16, roofY - deckY, 0.16, spec.trimTex || 'trimWoodWhite');
+      put(post, doorOff + s * postAt, mid + depth / 2 - 0.3, deckY + (roofY - deckY) / 2);
+      const railLen = postAt - 0.9;
+      if (railLen > 0.5) {
+        for (const ry of [deckY + 0.45, deckY + 0.9]) {
+          const rail = alongX ? this.box(railLen, 0.08, 0.08, spec.trimTex || 'trimWoodWhite')
+                              : this.box(0.08, 0.08, railLen, spec.trimTex || 'trimWoodWhite');
+          put(rail, doorOff + s * (postAt - railLen / 2 + 0.05), mid + depth / 2 - 0.3, ry);
+        }
+      }
+    }
+    const canopy = alongX ? this.box(width + 0.5, 0.14, depth + 0.35, spec.roofTex || 'roofShingle')
+                          : this.box(depth + 0.35, 0.14, width + 0.5, spec.roofTex || 'roofShingle');
+    put(canopy, doorOff, mid, roofY);
+    canopy.rotation[alongX ? 'x' : 'z'] = (alongX ? -outSign : outSign) * 0.13;   // drains to the front edge
+    // The deck is real ground you can stand on and shoot down the street
+    // from. It is a terrain PLATFORM and nothing else — no collider, no nav
+    // block — because anything solid out here is something standing in the
+    // doorway, and the 0.36 m step up is well under the automatic step height
+    // so you walk onto it without noticing.
+    const c = local2world(spec, rot, alongX ? doorOff : outSign * mid, alongX ? outSign * mid : doorOff);
+    const hx = alongX ? width / 2 : depth / 2;
+    const hz = alongX ? depth / 2 : width / 2;
+    const [wx, wz] = rot % 180 === 0 ? [hx, hz] : [hz, hx];
+    this.terrain.addPlatform(c.x - wx, c.x + wx, c.z - wz, c.z + wz, spec.y + deckY + 0.08);
+    return { minX: c.x - wx, maxX: c.x + wx, minZ: c.z - wz, maxZ: c.z + wz, y: spec.y + deckY + 0.08 };
   }
 
   _collideLocalBox(spec, rot, lx, lz, hx, height, hz) {

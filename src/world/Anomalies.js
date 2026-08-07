@@ -40,6 +40,9 @@ export class Anomalies {
     this._phoneBooth();
     this._carAlarms();
     this._factorySmoke();
+    this._litWindow();
+    this._leaningGarden();
+    this._raisedFlags();
 
     const hollow = world.built.get('hollowCottage');
     this._hollowPos = hollow ? { x: hollow.spec.x, y: hollow.spec.y, z: hollow.spec.z } : null;
@@ -170,6 +173,62 @@ export class Anomalies {
     }
   }
 
+  /**
+   * One upstairs window in Eastgate has a television on behind it.
+   *
+   * There has been no power in this town for a year. The set flickers at the
+   * rate a set flickers, it throws light onto the ground below it, and the
+   * moment you get close enough to see into the room it stops — which is the
+   * only part of it you can ever prove.
+   */
+  _litWindow() {
+    const b = this.w.built.get('house11') ?? this.w.built.get('house09');
+    if (!b) return;
+    const s = b.spec;
+    const x = s.x + s.w * 0.22, y = s.y + s.h - 1.1, z = s.z + s.d / 2 + 0.09;
+    const pane = new THREE.Mesh(new THREE.PlaneGeometry(1.15, 1.25),
+      new THREE.MeshBasicMaterial({ map: this.w.texLib.get('tvStatic'), transparent: true, opacity: 0.9 }));
+    pane.position.set(x, y, z);
+    this.w.group.add(pane);
+    const glow = new THREE.PointLight(0x6f86a8, 0, 11);
+    glow.position.set(x, y, z + 1.2);
+    this.w.group.add(glow);
+    this._tv = { pane, glow, x, y, z, mat: pane.material };
+  }
+
+  /**
+   * A front garden where every plant leans the same way, and it is not the
+   * way the wind goes. They lean at the house.
+   */
+  _leaningGarden() {
+    const b = this.w.built.get('house28');
+    if (!b) return;
+    const s = b.spec;
+    for (let i = 0; i < 7; i++) {
+      const a = -1.1 + i * 0.36;
+      const x = s.x + Math.sin(a) * 5.2, z = s.z + s.d / 2 + 3.4 + Math.cos(a) * 1.4;
+      const bush = this.w.veg.bush(this.w.group, x, z, 0.85);
+      // Cancel the wind sway this bush was registered with and hold it over
+      // at a fixed angle, aimed at the front door.
+      const sw = this.w.veg.swayers[this.w.veg.swayers.length - 1];
+      if (sw && sw.node === bush) { sw.amp = 0.004; sw.lean = -0.34 + i * 0.02; }
+      bush.rotation.y = Math.atan2(s.x - x, s.z - z);
+    }
+  }
+
+  /** Every mailbox on Beckon Row has its flag up. Nobody has posted anything
+   *  in a year, and they were not all up yesterday. */
+  _raisedFlags() {
+    this._flagPosts = [];
+    for (const s of this.w.buildingSpecs) {
+      if (s.zone !== 1 || s.use !== 'house' || Math.abs(s.z + 44) > 4) continue;
+      const flag = this.w.kit.box(0.05, 0.34, 0.16, 'trimMetal');
+      flag.position.set(s.x + s.w * 0.28, s.y + 1.15, s.z + s.d / 2 + 4.4);
+      this.w.group.add(flag);
+      this._flagPosts.push(flag);
+    }
+  }
+
   /** Thin smoke stands over the factory stack. The factory has been cold for
    *  years; the smoke does not care about the wind. */
   _factorySmoke() {
@@ -245,7 +304,7 @@ export class Anomalies {
     // in different directions; where the two patterns cross you get a slow
     // moiré that reads as a surface moving, which a single scrolling texture
     // never does. Cheap enough to leave running everywhere.
-    for (const s of this.w.waterSurfaces ?? []) {
+    for (const s of [...(this.w.waterSurfaces ?? []), ...(this.w.uvDrifts ?? [])]) {
       const map = s.mat.map;
       if (!map) continue;
       map.offset.x = (map.offset.x + s.u * dt) % 1;
@@ -254,6 +313,25 @@ export class Anomalies {
 
     for (const b of this.w.beacons ?? []) {
       b.mesh.visible = ((time * 0.5 + b.phase) % 1) < 0.15;
+    }
+
+    // Every small moving prop in the town, on one pass. Culled hard against
+    // the camera: a weather vane forty metres behind you costs nothing, and a
+    // hundred of them costs nothing either.
+    if (camPos) {
+      for (const a of this.w.animProps ?? []) {
+        const dx = a.x - camPos.x, dz = a.z - camPos.z;
+        if (dx * dx + dz * dz > 8100) continue;   // 90 m
+        if (a.kind === 'spin') {
+          a.node.rotation[a.axis] += dt * a.speed;
+        } else if (a.kind === 'swing') {
+          a.node.rotation[a.axis] = Math.sin(time * a.speed + a.phase) * a.amp
+            * (0.6 + 0.4 * Math.sin(time * 0.043 + a.phase));   // the arc breathes, never stops
+        } else {
+          a.node.rotation[a.axis] = Math.sin(time * a.speed + a.phase) * a.amp
+            + Math.sin(time * a.speed * 2.3 + a.phase * 1.7) * a.amp * 0.4;
+        }
+      }
     }
 
     // factory smoke: rise, spread, fade, repeat — camera-faced quads
@@ -307,6 +385,19 @@ export class Anomalies {
           }
         }
       }
+    }
+
+    // The lit window. It plays while you are too far away to see into the
+    // room, and stops the moment you are not — never while you are watching
+    // it go out, which is what makes it impossible to be sure about.
+    if (this._tv) {
+      const t = this._tv;
+      const d = Math.hypot(px - t.x, pz - t.z);
+      const on = d > 16 && d < 90;
+      t.pane.visible = on;
+      t.mat.opacity = on ? 0.55 + 0.45 * Math.abs(Math.sin(time * 7.3) * Math.sin(time * 2.1)) : 0;
+      t.glow.intensity = on ? 3.5 + 2.5 * Math.sin(time * 6.1) : 0;
+      if (d < 24) this._whisperOnce('litWindow', 0.7, 'The set was on. There has been no power here since before you came.');
     }
 
     // the hollow cottage: stand in the room that is too small, and know it
