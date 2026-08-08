@@ -383,6 +383,13 @@ export class Anomalies {
           (a.frame % a.cols) / a.cols,
           1 - (Math.floor(a.frame / a.cols) + 1) / a.rows,
         );
+        // A cabinet's attract noise comes off the SAME beat that steps its
+        // picture, so the machine you can hear is the machine you can see
+        // doing it. Every other frame, or four cabinets in one room turn into
+        // a wall of bleeping.
+        if (a.sound && (a.frame & 1) === 0) {
+          this.w.events.emit('arcade:attract', { pos: { x: a.x, z: a.z }, id: a.sound });
+        }
       } else if (a.kind === 'tube') {
         // Strike, hold, drop out. The hold is not steady either — mains hum
         // rides on top of it at a rate you register without being able to see.

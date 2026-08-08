@@ -154,6 +154,7 @@ export class Game {
         this.input.setSuppressed(false);
         this._reclaimPointer();
       },
+      onBeep: (kind, id) => this.audio.arcadeBeep(kind, id),
       onScore: (id, score, best, won) => this._arcadeScore(id, score, best, won),
     });
     this.events.on('arcade:play', ({ id }) => {
@@ -192,7 +193,9 @@ export class Game {
     if (this.testMode || !this.state.is('playing')) return;
     requestAnimationFrame(() => {
       if (this.state.is('playing') && !this.inventory.open && !this.arcade.open) {
-        this.input.requestPointerLock();
+        // Urgent: the browser may refuse for the first second or so after an
+        // Escape, and the player is standing in the street the whole time.
+        this.input.requestPointerLock({ urgent: true });
       }
     });
   }
@@ -208,10 +211,26 @@ export class Game {
       // two later). Pausing on it would bounce them straight out of the game
       // they just came back to.
       if (this.input.lockWanted) return;
-      // ...and nor is one that lands in the wake of an overlay closing: see
+      // ...nor is one that lands in the wake of an overlay closing: see
       // _reclaimPointer. Ask again rather than pausing.
       if (performance.now() - (this._overlayClosedAt ?? -Infinity) < POINTER_REGRAB_MS) {
-        this.input.requestPointerLock();
+        this.input.requestPointerLock({ urgent: true });
+        return;
+      }
+      // ...nor is one that belongs to an Escape the PAGE received. The browser
+      // eats that keydown whenever it is holding the pointer — that keypress
+      // IS how you leave a lock — so an Escape that arrived here proves the
+      // pointer was already free when it was pressed, and everything after it
+      // is our own plumbing: the overlay closing, the re-grab, and however
+      // many times the browser hands the lock over and takes it back again
+      // before it settles. An Escape MEANT as "pause" never reaches the page,
+      // so this cannot swallow one.
+      //
+      // The flag clears itself once a lock has SURVIVED a second, which is
+      // what stops it latching on forever: by then the player is back at the
+      // controls, the next Escape is theirs, and it pauses.
+      if (this.input.escapeGrab) {
+        this.input.requestPointerLock({ urgent: true });
         return;
       }
       this.pause();

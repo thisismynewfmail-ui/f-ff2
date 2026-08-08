@@ -78,10 +78,16 @@ await page.click('#btn-start');
 await page.waitForFunction(() => window.__game.state.state === 'playing');
 check('state reaches playing', true);
 
-// player movement (a long hold: software-rendered CI frames are slow)
+// Player movement. Wait on the OUTCOME, not on a stopwatch: a software
+// renderer under load produces so few frames that a fixed 1.5s hold lands
+// within rounding distance of the threshold and the test fails for being on a
+// busy machine rather than for the movement being broken.
 const before = await page.evaluate(() => ({ ...window.__game.player.position }));
 await page.keyboard.down('w');
-await page.waitForTimeout(1500);
+await page.waitForFunction((b) => {
+  const p = window.__game.player.position;
+  return Math.hypot(p.x - b.x, p.z - b.z) > 1.2;
+}, before, { timeout: 8000 }).catch(() => {});
 await page.keyboard.up('w');
 const after = await page.evaluate(() => ({ ...window.__game.player.position }));
 const moved = Math.hypot(after.x - before.x, after.z - before.z);
@@ -1598,7 +1604,7 @@ check('and every interface surface is cut from them',
 // in order. A cabinet showing one frozen still is a poster.
 const cabs = await page.evaluate(async () => {
   const g = window.__game;
-  const out = { bodies: 0, textured: 0, art: 0, ids: new Set() };
+  const out = { bodies: 0, textured: 0, art: 0, mirrored: 0, ids: new Set() };
   const cabRoots = [];
   g.world.group.traverse((o) => { if (o.userData && o.userData.cab) cabRoots.push(o); });
   for (const root of cabRoots) {
@@ -1608,14 +1614,24 @@ const cabs = await page.evaluate(async () => {
       const m = o.material;
       if (!m || !m.map) return;
       if (o.geometry.type === 'BoxGeometry') { out.bodies++; out.textured++; }
-      else if (o.geometry.type === 'PlaneGeometry') out.art++;
+      else if (o.geometry.type === 'PlaneGeometry') {
+        out.art++;
+        // A negative-determinant world transform is a MIRROR, and a mirrored
+        // plane prints its title backwards. Yaw alone turns a flank to face
+        // out; a scale flip on top of it was the bug.
+        o.updateWorldMatrix(true, false);
+        if (o.matrixWorld.determinant() < 0) out.mirrored++;
+      }
     });
   }
   out.cabinets = cabRoots.length;
   out.ids = [...out.ids];
 
-  // the attract loop: sample the flipbook's UV offset over a few seconds
+  // The attract loop. Stand next to a cabinet first: the surface animations
+  // are distance-culled, so a screen 200 m away is CORRECTLY frozen and
+  // sampling it from the town square proves nothing.
   const sheets = (g.world.matAnims || []).filter((a) => a.kind === 'flip' && a.steady);
+  if (sheets[0]) g.player.position.set(sheets[0].x, g.player.position.y, sheets[0].z + 2);
   out.sheets = sheets.length;
   const seen = new Set();
   const one = sheets[0];
@@ -1628,6 +1644,9 @@ const cabs = await page.evaluate(async () => {
   out.cells = [...seen];
   return out;
 });
+check('no cabinet flank is printed backwards',
+  cabs.mirrored === 0 && cabs.art > 0,
+  `${cabs.mirrored} of ${cabs.art} art planes have a mirrored world transform`);
 check('every cabinet body and flank carries real artwork, not a flat colour',
   cabs.cabinets >= 4 && cabs.ids.length === 4 && cabs.textured >= cabs.cabinets
   && cabs.art >= cabs.cabinets * 3,
@@ -1635,6 +1654,58 @@ check('every cabinet body and flank carries real artwork, not a flat colour',
 check('and their screens run a four-frame attract loop',
   cabs.sheets >= 4 && cabs.cells.length === 4,
   `${cabs.sheets} sheets, cells visited: ${cabs.cells.join(' ')}`);
+
+/* the machines make a noise, and only while you are at them                */
+// The beep hook defaults to a no-op so the attract frames bake silently; the
+// risk is that it stays a no-op. Play a machine for real and count what comes
+// out of it, then check the cabinet's attract loop is on the same clock as its
+// picture rather than a timer of its own.
+const arcSound = await page.evaluate(async () => {
+  const g = window.__game;
+  g.hud.showScreen(null); g.state.state = 'playing';
+  g.arcade.close();
+  const beeps = [];
+  const attract = [];
+  const realBeep = g.audio.arcadeBeep.bind(g.audio);
+  g.audio.arcadeBeep = (kind, id) => { beeps.push(kind + ':' + id); };
+  const offAttract = g.events.on('arcade:attract', (e) => attract.push(e.id));
+  const frame = () => new Promise((r) => requestAnimationFrame(r));
+
+  // baking the attract art must stay silent — it runs the same update()
+  const { screenSheet } = await import('/src/rendering/Arcade.js');
+  screenSheet('brickfall');
+  const quietAfterBake = beeps.length === 0;
+
+  g.arcade.play('rally');
+  for (let i = 0; i < 240 && beeps.length < 3; i++) { g.arcade.update(1 / 30); await frame(); }
+  const played = beeps.length;
+  g.arcade.close();
+  const afterClose = beeps.length;
+  for (let i = 0; i < 60; i++) { g.arcade.update(1 / 30); await frame(); }
+
+  // and the cabinets out in the world, heard from beside one
+  const sheets = (g.world.matAnims || []).filter((a) => a.kind === 'flip' && a.steady);
+  if (sheets[0]) g.player.position.set(sheets[0].x, g.player.position.y, sheets[0].z + 2);
+  attract.length = 0;
+  for (let i = 0; i < 60; i++) await new Promise((r) => setTimeout(r, 40));
+  g.audio.arcadeBeep = realBeep;
+  if (typeof offAttract === 'function') offAttract();
+  return {
+    quietAfterBake, played, silentAfterClose: beeps.length === afterClose,
+    kinds: [...new Set(beeps)].slice(0, 6),
+    attract: [...new Set(attract)], attractCount: attract.length,
+    sheets: sheets.length,
+  };
+});
+check('a machine you are playing makes its own noise',
+  arcSound.played >= 3 && arcSound.kinds.every((k) => k.endsWith(':rally')),
+  `${arcSound.played} beeps: ${arcSound.kinds.join(' ')}`);
+check('and baking the attract art stays silent, and so does a closed machine',
+  arcSound.quietAfterBake && arcSound.silentAfterClose,
+  `bake quiet ${arcSound.quietAfterBake}, closed quiet ${arcSound.silentAfterClose}`);
+check('a cabinet across the room bleeps on the same beat its screen steps',
+  arcSound.attractCount > 0 && arcSound.attract.length > 0,
+  `${arcSound.attractCount} bleeps from ${arcSound.attract.join('/') || 'nothing'}`);
 
 /* Escape at a cabinet returns you to the STREET, pointer and all           */
 // The check above proves this in test mode, where pointer lock is skipped
@@ -1659,13 +1730,14 @@ const arcEsc = await page.evaluate(async () => {
   const realGet = Object.getOwnPropertyDescriptor(Document.prototype, 'pointerLockElement');
   const realReq = canvas.requestPointerLock.bind(canvas);
   const realExit = document.exitPointerLock.bind(document);
-  let locked = false, escaping = false;
+  let locked = false, escaping = false, slowRevoke = false;
   Object.defineProperty(document, 'pointerLockElement', { configurable: true, get: () => (locked ? canvas : null) });
   const change = () => document.dispatchEvent(new Event('pointerlockchange'));
   canvas.requestPointerLock = () => {
     locked = true;
     const revoke = escaping;                // granted, then taken back by the ESC
-    setTimeout(() => { change(); if (revoke) setTimeout(() => { locked = false; change(); }, 20); }, 0);
+    const after = slowRevoke ? 600 : 20;    // ...promptly, or long after the fact
+    setTimeout(() => { change(); if (revoke) setTimeout(() => { locked = false; change(); }, after); }, 0);
     return Promise.resolve();
   };
   document.exitPointerLock = () => { locked = false; setTimeout(change, 0); };
@@ -1681,6 +1753,22 @@ const arcEsc = await page.evaluate(async () => {
   document.dispatchEvent(new KeyboardEvent('keydown', { code: 'Escape', key: 'Escape', bubbles: true }));
   setTimeout(() => { escaping = false; }, 120);
   await settle(12);
+  out.fastRevoke = { closed: !g.arcade.open, state: g.state.state, locked: g.input.pointerLocked };
+
+  // ...and the same thing again with the revoke arriving LATE. A guard built
+  // on "was the lock held only briefly" or "did an overlay close recently"
+  // passes the quick case and fails this one, which is the case a loaded
+  // machine actually produces.
+  // Straight back into a machine — do NOT drop the lock by hand first. A
+  // deliberate release while playing IS the player leaving, and pausing on it
+  // is correct; opening the cabinet is what gives the pointer up here.
+  g.arcade.play('brickfall');
+  await settle(6);
+  out.round2Open = g.arcade.open && g.state.state === 'playing';
+  slowRevoke = true; escaping = true;
+  document.dispatchEvent(new KeyboardEvent('keydown', { code: 'Escape', key: 'Escape', bubbles: true }));
+  setTimeout(() => { escaping = false; slowRevoke = false; }, 700);
+  await settle(24);
   out.closed = !g.arcade.open;
   out.state = g.state.state;
   out.locked = g.input.pointerLocked;
@@ -1695,11 +1783,15 @@ const arcEsc = await page.evaluate(async () => {
   return out;
 });
 check('Escape at a cabinet goes back to the street, not the pause menu',
-  arcEsc.startLocked && arcEsc.openedUnlocked && arcEsc.closed
-  && arcEsc.state === 'playing' && arcEsc.pauseShown === 'none',
-  `closed ${arcEsc.closed}, state ${arcEsc.state}, pause ${arcEsc.pauseShown}`);
+  arcEsc.startLocked && arcEsc.openedUnlocked && arcEsc.fastRevoke.closed
+  && arcEsc.fastRevoke.state === 'playing',
+  `closed ${arcEsc.fastRevoke.closed}, state ${arcEsc.fastRevoke.state}`);
+check('and it holds when the browser takes its time refusing',
+  arcEsc.round2Open && arcEsc.closed && arcEsc.state === 'playing' && arcEsc.pauseShown === 'none',
+  `reopened ${arcEsc.round2Open}, closed ${arcEsc.closed}, state ${arcEsc.state}, pause ${arcEsc.pauseShown}`);
 check('and the pointer comes back with you',
-  arcEsc.locked, `locked ${arcEsc.locked}`);
+  arcEsc.fastRevoke.locked && arcEsc.locked,
+  `prompt-revoke ${arcEsc.fastRevoke.locked}, late-revoke ${arcEsc.locked}`);
 
 /* a weapon you have not found leaves an EMPTY bay, not a preview          */
 // The Alien Blaster is a secret. A dimmed silhouette of it sitting in slot 6

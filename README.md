@@ -325,7 +325,8 @@ There is deliberately no command that touches the kill counter — the
   through a respite) — plus a green CRT message log with a phosphor refresh
   sweep, a mechanical HP odometer, **two separate ammo odometers — LOADED (in
   the gun) and RESERVE (carried)** whose wheels tick as they roll, a damage
-  alarm lamp and a MAP lamp, a centre **player portrait** on a green CRT
+  alarm lamp (a domed glass cabochon, the one warm mass on the whole
+  chassis), a centre **player portrait** on a green CRT
   monitor, an AIM ON/OFF indicator (lit while scoped), a WEAPON panel (an
   illustrated two-tone profile of the live weapon over a scanning screen with
   a reload charge line), and a six-slot ARMS armoury grid with per-weapon

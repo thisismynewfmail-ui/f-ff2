@@ -499,21 +499,6 @@ html, body {
     0 0 0 1px #000, 0 0 0 3px rgba(140,134,96,0.6), 0 0 0 4px #000,
     0 0 18px 3px rgba(240,70,50,0.85);
 }
-/* MAP is a pressable key, not a label: a raised plate in a machined recess,
-   with the same stepped bezel as the lamp beside it so the pair reads as one
-   control cluster. */
-.cons-lamp.map {
-  border-radius: var(--rad-bay); font-size: 11px; letter-spacing: 1px;
-  color: var(--fo-tan); text-shadow: 0 1px 0 rgba(0,0,0,0.85);
-  display: flex; align-items: center; justify-content: center;
-  border: 1px solid var(--fo-steel-lo);
-  background-color: var(--fo-steel); background-image: var(--tex-steel);
-  box-shadow:
-    inset 1px 1px 0 var(--fo-steel-hi), inset -1px -1px 0 var(--fo-steel-lo),
-    0 0 0 1px #000, 0 0 0 3px rgba(116,112,79,0.4), 0 0 0 4px #000,
-    0 2px 4px rgba(0,0,0,0.8);
-}
-
 /* CENTRE PORTRAIT MONITOR — the hero of the reference bar.
    It is not one more instrument in the row: it is a separate casting bolted
    onto the front, in a lighter alloy than the chassis, and it STANDS PROUD of

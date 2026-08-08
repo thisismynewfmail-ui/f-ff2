@@ -565,11 +565,15 @@ export class InteriorKit {
     for (const sx of [-1, 1]) {
       const art = new THREE.Mesh(new THREE.PlaneGeometry(0.66, 1.1), this._sideArtMat(id));
       art.position.set(sx * 0.363, 1.0, -0.02);
+      // Yaw alone is enough, and a scale flip is actively wrong: turning the
+      // plane to face out already carries its U axis round with it, so
+      // mirroring on top of that reverses the printing and the title comes out
+      // backwards on one flank.
       art.rotation.y = sx * Math.PI / 2;
-      art.scale.x = sx;                    // mirror it so both flanks face out
       g.add(art);
     }
-    const screen = new THREE.Mesh(new THREE.PlaneGeometry(0.55, 0.42), this._screenFace(id));
+    const face = this._screenFace(id);
+    const screen = new THREE.Mesh(new THREE.PlaneGeometry(0.55, 0.42), face.mat);
     screen.position.set(0, 1.35, 0.412);
     const hood = this.P.box(0.62, 0.06, 0.1, this.P.colorMat(0x14161a));   // glare hood
     hood.position.set(0, 1.6, 0.44);
@@ -600,7 +604,7 @@ export class InteriorKit {
       btn.position.set(0.02 + i * 0.08, 1.0, 0.48);
       g.add(btn);
     }
-    return { group: g, collide: [0.38, 0.9, 0.45], live: true, machine: id };
+    return { group: g, collide: [0.38, 0.9, 0.45], live: true, machine: id, flip: face.flip };
   }
 
   /** The lit marquee: this machine's title, on its own flicker phase. */
@@ -625,11 +629,14 @@ export class InteriorKit {
     tex.repeat.set(0.5, 0.5);
     tex.offset.set(0, 0.5);
     const mat = new THREE.MeshBasicMaterial({ map: tex, color: 0xffffff });
-    this.w._animateMat(null, 'flip', {
-      map: tex, cols: 2, rows: 2, rate: 0.34 + Math.random() * 0.1, frame: 0, steady: true,
+    // The flip entry is handed back so _cabinet can stamp the cabinet's world
+    // position on it once it is placed — that is what lets the attract bleep
+    // come from the machine rather than from nowhere.
+    const flip = this.w._animateMat(null, 'flip', {
+      map: tex, cols: 2, rows: 2, rate: 0.34 + Math.random() * 0.1, frame: 0, steady: true, sound: id,
     });
     this.w._animateMat(mat, 'tube', { r: 1, g: 1, b: 1, hi: 0.9, lo: 0.16, duty: 0.9, rate: 0.5 + Math.random() });
-    return mat;
+    return { mat, flip };
   }
 
   /** Painted sheet steel, tiled over the cabinet body. */
@@ -1820,6 +1827,9 @@ export class InteriorKit {
     const g = this._put(b, cab, lx, lz, { yaw });
     if (!g) return null;
     g.userData.cab = id;
+    // now the cabinet has a place in the world, the attract loop can be heard
+    // from it — and culled by distance like every other surface animation
+    if (cab.flip) { cab.flip.x = g.position.x; cab.flip.z = g.position.z; }
     const reach = 0.75;
     const px = g.position.x + Math.sin(g.rotation.y) * reach;
     const pz = g.position.z + Math.cos(g.rotation.y) * reach;

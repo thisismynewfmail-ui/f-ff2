@@ -51,6 +51,7 @@ export class AudioManager {
     on('car:alarm', ({ pos }) => this.carChirp(pos));
     on('elevator:call', ({ pos }) => this.elevatorHum(pos));
     on('crow:caw', ({ pos }) => this.crowCaw(pos));
+    on('arcade:attract', ({ pos, id }) => this.arcadeAttract(pos, id));
     on('victory', () => this.fanfare());
   }
 
@@ -551,6 +552,58 @@ export class AudioManager {
     const seq = [[392, 0], [494, 0.09], [587, 0.18], [784, 0.3]];
     for (const [f, w] of seq) this._tone('triangle', f, 0.3, 0.12, w);
     this._tone('sine', 1568, 0.8, 0.05, 0.42);
+  }
+
+  /* ---------------- the arcade ---------------- */
+
+  /**
+   * The machine's own voice, while you are stood at it.
+   *
+   * Everything else in this file is trying to sound like a real object in a
+   * real room. These deliberately are not: hard square and triangle waves,
+   * no noise layer, no tail, all of it under 120 ms. That is what a cabinet
+   * of this vintage had to work with — one voice and a divider — and the
+   * contrast with the rest of the game's audio is the point. Each machine
+   * gets a different base pitch so you can tell from the next room which one
+   * someone is playing.
+   */
+  arcadeBeep(kind, id = 'brickfall') {
+    if (!this.ctx) return;
+    const base = { brickfall: 1, vermin: 1.19, siege: 0.84, rally: 1.33 }[id] ?? 1;
+    const b = (type, f, dur, gain, when = 0, fEnd = null) =>
+      this._tone(type, f * base, dur, gain, when, 0, fEnd && fEnd * base);
+    switch (kind) {
+      case 'wall':   b('square', 392, 0.035, 0.07); break;
+      case 'bounce': b('square', 587, 0.05, 0.1); break;
+      case 'launch': b('square', 330, 0.09, 0.09, 0, 660); break;
+      case 'shoot':  b('square', 880, 0.06, 0.08, 0, 330); break;
+      case 'march':  b('triangle', 147, 0.07, 0.11); break;
+      case 'break':  b('square', 784, 0.045, 0.11); b('square', 1046, 0.04, 0.07, 0.03); break;
+      case 'pip':    b('square', 659, 0.05, 0.11); b('square', 988, 0.06, 0.09, 0.045); break;
+      case 'score':  b('square', 523, 0.07, 0.12); b('square', 784, 0.09, 0.12, 0.06); break;
+      case 'lose':   b('triangle', 262, 0.14, 0.12, 0, 131); break;
+      case 'over':   for (const [f, w] of [[392, 0], [311, 0.1], [233, 0.2], [175, 0.32]]) b('triangle', f, 0.16, 0.13, w); break;
+      case 'win':    for (const [f, w] of [[523, 0], [659, 0.07], [784, 0.14], [1046, 0.22]]) b('square', f, 0.13, 0.12, w); break;
+      default: break;
+    }
+  }
+
+  /**
+   * A cabinet running its attract loop, heard from across the room.
+   *
+   * Fired by the same beat that steps the screen's four frames, so the noise
+   * a machine makes and the picture it is showing are the same clock — an
+   * arcade where the sound and the screens are on separate timers reads as a
+   * room full of loops rather than a room full of machines. Very quiet, and
+   * cut off at ten metres, so it colours the arcade and nothing else.
+   */
+  arcadeAttract(pos, id = 'brickfall') {
+    const sp = this._spatial(pos, 10);
+    if (!sp || !this.ctx) return;
+    const base = { brickfall: 1, vermin: 1.19, siege: 0.84, rally: 1.33 }[id] ?? 1;
+    const gain = 0.035 * sp.vol * sp.vol;   // squared: falls away fast
+    this._tone('square', 523 * base, 0.04, gain, 0, sp.pan);
+    this._tone('square', 784 * base, 0.05, gain * 0.7, 0.05, sp.pan);
   }
 
   /* ---------------- world events ---------------- */

@@ -57,10 +57,17 @@ export const MACHINE_IDS = Object.keys(MACHINES);
  * Each game is { reset(), update(dt, keys, pressed), draw(ctx), score, over,
  * won }. `keys` is a live Set of held codes; `pressed` is the edge set for
  * this frame. None of them touch anything outside their own state.
+ *
+ * They also call `g.beep(kind)` at the moments a machine of this vintage would
+ * have made a noise. It defaults to a no-op and the host swaps in a real voice
+ * while the machine is being played — which is also what keeps the attract
+ * frames silent, since screenSheet runs the same update() to bake them and
+ * never installs one.
  */
+const SILENT = () => {};
 function brickfall(m) {
   const g = {
-    score: 0, over: false, won: false, lives: 3,
+    score: 0, over: false, won: false, lives: 3, beep: SILENT,
     px: W / 2, bx: W / 2, by: H - 30, vx: 0, vy: 0, live: false, bricks: [],
   };
   g.reset = () => {
@@ -78,21 +85,22 @@ function brickfall(m) {
     g.px = Math.max(24, Math.min(W - 24, g.px));
     if (!g.live) {
       g.bx = g.px; g.by = H - 30;
-      if (keys.has('Space')) { g.live = true; g.vx = 95; g.vy = -155; }
+      if (keys.has('Space')) { g.live = true; g.vx = 95; g.vy = -155; g.beep('launch'); }
       return;
     }
     g.bx += g.vx * dt; g.by += g.vy * dt;
-    if (g.bx < 6 || g.bx > W - 6) { g.vx *= -1; g.bx = Math.max(6, Math.min(W - 6, g.bx)); }
-    if (g.by < 20) { g.vy *= -1; g.by = 20; }
+    if (g.bx < 6 || g.bx > W - 6) { g.vx *= -1; g.bx = Math.max(6, Math.min(W - 6, g.bx)); g.beep('wall'); }
+    if (g.by < 20) { g.vy *= -1; g.by = 20; g.beep('wall'); }
     // paddle: the bounce angle follows where on the paddle it landed
     if (g.by > H - 26 && g.by < H - 18 && Math.abs(g.bx - g.px) < 26) {
       g.vy = -Math.abs(g.vy);
       g.vx = (g.bx - g.px) / 26 * 165;
       g.by = H - 26;
+      g.beep('bounce');
     }
     if (g.by > H) {
       g.lives--; g.live = false;
-      if (g.lives <= 0) g.over = true;
+      if (g.lives <= 0) { g.over = true; g.beep('over'); } else g.beep('lose');
     }
     for (let i = 0; i < g.bricks.length; i++) {
       const b = g.bricks[i];
@@ -100,7 +108,8 @@ function brickfall(m) {
         g.bricks.splice(i, 1);
         g.vy *= -1;
         g.score += (5 - b.r) * 10;
-        if (!g.bricks.length) { g.over = true; g.won = true; }
+        g.beep('break');
+        if (!g.bricks.length) { g.over = true; g.won = true; g.beep('win'); }
         break;
       }
     }
@@ -123,7 +132,7 @@ function brickfall(m) {
 
 function vermin(m) {
   const CELL = 10, COLS = 30, ROWS = 20, TOP = 24;
-  const g = { score: 0, over: false, won: false, body: [], dir: [1, 0], next: [1, 0], food: [10, 10], t: 0 };
+  const g = { score: 0, over: false, won: false, beep: SILENT, body: [], dir: [1, 0], next: [1, 0], food: [10, 10], t: 0 };
   g.reset = () => {
     g.score = 0; g.over = false; g.won = false; g.t = 0;
     g.body = [[6, 10], [5, 10], [4, 10]];
@@ -146,16 +155,18 @@ function vermin(m) {
     if (head[0] < 0 || head[1] < 0 || head[0] >= COLS || head[1] >= ROWS
         || g.body.some((s) => s[0] === head[0] && s[1] === head[1])) {
       g.over = true;
+      g.beep('over');
       return;
     }
     g.body.unshift(head);
     if (head[0] === g.food[0] && head[1] === g.food[1]) {
       g.score += 25;
+      g.beep('pip');
       let tries = 0;
       do {
         g.food = [(Math.random() * COLS) | 0, (Math.random() * ROWS) | 0];
       } while (tries++ < 60 && g.body.some((s) => s[0] === g.food[0] && s[1] === g.food[1]));
-      if (g.body.length >= COLS * ROWS - 4) { g.over = true; g.won = true; }
+      if (g.body.length >= COLS * ROWS - 4) { g.over = true; g.won = true; g.beep('win'); }
     } else {
       g.body.pop();
     }
@@ -175,7 +186,7 @@ function vermin(m) {
 }
 
 function siege(m) {
-  const g = { score: 0, over: false, won: false, px: W / 2, shots: [], bombs: [], rows: [], dir: 1, drop: 0, fire: 0, lives: 3 };
+  const g = { score: 0, over: false, won: false, beep: SILENT, px: W / 2, shots: [], bombs: [], rows: [], dir: 1, drop: 0, fire: 0, lives: 3 };
   g.reset = () => {
     g.score = 0; g.over = false; g.won = false; g.lives = 3;
     g.px = W / 2; g.shots = []; g.bombs = []; g.dir = 1; g.drop = 0; g.fire = 0;
@@ -189,7 +200,7 @@ function siege(m) {
     if (keys.has('ArrowRight') || keys.has('KeyD')) g.px += sp;
     g.px = Math.max(14, Math.min(W - 14, g.px));
     g.fire -= dt;
-    if (keys.has('Space') && g.fire <= 0) { g.shots.push({ x: g.px, y: H - 30 }); g.fire = 0.34; }
+    if (keys.has('Space') && g.fire <= 0) { g.shots.push({ x: g.px, y: H - 30 }); g.fire = 0.34; g.beep('shoot'); }
     for (const s of g.shots) s.y -= 260 * dt;
     g.shots = g.shots.filter((s) => s.y > 16);
     // the block marches, and drops a rank every time it meets a wall
@@ -199,7 +210,7 @@ function siege(m) {
       a.x += g.dir * speed * dt;
       if (a.x < 16 || a.x > W - 16) bump = true;
     }
-    if (bump) { g.dir *= -1; for (const a of g.rows) a.y += 9; }
+    if (bump) { g.dir *= -1; for (const a of g.rows) a.y += 9; g.beep('march'); }
     g.drop -= dt;
     if (g.drop <= 0 && g.rows.length) {
       g.drop = 0.7 + Math.random() * 0.9;
@@ -210,24 +221,25 @@ function siege(m) {
     g.bombs = g.bombs.filter((b) => {
       if (b.y > H - 26 && Math.abs(b.x - g.px) < 12) {
         g.lives--;
-        if (g.lives <= 0) g.over = true;
+        if (g.lives <= 0) { g.over = true; g.beep('over'); } else g.beep('lose');
         return false;
       }
       return b.y < H;
     });
     for (let i = g.rows.length - 1; i >= 0; i--) {
       const a = g.rows[i];
-      if (a.y > H - 34) { g.over = true; return; }
+      if (a.y > H - 34) { g.over = true; g.beep('over'); return; }
       for (let j = g.shots.length - 1; j >= 0; j--) {
         const s = g.shots[j];
         if (Math.abs(s.x - a.x) < 11 && Math.abs(s.y - a.y) < 8) {
           g.rows.splice(i, 1); g.shots.splice(j, 1);
           g.score += (4 - a.r) * 15;
+          g.beep('break');
           break;
         }
       }
     }
-    if (!g.rows.length) { g.over = true; g.won = true; }
+    if (!g.rows.length) { g.over = true; g.won = true; g.beep('win'); }
   };
   g.draw = (ctx) => {
     for (const a of g.rows) {
@@ -250,7 +262,7 @@ function siege(m) {
 }
 
 function rally(m) {
-  const g = { score: 0, over: false, won: false, py: H / 2, ey: H / 2, bx: W / 2, by: H / 2, vx: 150, vy: 90, you: 0, them: 0 };
+  const g = { score: 0, over: false, won: false, beep: SILENT, py: H / 2, ey: H / 2, bx: W / 2, by: H / 2, vx: 150, vy: 90, you: 0, them: 0 };
   g.reset = () => {
     g.score = 0; g.over = false; g.won = false; g.you = 0; g.them = 0;
     g.py = H / 2; g.ey = H / 2; g.bx = W / 2; g.by = H / 2; g.vx = 150; g.vy = 90;
@@ -271,17 +283,19 @@ function rally(m) {
     g.ey += Math.max(-128 * dt, Math.min(128 * dt, want - g.ey));
     g.ey = Math.max(46, Math.min(H - 24, g.ey));
     g.bx += g.vx * dt; g.by += g.vy * dt;
-    if (g.by < 28) { g.by = 28; g.vy *= -1; }
-    if (g.by > H - 8) { g.by = H - 8; g.vy *= -1; }
+    if (g.by < 28) { g.by = 28; g.vy *= -1; g.beep('wall'); }
+    if (g.by > H - 8) { g.by = H - 8; g.vy *= -1; g.beep('wall'); }
     if (g.bx < 24 && Math.abs(g.by - g.py) < 22 && g.vx < 0) {
       g.vx = Math.abs(g.vx) * 1.04; g.vy += (g.by - g.py) * 2.2;
+      g.beep('bounce');
     }
     if (g.bx > W - 24 && Math.abs(g.by - g.ey) < 22 && g.vx > 0) {
       g.vx = -Math.abs(g.vx) * 1.04; g.vy += (g.by - g.ey) * 2.0;
+      g.beep('bounce');
     }
-    if (g.bx < 4) { g.them++; serve(false); }
-    if (g.bx > W - 4) { g.you++; g.score += 100; serve(true); }
-    if (g.you >= 7 || g.them >= 7) { g.over = true; g.won = g.you >= 7; }
+    if (g.bx < 4) { g.them++; serve(false); g.beep('lose'); }
+    if (g.bx > W - 4) { g.you++; g.score += 100; serve(true); g.beep('score'); }
+    if (g.you >= 7 || g.them >= 7) { g.over = true; g.won = g.you >= 7; g.beep(g.won ? 'win' : 'over'); }
   };
   g.draw = (ctx) => {
     ctx.fillStyle = m.dim;
@@ -560,6 +574,10 @@ export class Arcade {
     this.bestEl.textContent = String(this.best[id] || 0);
     this.keys.clear();
     this.pressed.clear();
+    // Give the machine its voice for as long as it is being played. Muted
+    // again on close, so a cabinet cannot make noise from inside a closed
+    // overlay, and never installed at all when the attract frames are baked.
+    this.game.beep = (kind) => this.callbacks.onBeep?.(kind, id);
     this._start();
     this.callbacks.onOpen?.(id);
     return true;
@@ -577,6 +595,7 @@ export class Arcade {
     this.open = false;
     this.el.style.display = 'none';
     this.keys.clear();
+    if (this.game) this.game.beep = SILENT;
     this.callbacks.onClose?.();
   }
 
