@@ -1526,6 +1526,54 @@ check('and every interface surface is cut from them',
   Object.values(material.panels).every((v) => v === true),
   Object.entries(material.panels).map(([k, v]) => `${k}:${v === true ? 'ok' : v}`).join(' '));
 
+/* a weapon you have not found leaves an EMPTY bay, not a preview          */
+// The Alien Blaster is a secret. A dimmed silhouette of it sitting in slot 6
+// from the first frame of a run tells the player there is a sixth weapon and
+// roughly what it looks like, which is exactly the thing a secret must not
+// do — so a locked bay shows the bay number and nothing else, in both the
+// persistent ARMS grid and the ARMORY fly-in.
+const bays = await page.evaluate(async () => {
+  const g = window.__game;
+  g.hud.showScreen(null); g.state.state = 'playing';
+  const frame = () => new Promise((r) => requestAnimationFrame(r));
+  const read = () => {
+    const arms = [...document.querySelectorAll('.arms-slot')];
+    const rack = [...document.querySelectorAll('.wm-slot')];
+    const vis = (el) => !!el && getComputedStyle(el).visibility !== 'hidden';
+    const words = (el) => (el ? el.textContent.trim().replace(/\u00a0/g, '') : '');
+    return {
+      armsGlyph: arms.map((s) => vis(s.querySelector('.arms-icon'))),
+      armsText: arms.map((s) => words(s.querySelector('.arms-rsv'))),
+      rackGlyph: rack.map((s) => vis(s.querySelector('.wm-glyph'))),
+      rackText: rack.map((s) => words(s.querySelector('.wm-name')) + words(s.querySelector('.wm-ammo'))),
+      locked: g.weapons.hudState().map((w) => !!w.locked),
+    };
+  };
+  g.hud.showWeaponMenu?.();
+  await frame(); await frame();
+  const before = read();
+  g.events.emit('weapon:unlock', { id: 'blaster' });
+  for (let i = 0; i < 4; i++) await frame();
+  const after = read();
+  return { before, after };
+});
+const lockedIdx = bays.before.locked.indexOf(true);
+check('an unfound weapon leaves a blank bay in both racks',
+  lockedIdx >= 0
+  && !bays.before.armsGlyph[lockedIdx] && bays.before.armsText[lockedIdx] === ''
+  && !bays.before.rackGlyph[lockedIdx] && bays.before.rackText[lockedIdx] === '',
+  `slot ${lockedIdx + 1}: arms glyph ${bays.before.armsGlyph[lockedIdx]}`
+  + ` "${bays.before.armsText[lockedIdx]}", rack glyph ${bays.before.rackGlyph[lockedIdx]}`
+  + ` "${bays.before.rackText[lockedIdx]}"`);
+check('and finding it fills the bay in',
+  lockedIdx >= 0 && !bays.after.locked[lockedIdx]
+  && bays.after.armsGlyph[lockedIdx] && bays.after.armsText[lockedIdx] !== ''
+  && bays.after.rackGlyph[lockedIdx] && bays.after.rackText[lockedIdx] !== '',
+  `arms "${bays.after.armsText[lockedIdx]}", rack "${bays.after.rackText[lockedIdx]}"`);
+check('and no OTHER bay was blank to begin with',
+  bays.before.armsGlyph.filter((v) => !v).length === 1,
+  `${bays.before.armsGlyph.filter((v) => !v).length} blank of ${bays.before.armsGlyph.length}`);
+
 /* the dock always fits the window, however wide its contents get         */
 // The dock is scaled to fit by measuring its own natural width. Measured once
 // during construction that number is the width of a HALF-BUILT dock, and the

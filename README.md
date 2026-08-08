@@ -296,8 +296,26 @@ There is deliberately no command that touches the kill counter — the
 - **Inventory (Tab):** a themed satchel for quest items such as keys. Opening
   frees the mouse for the UI and freezes the world; Tab (or Esc) closes it and
   hands the mouse straight back to the game.
+- **One material, one palette, one bevel.** Every interface in the game — the
+  HUD dock, the pause case, the satchel, the arcade cabinet, the title rail,
+  the settings panel — is cut from the same army-surplus stock: **olive-drab
+  painted steel** chipped back to bare metal, near-black **wells** sunk into
+  it for the readouts, and aged **card stock** for anything that is
+  documentation rather than instrumentation. Depth is a one-pixel **chisel**,
+  never a soft shadow; ink is three voices that never mix (**tan** labels,
+  **amber** numerals, **green** live data). The surfaces are procedural
+  (`HudTextures.js`) and **tile seamlessly** — periodic noise with the chips
+  and scratches wrapped across the seams — so a 60px nameplate and a 1600px
+  console bar are visibly the same sheet rather than the same image stretched
+  to two different aspect ratios. The bakes are published as CSS custom
+  properties at boot, so a panel asks for the material declaratively. The
+  geometry is **art deco**: three radii (case / bay / well), a bright
+  **keyline** set in from every shoulder, **machined fluting** where a housing
+  would be gripped, and — the signature — an **arched, double-moulded portrait
+  casting** in a lighter alloy that stands proud of the chassis on a ribbed
+  conduit.
 - **HUD & stats:** a centred **Fallout-style console bar** — a mounted,
-  screw-fixed, near-black scratched gunmetal panel (procedurally textured, the
+  screw-fixed, radiused olive-steel casting (procedurally textured, the
   same hard-worn housing as the side devices) carrying two banks of glowing
   **VACUUM TUBES** — on the left, VITALS (the condition readout as a heater
   glow: steady when healthy, guttering when hurt, strobing red at critical,
@@ -311,10 +329,13 @@ There is deliberately no command that touches the kill counter — the
   monitor, an AIM ON/OFF indicator (lit while scoped), a WEAPON panel (an
   illustrated two-tone profile of the live weapon over a scanning screen with
   a reload charge line), and a six-slot ARMS armoury grid with per-weapon
-  reserves. The portrait is driven by health — a well-spaced
+  reserves. A weapon the run has not found yet leaves an **empty bay** — the
+  bay number and nothing else, in both the ARMS grid and the ARMORY fly-in,
+  because a dimmed silhouette of the Alien Blaster in slot 6 would give the
+  secret away on the first frame. The portrait is driven by health — a well-spaced
   forward/left/right **look-around idle above 50% HP**, a stern face at ≤50%,
   a drained face at ≤25% (the CRT tints green → amber → red to match). Flanking
-  it sit two **field-device side HUDs** — scratched near-black gunmetal
+  it sit two **field-device side HUDs** — the same radiused olive-steel
   housings with corner screws, coloured **bar meters**, round **icon lamps**
   and an aged-ivory **analog needle gauge** behind glass. The left unit is the
   **WAVE** device: the needle and red bar sweep with kills banked toward the

@@ -68,7 +68,7 @@ function wrapped(ctx, w, h, draw) {
  * bevels that make a plate read as raised or recessed are CSS (see the
  * --bev-* tokens in styles.css); this is only the surface.
  */
-function oliveSteel(w, h, { seed = 21, base = [96, 94, 66], scratches = 26, chips = 14 } = {}) {
+function oliveSteel(w, h, { seed = 21, base = [74, 70, 52], scratches = 26, chips = 14 } = {}) {
   const c = document.createElement('canvas'); c.width = w; c.height = h;
   const ctx = c.getContext('2d');
   // The grain runs ALONG the plate the way rolled steel comes off the mill:
@@ -86,9 +86,9 @@ function oliveSteel(w, h, { seed = 21, base = [96, 94, 66], scratches = 26, chip
     // near-brown wherever it has settled, and never quite lifts it back
     const sh = 0.66 + grain * 0.28 + (grime - 0.5) * 0.42;
     let r = base[0] * sh, g = base[1] * sh, b = base[2] * sh;
-    const soil = Math.max(0, grime - 0.56) * 1.9;          // brown, in the low spots
-    r += (74 - r) * soil * 0.55; g += (60 - g) * soil * 0.6; b += (34 - b) * soil * 0.5;
-    if (speck > 0.9935) { r += 44; g += 44; b += 36; }     // grit catching the light
+    const soil = Math.max(0, grime - 0.52) * 2.1;          // brown, in the low spots
+    r += (52 - r) * soil * 0.65; g += (40 - g) * soil * 0.7; b += (22 - b) * soil * 0.6;
+    if (speck > 0.9935) { r += 38; g += 38; b += 30; }     // grit catching the light
     else if (speck < 0.008) { r *= 0.45; g *= 0.45; b *= 0.45; }
     d[i] = Math.min(255, r); d[i + 1] = Math.min(255, g); d[i + 2] = Math.min(255, b); d[i + 3] = 255;
   }
