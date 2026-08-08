@@ -1220,6 +1220,109 @@ check('the action row can be walked from the keyboard',
 await page.evaluate(() => { window.__game.hud.showScreen(null); window.__game.state.state = 'playing'; });
 
 /* ------------------------------------------------------------------ */
+/* the arcade cabinets are machines you can play                        */
+/* ------------------------------------------------------------------ */
+const arc = await page.evaluate(async () => {
+  const g = window.__game;
+  g.hud.showScreen(null);
+  g.state.state = 'playing';
+  g.arcade.close();
+  const out = {};
+  const prompts = g.world.interactables
+    .map((it) => (typeof it.prompt === 'string' ? it.prompt : ''))
+    .filter((p) => p.startsWith('Play ') && !p.includes('piano'));
+  out.cabinets = prompts.length;
+  out.machines = [...new Set(prompts)].sort();
+
+  const frame = () => new Promise((r) => requestAnimationFrame(r));
+  // Walking up to one and pressing [E] is what a player does; drive the event
+  // the interactable emits rather than reaching into the overlay.
+  g.events.emit('arcade:play', { id: 'siege' });
+  out.opened = g.arcade.open && getComputedStyle(document.getElementById('arcade')).display === 'flex';
+  out.suppressed = g.input.suppressed;
+
+  // The town has to be HELD while the machine is running: the world clock does
+  // not advance, so nothing on the street can reach the player at the cabinet.
+  const t0 = g.time;
+  const hp0 = g.player.health;
+  for (let i = 0; i < 6; i++) await frame();
+  out.worldHeld = g.time === t0 && g.player.health === hp0;
+
+  // ...and the machine itself is running on its own clock.
+  const keys = g.arcade.keys;
+  keys.add('Space'); keys.add('ArrowRight');
+  const before = g.arcade.game.rows.length;
+  for (let i = 0; i < 40; i++) { await frame(); g.arcade.update(0.05); }
+  keys.clear();
+  out.played = g.arcade.game.rows.length < before || g.arcade.game.score > 0;
+  out.scoreShown = document.querySelector('.arc-score b').textContent;
+
+  // Escape leaves the machine and drops the player back into the street. It
+  // must NOT reach the pause handler: a player stepping away from a cabinet
+  // wants the street, not a stats panel they did not ask for.
+  document.dispatchEvent(new KeyboardEvent('keydown', { code: 'Escape', key: 'Escape', bubbles: true }));
+  out.closed = !g.arcade.open && getComputedStyle(document.getElementById('arcade')).display === 'none';
+  out.stillPlaying = g.state.state;
+  out.pauseShown = getComputedStyle(document.getElementById('screen-pause')).display;
+  out.handedBack = !g.input.suppressed;
+
+  // and the world starts moving again
+  const t1 = g.time;
+  for (let i = 0; i < 4; i++) await frame();
+  out.worldResumed = g.time > t1;
+  return out;
+});
+check('every arcade cabinet is a machine you can play', arc.cabinets >= 4 && arc.machines.length === 4,
+  `${arc.cabinets} cabinets, ${arc.machines.length} distinct: ${arc.machines.join(', ')}`);
+check('walking up to one starts it', arc.opened && arc.suppressed,
+  `open ${arc.opened}, game input suppressed ${arc.suppressed}`);
+check('the town is held while you play', arc.worldHeld,
+  'world clock and health both frozen');
+check('and the machine itself runs', arc.played, `score readout ${arc.scoreShown}`);
+check('Escape steps away from the machine, not into the pause menu',
+  arc.closed && arc.stillPlaying === 'playing' && arc.pauseShown === 'none' && arc.handedBack,
+  `closed ${arc.closed}, state ${arc.stillPlaying}, pause ${arc.pauseShown}, input back ${arc.handedBack}`);
+check('and the town starts moving again', arc.worldResumed);
+
+/* ------------------------------------------------------------------ */
+/* wave 3 is the Exploder's, and only wave 3                            */
+/* ------------------------------------------------------------------ */
+const waveMix = await page.evaluate(() => {
+  const w = window.__game.waves;
+  const keep = { wave: w.wave, kills: window.__game.score.kills };
+  const at = (n) => { w.wave = n; return w.typeWeights(); };
+  const out = {};
+  const three = at(3);
+  out.three = three;
+  out.onlyBombers = three.exploder === 1
+    && !three.walker && !three.sprinter && !three.tank && !three.spitter;
+  // ...and the waves either side are an ordinary MIX, untouched. Not "mostly
+  // walkers" — by this point in the run the kill gates have opened and the
+  // ordinary mix is a real spread; what matters is that it IS a spread.
+  const mix = (t) => Object.values(t).filter((v) => v > 0).length > 1 && t.exploder < 1;
+  const two = at(2), four = at(4);
+  out.two = two; out.four = four;
+  out.twoNormal = mix(two);
+  out.fourNormal = mix(four);
+  // and the roll really produces them
+  window.__game.waves.wave = 3;
+  const rolled = {};
+  for (let i = 0; i < 200; i++) {
+    const t = window.__game.spawner.pickType();
+    rolled[t] = (rolled[t] || 0) + 1;
+  }
+  out.rolled = rolled;
+  w.wave = keep.wave;
+  return out;
+});
+check('wave 3 spawns nothing but Exploders', waveMix.onlyBombers
+  && Object.keys(waveMix.rolled).length === 1 && waveMix.rolled.exploder === 200,
+  `weights ${JSON.stringify(waveMix.three)}, 200 rolls → ${JSON.stringify(waveMix.rolled)}`);
+check('and the waves either side keep the ordinary progression',
+  waveMix.twoNormal && waveMix.fourNormal,
+  `wave 2 ${JSON.stringify(waveMix.two)} · wave 4 ${JSON.stringify(waveMix.four)}`);
+
+/* ------------------------------------------------------------------ */
 /* pausing and resuming always gives the mouse back                     */
 /* ------------------------------------------------------------------ */
 // The harness normally runs with pointer lock switched off entirely, which is

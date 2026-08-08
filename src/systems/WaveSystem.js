@@ -33,6 +33,11 @@ export const EXPLODER_KILL_GATE = 120;
 // ...and past this kill count the Exploder's spawn share steps up, so blast
 // pressure ramps alongside the Spitter's.
 export const EXPLODER_RAMP_GATE = 150;
+// One scripted wave of nothing but bombers. It lands early and deliberately
+// early: the kill gates above mean a player would otherwise meet their first
+// Exploder somewhere in a crowd, which is a bad way to learn what one is.
+// Wave 4 resumes the ordinary progression untouched.
+export const EXPLODER_WAVE = 3;
 // Past this many kills the STANDARD horde (the plain walkers) thickens: bigger
 // spawn pulses and a higher concurrent cap, so the ordinary NPC pressure ramps
 // up well before the later heat/surge gates ever engage.
@@ -117,6 +122,14 @@ export class WaveSystem {
   }
 
   typeWeights() {
+    // Wave 3 is the Exploder's wave and nothing else's — one scripted round
+    // where the whole field is bombers, so the player meets the type properly
+    // instead of first learning what one is by standing next to it. Wave 4
+    // picks the ordinary progression back up exactly where it left off, and
+    // this is the only wave that overrides the mix.
+    if (this.wave === EXPLODER_WAVE) {
+      return { walker: 0, sprinter: 0, tank: 0, exploder: 1, spitter: 0 };
+    }
     const sprinter = Math.min(0.38, 0.04 + this.wave * 0.012 + this.progress * 0.34);
     const tank = Math.min(0.15, Math.max(0, (this.wave - 3) * 0.008 + this.progress * 0.12));
     // Only spawn exploders once past the kill gate at a modest share, then step

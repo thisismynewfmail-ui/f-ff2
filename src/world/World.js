@@ -2,9 +2,9 @@ import * as THREE from '../../lib/three.module.js';
 import { Terrain, EDGE_LIMIT } from './Terrain.js';
 import { CollisionWorld } from './Collision.js';
 import { NavGrid } from './NavGrid.js';
-import { BuildingKit, mergeStatic, mulberry32 } from './Buildings.js';
+import { BuildingKit, DOOR_W, mergeStatic, mulberry32 } from './Buildings.js';
 import { InteriorKit, housePartitions, officePartitions, lobbyPartitions } from './Interiors.js';
-import { PropKit } from './Props.js';
+import { PropKit, PORCH_SWING_HALF } from './Props.js';
 import { Vegetation } from './Vegetation.js';
 import { Zones, ZONES, zoneIdAt } from './Zones.js';
 import { Secrets } from './Secrets.js';
@@ -633,7 +633,9 @@ export class World {
       ['house07', 192, 16, 9, 8, 3.9, 'N', { porch: true, dormers: 1 }],
       ['house08', 222, 12, 10, 8, 4.1, 'N', { hip: true }],
       // --- Beckon Row, north side (the back lane's own frontage)
-      ['house09', 110, -44, 10, 8, 4.3, 'S', { porch: true, dormers: 2 }],
+      // wide veranda: this is one of the two houses with a porch swing on it,
+      // and a swing needs a porch with room for it between the posts
+      ['house09', 110, -44, 10, 8, 4.3, 'S', { porch: { width: 6.6, depth: 2.3 }, dormers: 2 }],
       ['house11', 154, -45, 10, 9, 4.5, 'S', { hip: true }],
       ['house12', 192, -44, 9, 8, 4.1, 'S', { porch: true }],
       // --- the Aldergate Loop
@@ -653,7 +655,7 @@ export class World {
       ['house23', 104, 30, 10, 8, 4.2, 'W', { hip: true }],
       ['house24', 104, 54, 9, 8, 4.0, 'W', { porch: true }],
       // --- the Wend Loop's south leg
-      ['house27', 112, 68, 10, 8, 4.3, 'S', { porch: true, dormers: 2 }],
+      ['house27', 112, 68, 10, 8, 4.3, 'S', { porch: { width: 6.6, depth: 2.3 }, dormers: 2 }],
       ['house28', 152, 68, 9, 8, 4.0, 'S', { hip: true }],
       ['house29', 170, 68, 10, 8, 4.2, 'S', { porch: true }],
       ['house30', 104, 94, 9, 8, 4.0, 'N', { solid: true, derelict: 0.85 }],
@@ -1458,15 +1460,35 @@ export class World {
     // deck is at spec.y + 0.36 whatever the ground is doing, and hanging the
     // swing from the ground instead is what pushed its chains up through the
     // porch roof. Offset sideways so it never stands in its own front door.
-    for (const [name, side] of [['house09', 1.5], ['house27', 1.5]]) {
+    // Porch swings, hung against the REAL porch rather than a guessed offset
+    // from the middle of the house. A swing is 1.5 m of seat between two posts
+    // that are wherever the porch's own width put them, with a doorway in the
+    // middle of them that has to stay walkable — placed by eye it goes through
+    // a post the first time a house is a different width or its door is not
+    // centred, which is exactly what it did. So: take the gap on each side of
+    // the door, use the wider one, and hang nothing at all if neither fits.
+    for (const name of ['house09', 'house27']) {
       const b = this.built.get(name);
-      if (!b) continue;
-      const s = b.spec;
-      const ox = s.x + side, oz = s.z + s.d / 2 + 1.0;   // on the deck, clear of the door
+      if (!b?.porch) continue;
+      const pch = b.porch;
+      const axis = pch.along;                       // the wall the deck runs along
+      const half = PORCH_SWING_HALF;
+      const doorAt = pch.doorCentre[axis];
+      // distance from the door centre out to each post, minus the post itself
+      const room = Math.min(...pch.posts.map((p) => Math.abs(p[axis] - doorAt))) - 0.08;
+      const clear = DOOR_W / 2 + 0.35;              // keep the threshold walkable
+      if (room - clear < half * 2) continue;        // no gap wide enough: no swing
+      const side = pch.posts[0][axis] > doorAt ? 1 : -1;
+      const at = doorAt + side * (clear + half + (room - clear - half * 2) * 0.5);
+      const ox = axis === 'x' ? at : pch.doorCentre.x;
+      const oz = axis === 'x' ? pch.doorCentre.z : at;
       const sw = P.porchSwing();
-      sw.group.position.set(ox, s.y + 0.36, oz);
+      sw.group.position.set(ox, b.spec.y + pch.deckY + 0.08, oz);
+      // and it hangs from the canopy it is actually under, not a fixed height
+      sw.hang(pch.canopyY - (b.spec.y + pch.deckY + 0.08));
+      sw.group.rotation.y = axis === 'x' ? 0 : Math.PI / 2;
       this.group.add(sw.group);
-      this._animate(sw.pivot, 'swing', ox, oz, { axis: 'x', amp: 0.16, speed: 0.62 });
+      this._animate(sw.pivot, 'swing', ox, oz, { axis: 'x', amp: 0.16, speed: 0.62, tag: 'porchSwing' });
     }
 
     // --- the birdhouse, the treehouse and the gnome all live in _eastgateCommon

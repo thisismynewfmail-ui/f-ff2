@@ -521,6 +521,57 @@ const r = await page.evaluate(async () => {
     .map((m, i) => (seenStates[i].size < 2 ? `${m.kind}#${i}` : null))
     .filter(Boolean);
 
+  // The hall piano has to be a thing you can play, which means its hinged key
+  // bank has to still be ATTACHED. mergeStatic flattens a room into one mesh
+  // per material and clears it, so a sub-group registered for animation goes
+  // on being animated every frame while no longer being part of anything you
+  // can see — which is exactly what the piano did.
+  {
+    const a = (w.animProps || []).find((v) => v.kind === 'keys');
+    let attached = false;
+    for (let o = a?.node; o; o = o.parent) if (o === w.group) attached = true;
+    const peak = { rot: 0, flame: 0 };
+    if (a) {
+      a.t = a.dur;
+      for (let i = 0; i < 90; i++) {
+        w.anomalies.update(0.05, i * 0.05, { x: a.x, y: 0, z: a.z });
+        peak.rot = Math.max(peak.rot, Math.abs(a.node.rotation.x));
+        peak.flame = Math.max(peak.flame, a.flames?.[0]?.material.opacity ?? 0);
+      }
+    }
+    out.piano = {
+      wired: !!a, attached, parts: a?.node.children.length ?? 0,
+      rot: +peak.rot.toFixed(3), flame: +peak.flame.toFixed(2),
+      prompt: w.interactables.some((it) => it.prompt === 'Play the piano [E]'),
+    };
+  }
+
+  // Porch swings must hang IN the porch, not through it. Measure each one
+  // against the posts and the doorway of the porch it was hung on.
+  {
+    out.swings = [];
+    for (const name of ['house09', 'house27']) {
+      const b = w.built.get(name);
+      if (!b?.porch) continue;
+      const pch = b.porch;
+      const axis = pch.along;
+      // the swing is whichever animProp swings above this porch
+      // by tag, not by proximity: a garden gate is also a 'swing' and the
+      // nearest one to a front porch is often the gate on its own path
+      const sw = (w.animProps || []).find((v) => v.tag === 'porchSwing'
+        && Math.hypot(v.x - pch.doorCentre.x, v.z - pch.doorCentre.z) < 6);
+      if (!sw) { out.swings.push({ name, hung: false }); continue; }
+      const at = axis === 'x' ? sw.x : sw.z;
+      const clearOfPost = Math.min(...pch.posts.map((p) => Math.abs(p[axis] - at))) - 0.08;
+      const clearOfDoor = Math.abs(at - pch.doorCentre[axis]);
+      out.swings.push({
+        name, hung: true,
+        post: +clearOfPost.toFixed(2),         // must exceed the seat half-width
+        door: +clearOfDoor.toFixed(2),         // ...and stay out of the threshold
+      });
+    }
+  }
+
   // The phone booth has a voice but it also has to have a face: while it rings
   // the roof lamp comes up and the handset shakes, and both die the moment it
   // stops. Drive the ring state directly — waiting out the real 25 s cycle in
@@ -725,6 +776,15 @@ check('screens, tubes and the fire animate in place', r.matAnims >= 4 && r.matKi
   `${r.matAnims} animated surfaces: ${r.matKinds.join(', ')}`);
 check('no animated surface is stuck', r.matFrozen.length === 0,
   `frozen: ${r.matFrozen.join(', ')}`);
+check('the hall piano is still attached to the room it is in',
+  r.piano.wired && r.piano.attached && r.piano.parts > 10 && r.piano.prompt,
+  `wired ${r.piano.wired}, attached ${r.piano.attached}, ${r.piano.parts} keys, prompt ${r.piano.prompt}`);
+check('and playing it moves the keys and lights the candles',
+  r.piano.rot > 0.02 && r.piano.flame > 0.3,
+  `key dip ${r.piano.rot} rad, candles up to ${r.piano.flame}`);
+check('porch swings hang clear of their posts and doorways',
+  r.swings.length === 2 && r.swings.every((s) => s.hung && s.post > 0.75 && s.door > 0.9),
+  r.swings.map((s) => (s.hung ? `${s.name}: ${s.post}m to a post, ${s.door}m off the door` : `${s.name}: NOT HUNG`)).join(' | '));
 check('the phone booth lights up while it rings', r.boothRings, r.boothStates);
 check('the scarecrow points somewhere real', r.scarecrow.chain,
   `crash ${r.scarecrow.crash} — blaster pickup ${r.scarecrow.pickup}, ${r.scarecrow.shootables} shootable parts`);

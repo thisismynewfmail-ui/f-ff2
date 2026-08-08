@@ -33,7 +33,7 @@ import * as THREE from '../../lib/three.module.js';
  *                                     coordinates), colliding like real walls
  */
 const WALL_T = 0.32;
-const DOOR_W = 1.5;
+export const DOOR_W = 1.5;
 const DOOR_H = 2.3;
 const TEXEL = 0.5; // uv units per metre
 // Footing plinth: proud of the wall face, buried deep enough that a building
@@ -79,7 +79,7 @@ export class BuildingKit {
    *   floor, door:'N'|'S'|'E'|'W'|null (local side, +Z = S = front),
    *   windows:true, derelict:0..1, solid:false, ... (see header) }
    * `solid: true` makes a non-enterable filler building (single collider).
-   * Returns { group, lootPoints[], spawnPoints[], doorWorld }.
+   * Returns { group, lootPoints[], spawnPoints[], doorWorld, porch }.
    */
   build(spec) {
     const { x, z, y, w, d, h } = spec;
@@ -93,6 +93,7 @@ export class BuildingKit {
 
     const lootPoints = [];
     const spawnPoints = [];
+    let porch = null;              // deck rect + post positions, for prop placement
     const windowBatch = new Map(); // texture -> quad list, merged per building
 
     // ---- foundation ---------------------------------------------------
@@ -147,7 +148,7 @@ export class BuildingKit {
           leaf.position.set(s[0], s[1], s[2]);
           leaf.rotation.y = side.axis === 'x' ? Math.PI / 2.3 : 0.2;
           group.add(leaf);
-          if (spec.porch) this._porch(group, spec, rot, side, doorOff, h);
+          if (spec.porch) porch = this._porch(group, spec, rot, side, doorOff, h);
           if (spec.awning) {
             this._awning(group, side, doorOff, doorW + 1.0);
             if (spec.shopfront) {
@@ -236,7 +237,7 @@ export class BuildingKit {
     // are registered, so pathing can actually route in and out of the building.
     const portals = spec.solid ? [] : this._registerPortals(spec, rot, doorWorld);
 
-    return { group, lootPoints, spawnPoints, doorWorld, portals };
+    return { group, lootPoints, spawnPoints, doorWorld, portals, porch };
   }
 
   /**
@@ -746,9 +747,13 @@ export class BuildingKit {
     // posts and balustrade, kept clear of the doorway itself
     const postAt = width / 2 - 0.18;
     const roofY = Math.min(h - 0.35, DOOR_H + 0.62);
+    const posts = [];
     for (const s of [-1, 1]) {
       const post = this.box(0.16, roofY - deckY, 0.16, spec.trimTex || 'trimWoodWhite');
       put(post, doorOff + s * postAt, mid + depth / 2 - 0.3, deckY + (roofY - deckY) / 2);
+      posts.push(local2world(spec, rot,
+        alongX ? doorOff + s * postAt : outSign * (mid + depth / 2 - 0.3),
+        alongX ? outSign * (mid + depth / 2 - 0.3) : doorOff + s * postAt));
       const railLen = postAt - 0.9;
       if (railLen > 0.5) {
         for (const ry of [deckY + 0.45, deckY + 0.9]) {
@@ -772,7 +777,20 @@ export class BuildingKit {
     const hz = alongX ? depth / 2 : width / 2;
     const [wx, wz] = rot % 180 === 0 ? [hx, hz] : [hz, hx];
     this.terrain.addPlatform(c.x - wx, c.x + wx, c.z - wz, c.z + wz, spec.y + deckY + 0.08);
-    return { minX: c.x - wx, maxX: c.x + wx, minZ: c.z - wz, maxZ: c.z + wz, y: spec.y + deckY + 0.08 };
+    // Published so anything hung on the porch can be placed against the real
+    // geometry rather than a guessed offset from the building's centre. A porch
+    // swing put down by eye is a porch swing through a post the first time a
+    // house is a different width or its door is off-centre.
+    return {
+      minX: c.x - wx, maxX: c.x + wx, minZ: c.z - wz, maxZ: c.z + wz,
+      y: spec.y + deckY + 0.08,
+      posts, deckY,
+      // door centre on the deck, and the along-wall axis props should slide on
+      doorCentre: local2world(spec, rot, alongX ? doorOff : outSign * mid, alongX ? outSign * mid : doorOff),
+      along: rot % 180 === 0 ? (alongX ? 'x' : 'z') : (alongX ? 'z' : 'x'),
+      postGap: postAt,
+      canopyY: spec.y + roofY,
+    };
   }
 
   _collideLocalBox(spec, rot, lx, lz, hx, height, hz) {
