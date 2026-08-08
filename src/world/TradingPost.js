@@ -19,19 +19,35 @@ import { mergeStatic, scaleBoxUVs } from './Buildings.js';
  * WHAT it is. Not a house — the district has enough of those, and a shop you
  * walk INTO would hide the machine that is the point of the detour. It is an
  * open-fronted timber lean-to: four posts, a shingled shed roof pitched to the
- * back, a plank counter across the front, side hoardings, a hanging trade sign
- * and a lamp over the counter. You walk up to it and the vendor is right
- * there, lit, at chest height, with the road behind you.
+ * back, side hoardings, a hanging trade sign and a lamp over the pitch. You
+ * walk up to it and the vendor is right there, lit, with the road behind you.
  *
- * The build is one merged group of static geometry plus a handful of colliders
- * (the posts, the counter, the back wall) — no interior, no doors, nothing to
- * furnish. The shopkeeper itself is placed by World, at `counterSpot()`.
+ * THE FRONT IS OPEN TO THE GROUND, and that is the point. There was a boarded
+ * counter across it at first, and it did exactly what a counter does: it hid
+ * the machine from the waist down, so the thing you had walked across the
+ * district to look at was a head and a hat over a plank. What keeps you OUT
+ * now is the same thing that keeps you out of any working stall — it is full.
+ * Crates stacked to head height in both front corners, barrels, sacks, a
+ * tea-chest, a spare wheel, a churn: a pitch with its stock piled up around
+ * the machine, leaving a clear lane down the middle to the vendor and nowhere
+ * at all to stand beside it.
+ *
+ * The build is one merged group of static geometry plus a few colliders (the
+ * stacked stock at either side, the back of the pitch) — no interior, no
+ * doors, nothing to furnish. The shopkeeper is placed by World at
+ * `counterSpot()`.
  */
 
 // The site. Chosen against the district plan: north verge of Main St East,
 // between the filling station at the gate (55, 12) and the first house on the
 // street (house01 at 84, -11), clear of shed01 (79, -20) by a good ten metres.
-export const TRADING_POST = { x: 62, z: -19, yaw: Math.PI * 0.94 };
+//
+// The yaw faces the OPEN front at the carriageway — a roadside stall that had
+// its back to the road would be a shed. Everything below is built with the
+// front at local +Z, and that maps to (sin yaw, cos yaw) ≈ (-0.19, +0.98):
+// south, onto Main St East, canted a little west toward the district gate you
+// arrive from.
+export const TRADING_POST = { x: 62, z: -19, yaw: -Math.PI * 0.06 };
 const W = 3.6;              // frontage
 const D = 2.4;              // depth, front post to back wall
 const H_FRONT = 2.5;        // eaves at the open front
@@ -49,14 +65,13 @@ export class TradingPost {
   }
 
   /**
-   * Where the vendor's cabinet stands: centred, just inside the counter, so
-   * from the customer's side of the plank you see the machine's head and
-   * shoulders over the top of it and nothing else — which is the whole read of
-   * a shopkeeper behind a counter.
+   * Where the vendor's cabinet stands: centred, and well forward in the pitch
+   * so the whole machine — cabinet, tray, coin throat and all — is in the open
+   * front rather than back in the shadow under the roof.
    */
   counterSpot() {
     const { x, z, yaw } = this.site;
-    const fwd = 0.25;                        // metres toward the counter line
+    const fwd = 0.45;                        // metres toward the open front
     return {
       x: x + Math.sin(yaw) * fwd,
       z: z + Math.cos(yaw) * fwd,
@@ -109,11 +124,6 @@ export class TradingPost {
       put(box(0.08, 1.55, D, mat.plank), sx * hw, 1.55 / 2 + 0.1, 0);
     }
 
-    // --- the counter across the open front: a plank top on a boarded skirt
-    put(box(W + 0.2, 0.09, 0.46, mat.post), 0, 1.02, hd - 0.18);
-    put(box(W, 0.86, 0.10, mat.plank), 0, 0.55, hd - 0.05);
-    put(box(W + 0.24, 0.05, 0.06, mat.brass), 0, 1.09, hd + 0.03);   // the brass nosing
-
     // --- the roof: one shed slope from the front eaves down to the back
     const rise = H_FRONT - H_BACK;
     const slope = Math.atan2(rise, D);
@@ -129,27 +139,82 @@ export class TradingPost {
       put(box(0.025, 0.22, 0.025, mat.metal), sx * 0.6, H_FRONT + 0.02, hd + 0.36);
     }
 
-    // --- the lamp over the counter. It is the only light on this stretch of
+    // --- the lamp over the pitch. It is the only light on this stretch of
     // road, which is most of why the site reads as somewhere to walk toward.
-    put(box(0.05, 0.28, 0.05, mat.metal), 0, H_FRONT - 0.32, hd - 0.55);
+    put(box(0.05, 0.28, 0.05, mat.metal), 0, H_FRONT - 0.32, hd - 0.7);
     const shade = new THREE.Mesh(new THREE.ConeGeometry(0.20, 0.16, 10, 1, true), mat.metal);
-    shade.position.set(0, H_FRONT - 0.5, hd - 0.55);
+    shade.position.set(0, H_FRONT - 0.5, hd - 0.7);
     g.add(shade);
     // The bulb's material is kept rather than its mesh: mergeStatic below
     // collapses the whole group and clears the originals, but a merged mesh
     // still draws with the same material object, so animating it still works.
     this.bulbMat = new THREE.MeshLambertMaterial({ color: 0xffe6b0, emissive: 0x9a6a1c });
-    put(new THREE.Mesh(new THREE.SphereGeometry(0.055, 8, 6), this.bulbMat), 0, H_FRONT - 0.58, hd - 0.55);
+    put(new THREE.Mesh(new THREE.SphereGeometry(0.055, 8, 6), this.bulbMat), 0, H_FRONT - 0.58, hd - 0.7);
 
-    // --- what a trader accumulates: stacked crates, a barrel, a tarp bundle
-    // under the counter, and a strongbox nobody has opened in a long time
-    put(box(0.62, 0.5, 0.55, P.mat('crate')), -hw + 0.55, 0.35, -hd + 0.55);
-    put(box(0.5, 0.42, 0.46, P.mat('crate')), -hw + 0.5, 0.81, -hd + 0.6).rotation.y = 0.4;
-    put(box(0.44, 0.36, 0.42, mat.tarp), hw - 0.5, 0.28, -hd + 0.5);
-    const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.24, 0.72, 12), mat.metal);
-    barrel.position.set(hw - 0.55, 0.46, -hd + 1.25);
-    g.add(barrel);
-    put(box(0.34, 0.24, 0.26, mat.brass), 0.9, 1.19, hd - 0.2);       // the till on the counter
+    /* --- THE STOCK, which is also the wall.
+     *
+     * Everything below is piled in the two front corners and up the flanks,
+     * head-high at the outside and stepping down toward the middle, so the
+     * pitch is visibly full and the only way in is the lane the machine
+     * stands in. It replaces the counter that used to run across the front:
+     * a stall you cannot walk into because it is packed reads better than one
+     * you cannot walk into because there is a plank in the way, and — the
+     * reason it was worth changing — it leaves the whole vendor visible from
+     * the boots up.
+     */
+    const crate = P.mat('crate');
+    const stack = (px, pz, tiers, sizeW, rot = 0) => {
+      let py = 0.1;
+      for (let i = 0; i < tiers; i++) {
+        const s = sizeW * (1 - i * 0.09);
+        const h = 0.44 - i * 0.03;
+        const c = put(box(s, h, s * 0.92, crate), px + (i % 2 ? 0.04 : -0.03), py + h / 2, pz + (i % 2 ? -0.03 : 0.04));
+        c.rotation.y = rot + i * 0.11;
+        py += h;
+      }
+      return py;
+    };
+    // the two front corners: shoulder-to-head high, and the deepest part of
+    // the pile is the bit nearest the road, so the stall reads as loaded
+    stack(-hw + 0.42, hd - 0.44, 4, 0.66, 0.2);
+    stack(hw - 0.42, hd - 0.46, 4, 0.66, -0.3);
+    // ...running back along both flanks, stepping down
+    stack(-hw + 0.40, hd - 1.22, 3, 0.60, -0.15);
+    stack(hw - 0.40, hd - 1.20, 3, 0.60, 0.25);
+    stack(-hw + 0.38, -hd + 0.45, 2, 0.56, 0.35);
+
+    // barrels, sacks and the odd bit of freight nobody unpacked
+    const barrel = (px, pz, r, h, m) => {
+      const b = new THREE.Mesh(new THREE.CylinderGeometry(r, r, h, 12), m);
+      b.position.set(px, 0.1 + h / 2, pz);
+      g.add(b);
+      return b;
+    };
+    barrel(hw - 0.46, -hd + 0.5, 0.26, 0.78, mat.metal);
+    barrel(hw - 0.5, -hd + 1.1, 0.22, 0.66, mat.post);
+    barrel(-hw + 0.5, hd - 1.85, 0.24, 0.7, mat.metal);
+    // a churn on its side, and a spare wheel leaning on the pile
+    const churn = new THREE.Mesh(new THREE.CylinderGeometry(0.19, 0.19, 0.54, 10), mat.brass);
+    churn.rotation.z = Math.PI / 2;
+    churn.position.set(-hw + 0.44, 0.1 + 0.19, hd - 1.75);
+    g.add(churn);
+    const wheel = new THREE.Mesh(new THREE.TorusGeometry(0.30, 0.075, 6, 14), mat.metal);
+    wheel.rotation.set(0.28, 0.3, 0);
+    wheel.position.set(hw - 0.34, 0.42, hd - 1.7);
+    g.add(wheel);
+    // sacks: squat, leaning, stacked two deep against the back boards
+    for (const [sx2, sz2, sr] of [[-0.75, -hd + 0.36, 0.2], [-0.42, -hd + 0.33, -0.3], [0.66, -hd + 0.38, 0.5]]) {
+      const sack = new THREE.Mesh(new THREE.SphereGeometry(0.24, 8, 6), mat.tarp);
+      sack.scale.set(1, 0.86, 0.8);
+      sack.rotation.z = sr;
+      sack.position.set(sx2, 0.1 + 0.2, sz2);
+      g.add(sack);
+    }
+    // a tarp over whatever is under it, in the back corner
+    put(box(0.7, 0.44, 0.6, mat.tarp), -hw + 1.15, 0.32, -hd + 0.42).rotation.y = 0.3;
+    // and the strongbox, on top of the left-hand front stack where a trader
+    // would keep it: in reach, in sight, and not on the floor
+    put(box(0.34, 0.22, 0.26, mat.brass), -hw + 0.44, 1.72, hd - 0.44).rotation.y = 0.2;
 
     // Collapse the lot to one mesh per material, THEN hang the light on it:
     // mergeStatic clears the group as it goes, and a light is not geometry.
@@ -161,24 +226,48 @@ export class TradingPost {
     w.group.add(g);
     this.group = g;
 
-    // --- collision. ONE box over the whole body of the kiosk, not one per
-    // panel. The panels are a few centimetres apart and sit at a slight angle
-    // to the world axes, so modelling them as separate axis-aligned boxes
-    // means inflating each to its rotated extent — and inflated boxes that
-    // close a rectangle necessarily overlap each other, which is a real defect
-    // (tests/world.mjs checks exactly that) dressed up as detail nobody can
-    // feel. What the player experiences is a counter they walk UP to, so what
-    // the collision says is: this footprint is solid, stand outside it.
-    const ex = Math.abs((W / 2 + 0.1) * Math.cos(yaw)) + Math.abs((D / 2) * Math.sin(yaw));
-    const ez = Math.abs((W / 2 + 0.1) * Math.sin(yaw)) + Math.abs((D / 2) * Math.cos(yaw));
-    this.colliderId = w.collision.addBoxCentered(x, y + 1.0, z, ex, 1.0, ez, 'prop');
-    // Nav: block the footprint so the horde routes AROUND the kiosk rather
-    // than trying to walk through the counter to reach something behind it.
-    w.nav.blockBox(x - ex - 0.4, z - ez - 0.4, x + ex + 0.4, z + ez + 0.4);
+    /* --- collision.
+     *
+     * Three boxes, one per thing the player can actually feel: the loaded
+     * pile down the left flank, the pile down the right, and the back of the
+     * pitch. Between the two piles is a lane the width of the machine, and
+     * the vendor's own cabinet (registered by ShopKeeper) closes it — so you
+     * can step up under the roof and stand at the machine, and you cannot get
+     * past it. That is what the geometry now says too, which is the whole
+     * point of taking the counter out.
+     *
+     * Each box is stated in the post's LOCAL frame and swollen to its rotated
+     * extent, so they stay axis-aligned like every other collider in the
+     * game. They are deliberately kept apart rather than made to meet:
+     * inflated boxes that close a rectangle necessarily overlap each other,
+     * and an overlap is a real defect the world audit checks for.
+     */
+    const c = (lx, lz, hx, hz, hy) => {
+      const s = Math.sin(yaw), co = Math.cos(yaw);
+      const wx = x + lx * co + lz * s;
+      const wz = z - lx * s + lz * co;
+      const ex = Math.abs(hx * co) + Math.abs(hz * s);
+      const ez = Math.abs(hx * s) + Math.abs(hz * co);
+      w.collision.addBoxCentered(wx, y + hy, wz, ex, hy, ez, 'prop');
+      return { wx, wz, ex, ez };
+    };
+    const LANE = 0.62;                 // half-width of the clear lane in the middle
+    const flankHW = (W / 2 + 0.1 - LANE) / 2;
+    const flankAt = LANE + flankHW;
+    c(-flankAt, 0.05, flankHW, D / 2 + 0.05, 1.0);   // the left-hand pile
+    c(flankAt, 0.05, flankHW, D / 2 + 0.05, 1.0);    // ...and the right
+    c(0, -D / 2 + 0.25, LANE, 0.3, 1.0);             // the back of the pitch
+
+    // Nav: block the whole footprint. The horde has no business threading a
+    // one-metre lane into a dead end, and a route that ends at the vendor is
+    // a route that ends nowhere.
+    const nx = Math.abs((W / 2 + 0.4) * Math.cos(yaw)) + Math.abs((D / 2 + 0.4) * Math.sin(yaw));
+    const nz = Math.abs((W / 2 + 0.4) * Math.sin(yaw)) + Math.abs((D / 2 + 0.4) * Math.cos(yaw));
+    w.nav.blockBox(x - nx, z - nz, x + nx, z + nz);
     // ...and tell the prop system this ground is taken, so nothing else is
     // placed inside the structure later.
-    w._solids.push({ minX: x - ex - 0.3, maxX: x + ex + 0.3, minZ: z - ez - 0.3, maxZ: z + ez + 0.3 });
-    this.footprint = { x, z, hx: ex, hz: ez };
+    w._solids.push({ minX: x - nx, maxX: x + nx, minZ: z - nz, maxZ: z + nz });
+    this.footprint = { x, z, hx: nx, hz: nz };
     return this;
   }
 

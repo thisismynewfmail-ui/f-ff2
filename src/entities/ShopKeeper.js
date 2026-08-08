@@ -1,5 +1,5 @@
 import { Entity } from './Entity.js';
-import { buildVendorModel, VendorAnimator, BASE_H } from '../rendering/VendorModel.js';
+import { buildVendorModel, VendorAnimator, BASE_H, SCALE } from '../rendering/VendorModel.js';
 
 /**
  * The SHOPKEEPER — the coin-operated vendor standing in its kiosk out on the
@@ -46,7 +46,8 @@ export class ShopKeeper extends Entity {
     const y = world.groundHeightFor(x, z, 1e9) + lift;
     this.position.set(x, y, z);
     this.yaw = yaw;
-    this.height = BASE_H;   // what a hit test would use: the counter, not the hat
+    // What a hit test would use: the cabinet it is bolted to, not the hat.
+    this.height = BASE_H * SCALE;
 
     this.rig = buildVendorModel(texLib);
     this.mesh = this.rig.group;
@@ -58,11 +59,14 @@ export class ShopKeeper extends Entity {
     this._greetT = -1;
     this._metPlayer = false;
 
-    // The cabinet is solid — you lean on the counter, you do not walk through
-    // it. 'furniture' rather than 'prop' so the placement audit reads it as
-    // something deliberately inside a structure.
+    // The cabinet is solid, and it is also the DOOR: the trading post leaves a
+    // clear lane down the middle of its pitch and this is what closes it, so
+    // you can walk right up to the machine and no further. 'furniture' rather
+    // than 'prop' so the placement audit reads it as something deliberately
+    // inside a structure. Sized off the model, so resizing it stays honest.
     this._colliderId = world.collision.addBoxCentered(
-      x, y + BASE_H / 2, z, 0.46, BASE_H / 2, 0.36, 'furniture');
+      x, y + this.height / 2, z,
+      0.46 * SCALE, this.height / 2, 0.36 * SCALE, 'furniture');
 
     this.interactable = world.addInteractable({
       x, z, y, radius: REACH,

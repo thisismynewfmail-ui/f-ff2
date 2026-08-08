@@ -11,11 +11,12 @@ import { buildSentryModel, SENTRY_SCALE } from '../rendering/SentryModel.js';
  * Its whole design is one trade: it shoots for you, but only where you pointed
  * it. The gun sits on a yaw ring that sweeps a 180° arc centred on the way it
  * was facing when you put it down — everything in front of it is covered,
- * everything behind it is not — and it reaches SENTRY_RANGE, which is about
- * twenty feet. It is a pistol on a stand, quite literally: it fires at the
- * pistol's rate, for the pistol's damage, off the same numbers in
- * WeaponConfigs, so it is never better than the gun in your hand — it is just
- * a second one that never gets tired and never looks the wrong way.
+ * everything behind it is not — and it reaches SENTRY_RANGE, about sixty feet,
+ * which is far enough to hold a whole street. It is a pistol on a stand, quite
+ * literally: it fires at the pistol's rate, for the pistol's damage, off the
+ * same numbers in WeaponConfigs, so it is never better than the gun in your
+ * hand — it is just a second one that never gets tired and never looks the
+ * wrong way.
  *
  * The horde does not know it is there. Zombies acquire the player and then the
  * shared `friendlies` roster; a sentry is on neither, so nothing shoots back,
@@ -32,8 +33,8 @@ import { buildSentryModel, SENTRY_SCALE } from '../rendering/SentryModel.js';
  *   pickup  press [E] on it and it folds back into the satchel
  */
 const PISTOL = WEAPON_CONFIGS.find((c) => c.id === 'pistol');
-/** ~20 feet. The number the design is stated in, converted once, here. */
-export const SENTRY_RANGE = 20 * 0.3048;      // 6.096 m
+/** ~60 feet — the number the design is stated in, converted once, here. */
+export const SENTRY_RANGE = 60 * 0.3048;      // 18.288 m
 export const SENTRY_ARC = Math.PI;            // 180°, centred on its facing
 export const SENTRY_DAMAGE = PISTOL.damage;         // 12 — the pistol's, exactly
 export const SENTRY_INTERVAL = PISTOL.fireInterval; // 0.26 s — likewise

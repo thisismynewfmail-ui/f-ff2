@@ -80,9 +80,9 @@ the desktop shell.
 | Mouse wheel | Cycle weapons (also reveals the weapon menu) |
 | R | Reload |
 | E | Interact (talk to the vendor, pack up a deployed sentry) |
-| Tab | Satchel — click a sentry there to take it in hand |
+| Tab | Satchel — click a sentry there to take it in hand (not at the counter) |
 | LMB / RMB (sentry in hand) | Set it down / put it back in the satchel |
-| Esc | Pause / resume — or, at an arcade cabinet or the vendor's counter, step away from it |
+| Esc | Pause / resume — or, at an arcade cabinet or the vendor's pitch, step away from it |
 | ` / ~ | Dev console |
 
 The weapon menu is hidden during play; a number key or a mouse-wheel scroll
@@ -645,21 +645,28 @@ There is deliberately no command that touches the kill counter — the
   the shopping you had not done yet rather than handing you a windfall.
 - **The Shopkeeper, and the trading post.** Out on the Eastgate knoll, a short
   walk in from the district gate, there is a break in the trees with a track
-  worn up to it and an open-fronted timber kiosk in the clearing: shingled shed
-  roof, plank counter with a brass nosing, a hanging trade sign and the only
-  working lamp on that stretch of road. Behind the counter is a **coin-operated
-  upper-torso animatronic** — a fairground fortune-teller crossed with a
-  frontier shopkeeper. Lacquered oxblood cabinet on cast feet, brass coin
-  throat, delivery tray, pressure dial and a lit marquee; rising out of it, a
-  half-figure in a waistcoat with a moustache, a pipe, a wide-brim hat and
-  lamps for eyes, jointed at the waist, shoulders, elbows, neck and jaw. It has
-  no legs and never had any. **Cabinet and figure together stand no taller than
-  your chest** — you look down at it.
+  worn up to it and a timber pitch in the clearing, **open to the road and open
+  to the ground**: shingled shed roof, side hoardings, a hanging trade sign and
+  the only working lamp on that stretch of road. There is no counter across the
+  front — what keeps you out is that the pitch is FULL. Crates stacked
+  head-high in both front corners, barrels, sacks, a churn, a spare wheel and a
+  strongbox pile up around a clear lane down the middle, and the machine itself
+  closes that lane. You can walk right up to it and see the whole thing, boots
+  to hat, which a plank across the front made impossible.
+
+  In the lane stands a **coin-operated upper-torso animatronic** — a fairground
+  fortune-teller crossed with a frontier shopkeeper. Lacquered oxblood cabinet
+  on cast feet, brass coin throat, delivery tray, pressure dial and a lit
+  marquee; rising out of it, a half-figure in a waistcoat with a moustache, a
+  pipe, a wide-brim hat and lamps for eyes, jointed at the waist, shoulders,
+  elbows, neck and jaw. It has no legs and never had any. **Cabinet and figure
+  together stand about 1.6 m** — a machine you stand in front of, and still
+  shorter than you are.
 
   It is a machine that noticed you. Its head tracks you the whole time it is
   awake, and it does not have *an* idle: it dozes when the road is empty, wakes
   and straightens up when you come up the track, and while it waits it cycles
-  through a set of behaviours — surveying the road, wiping the counter, winding
+  through a set of behaviours — surveying the road, wiping the deck, winding
   the key in its own side, drumming its fingers, nodding off and catching
   itself — picking a different one each time so you never see the same gesture
   twice running. It presents the wares while the shop is open, sweeps a hand to
@@ -668,16 +675,22 @@ There is deliberately no command that touches the kill counter — the
   **The horde ignores it entirely.** Not "it is very tough" — invisible: a
   zombie acquires the player first and otherwise the nearest thing on the shared
   friendly roster, and the vendor is never put on that roster, so nothing senses
-  it, hunts it, swings at it, and an Exploder detonating at the counter cannot
+  it, hunts it, swings at it, and an Exploder detonating at the pitch cannot
   touch it either.
-- **The shop.** [E] at the counter opens it: the machine live on the left,
+- **The shop.** [E] at the machine opens it: the vendor live on the left,
   turning on its own little stage (a real 3D render of the same rig, not a
   picture of one), the goods on the right in bubbled bays, the till along the
-  foot. It freezes the street the way the satchel and the arcade do, and
-  **Escape puts you straight back in the game with the mouse** — never in front
-  of the pause menu. It sells a **Portable Sentry at 100 tokens, two only**;
-  **every ammunition type separately at 10** a crate; and carries one dead bay
-  at the bottom for whatever has not arrived yet.
+  foot. It freezes the street the way the satchel and the arcade do, and it
+  **always hands the mouse straight back** on the way out — never the pause
+  menu, and never a "click to take the mouse back" prompt. That last part is
+  why there are three ways out: the STEP BACK button, a click anywhere off the
+  case, and the keys (Escape, or the same [E] you arrived with). A browser
+  only grants pointer lock to a page holding **user activation**, and Escape
+  grants none — so the game asks for the pointer both immediately, inside
+  whatever gesture closed the counter, and again on the next frame. It sells a
+  **Portable Sentry at 100 tokens, two only**; **every ammunition type
+  separately at 10** a crate; and carries one dead bay at the bottom for
+  whatever has not arrived yet.
 - **Portable Sentry:** a tripod auto-pistol that stows in the satchel. Click it
   there and it comes up **into your hands** (the gun goes away — you cannot hold
   a rifle and a tripod at once), and the ground ahead of you shows exactly where
@@ -685,8 +698,9 @@ There is deliberately no command that touches the kill counter — the
   draped over the real terrain with a bubble wall standing on its boundary, and
   a ghost of the machine facing the way you are. Green means the click lands,
   red means the ground will not take it. Click to set it down; it kicks its legs
-  out, cycles its head once, and starts sweeping. It reaches **about twenty
-  feet** over a **180° arc centred on the way you were looking**, and it is a
+  out, cycles its head once, and starts sweeping. It reaches **about sixty
+  feet** — far enough to hold a street — over a **180° arc centred on the way
+  you were looking**, and it is a
   pistol on a stand quite literally — the same damage and the same fire rate,
   read off the pistol's own config, so it is never better than the gun in your
   hand, just a second one that never looks away. Nothing targets it: it is off
