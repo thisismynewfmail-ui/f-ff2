@@ -166,10 +166,26 @@ export const TEXTURES = {
   muzzleFlash: 'muzzle_flash.png', // used by the 3D weapon muzzle flash
   blood: 'blood.png',
   smoke: 'smoke.png',
-  // pickups
-  ammoBox: 'ammo_box.png',
+  // pickups. Each ammunition type is drawn as the ammunition it actually is
+  // (a clip of pistol brass, a box of shells, a rifle magazine, a case of
+  // match cartridges) rather than as one generic box in four tints — the
+  // silhouette tells you what you are running toward before the colour does.
+  ammoPistol: 'ammo_pistol.png',
+  ammoShotgun: 'ammo_shotgun.png',
+  ammoRifle: 'ammo_rifle.png',
+  ammoSniper: 'ammo_sniper.png',
   healthPack: 'health_pack.png',
   key: 'key.png',
+  // Tokens: the coins zombies drop and the vendor takes. Each is an
+  // eight-frame spin laid out along one strip — see COIN_LAYOUT below.
+  coinCopper: 'coin_copper.png',
+  coinSilver: 'coin_silver.png',
+  coinGold: 'coin_gold.png',
+  // the vendor's machine and its trade sign, and the sentry's armour plate
+  vendorEnamel: 'vendor_enamel.png',
+  vendorBrass: 'vendor_brass.png',
+  signTokens: 'sign_tokens.png',
+  sentryPlate: 'sentry_plate.png',
   // NOTE: the old 2D first-person weapon sprites were removed — weapons are
   // now real 3D models (src/weapons/WeaponModels.js + WeaponView.js).
 };
@@ -188,6 +204,16 @@ export const SPRITES = {
   citizenCaptured: 'npc_save_captured.png',
   citizenReleased: 'npc_save_release.png',
 };
+
+/**
+ * Layout of the coin strips (coin_copper/silver/gold.png).
+ *
+ * One row of square cells, each the coin turned a further eighth of a
+ * revolution about its own vertical axis. Read by FlipbookBillboard
+ * (src/rendering/Billboard.js), which walks the strip on a fixed frame rate
+ * so every coin on the ground is turning — a still coin reads as litter.
+ */
+export const COIN_LAYOUT = { frames: 8, fps: 11 };
 
 /** Layout of the 3x4 walk-cycle sheets (RPG-Maker style). */
 export const SHEET_LAYOUT = {

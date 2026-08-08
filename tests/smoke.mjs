@@ -1469,7 +1469,12 @@ const lockFix = await page.evaluate(async () => {
   // the pause screen and stay there — pointer captured, menu up, nothing
   // outstanding to correct it. Simulate exactly that: take the lock while
   // paused, behind the game's back.
-  real();
+  // Deliberately behind the game's back, so the rejection is the HARNESS's to
+  // swallow: a headless browser may refuse a request made without a user
+  // gesture, and an unhandled rejection here would surface as a page error and
+  // be counted against the game — which is the one thing this probe must not
+  // do, since whether it lands at all is explicitly the browser's call below.
+  real()?.catch(() => {});
   for (let i = 0; i < 40 && !document.pointerLockElement; i++) {
     await frame(); await new Promise((r) => setTimeout(r, 30));
   }

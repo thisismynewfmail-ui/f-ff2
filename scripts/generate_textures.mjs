@@ -1147,20 +1147,190 @@ tuftSprite('grass_tuft_wild.png', {  // meadow: tall, laid over, seed heads
 /* Pickups                                                             */
 /* ------------------------------------------------------------------ */
 
-{ // ammo box (white; tinted per weapon at runtime)
-  const img = new Img(32, 32, [0, 0, 0, 0]);
-  img.rectC(4, 12, 24, 14, [190, 190, 190]);
-  img.rectC(4, 12, 24, 3, [220, 220, 220]);
-  img.rectC(4, 23, 24, 3, [140, 140, 140]);
-  img.rectC(13, 10, 6, 4, [160, 160, 160]); // handle
-  // bullet icons
-  for (const bx of [9, 15, 21]) {
-    img.rectC(bx, 16, 3, 6, [255, 232, 120]);
-    img.rectC(bx, 15, 3, 2, [255, 200, 80]);
+/**
+ * Ammunition, drawn as the ammunition it actually is.
+ *
+ * There used to be ONE ammo box here, tinted four ways at runtime. That is a
+ * colour code, not a picture: a shotgun shell and a sniper round are not the
+ * same object in two paints, and a player who has to read a tint off a sprite
+ * forty metres away is reading a legend rather than looking at the ground. So
+ * each type is now drawn from its own real ammunition — a pistol's stripper
+ * clip of stubby brass, a shell box with red plastic hulls standing in it, a
+ * rifle's curved steel magazine with the top round proud of the lips, and a
+ * padded case of long belted sniper cartridges. Silhouette, proportion and
+ * palette all differ, so they are told apart by shape first and colour second.
+ *
+ * All four are 48px so the individual rounds survive nearest-neighbour
+ * downscaling on the billboard, and all four carry the same 1px dark outline
+ * the rest of the pickups do, which is what keeps them legible against grass.
+ */
+
+/** One cartridge standing upright: brass case, a rim at the head, a tip. */
+function roundUp(img, x, y, w, h, tipH, brass, brassHi, tip, tipHi) {
+  img.rectC(x, y + tipH, w, h - tipH, brass);
+  img.rectC(x, y + tipH, 1, h - tipH, brassHi);              // the lit side of the case
+  img.rectC(x, y + h - 2, w, 2, tipHi);                      // the extractor rim
+  for (let i = 0; i < tipH; i++) {                           // the bullet, tapering
+    const inset = Math.round((1 - i / tipH) * (w / 2 - 0.5));
+    img.rectC(x + inset, y + i, Math.max(1, w - inset * 2), 1, i < 2 ? tipHi : tip);
   }
-  img.outline([30, 30, 30, 255]);
-  save('ammo_box.png', img);
 }
+
+{ // ammo_pistol — a stripper clip of six stubby 9mm rounds in a card sleeve
+  const img = new Img(48, 48, [0, 0, 0, 0]);
+  const brass = [176, 138, 52], brassHi = [222, 186, 96];
+  const lead = [178, 176, 168], leadHi = [214, 212, 204];
+  img.rectC(6, 30, 36, 12, [104, 96, 74]);                   // the card sleeve
+  img.rectC(6, 30, 36, 2, [138, 128, 96]);
+  img.rectC(6, 40, 36, 2, [72, 66, 50]);
+  for (let i = 0; i < 6; i++) roundUp(img, 8 + i * 6, 18, 5, 16, 5, brass, brassHi, lead, leadHi);
+  img.rectC(6, 26, 36, 3, [128, 122, 110]);                  // the steel clip across them
+  img.rectC(6, 26, 36, 1, [168, 164, 152]);
+  img.outline([28, 26, 20, 255]);
+  save('ammo_pistol.png', img);
+}
+
+{ // ammo_shotgun — four red plastic hulls with brass heads, in an open box
+  const img = new Img(48, 48, [0, 0, 0, 0]);
+  const hull = [150, 40, 32], hullHi = [196, 66, 52], head = [172, 134, 50], headHi = [220, 182, 92];
+  for (let i = 0; i < 4; i++) {
+    const x = 8 + i * 8;
+    img.rectC(x, 12, 6, 20, hull);                           // the plastic tube
+    img.rectC(x, 12, 2, 20, hullHi);
+    img.rectC(x + 1, 12, 4, 2, [96, 24, 20]);                // the crimped star fold
+    img.rectC(x + 2, 13, 2, 1, hullHi);
+    img.rectC(x, 26, 6, 7, head);                            // the brass head
+    img.rectC(x, 26, 2, 7, headHi);
+    img.rectC(x, 31, 6, 2, [136, 100, 36]);                  // its rim
+  }
+  img.rectC(5, 30, 38, 12, [128, 108, 74]);                  // the kraft shell box
+  img.rectC(5, 30, 38, 2, [162, 140, 100]);
+  img.rectC(5, 40, 38, 2, [86, 72, 48]);
+  img.rectC(10, 34, 28, 4, [176, 52, 40]);                   // the printed band
+  img.outline([28, 22, 18, 255]);
+  save('ammo_shotgun.png', img);
+}
+
+{ // ammo_rifle — a curved steel box magazine, top round proud of the lips
+  const img = new Img(48, 48, [0, 0, 0, 0]);
+  const steel = [72, 76, 82], steelHi = [116, 122, 130], steelLo = [40, 44, 50];
+  roundUp(img, 20, 5, 6, 13, 5, [176, 138, 52], [222, 186, 96], [178, 176, 168], [214, 212, 204]);
+  // The body leans a little further right the lower it goes — a magazine is a
+  // section of an arc, and drawn straight it reads as a battery.
+  for (let y = 0; y < 26; y++) {
+    const lean = Math.round((y / 25) ** 1.6 * 7);
+    img.rectC(16 + lean, 17 + y, 12, 1, steel);
+    img.rectC(16 + lean, 17 + y, 2, 1, steelHi);             // the lit front edge
+    img.rectC(26 + lean, 17 + y, 2, 1, steelLo);
+    if (y % 7 === 3) img.rectC(18 + lean, 17 + y, 8, 1, steelLo); // the witness slots
+  }
+  img.rectC(16, 15, 12, 3, [96, 100, 106]);                  // the feed lips
+  img.rectC(16, 15, 12, 1, steelHi);
+  img.rectC(23, 41, 12, 3, [56, 60, 66]);                    // the floorplate
+  img.outline([22, 24, 28, 255]);
+  save('ammo_rifle.png', img);
+}
+
+{ // ammo_sniper — long match cartridges seated in a padded olive case
+  const img = new Img(48, 48, [0, 0, 0, 0]);
+  const brass = [166, 130, 48], brassHi = [214, 178, 88];
+  const jacket = [148, 122, 96], jacketHi = [190, 168, 140];
+  for (let i = 0; i < 3; i++) roundUp(img, 11 + i * 9, 6, 7, 28, 10, brass, brassHi, jacket, jacketHi);
+  img.rectC(6, 28, 36, 14, [78, 84, 58]);                    // the olive-drab case
+  img.rectC(6, 28, 36, 2, [104, 112, 78]);
+  img.rectC(6, 40, 36, 2, [52, 56, 38]);
+  for (let i = 0; i < 3; i++) img.rectC(10 + i * 9, 28, 9, 3, [44, 48, 34]); // the foam cutouts
+  img.rectC(8, 34, 32, 3, [120, 128, 92]);                   // the stencil band
+  img.rectC(20, 42, 8, 3, [92, 98, 68]);                     // the catch
+  img.outline([24, 26, 18, 255]);
+  save('ammo_sniper.png', img);
+}
+
+/**
+ * Tokens: three coins, each as an eight-frame SPIN.
+ *
+ * A coin lying still on the grass is a disc of colour and reads as litter.
+ * What makes a dropped coin catch the eye is that it turns, so each of these
+ * is a flipbook laid out left to right along one strip (see COIN_LAYOUT in
+ * TextureConfig.js): frame k is the coin rotated k/8 of a turn about its own
+ * vertical axis, so the face narrows to an edge and opens out again, with the
+ * milled edge slab drawn on whichever side is swinging away from the viewer.
+ *
+ * The three are told apart by value, so they are told apart by MASS as well as
+ * by colour: copper is the small one, silver is a full-width plain disc, and
+ * the gold is a broad piece with a stepped inner ring. At sprite scale that
+ * difference in outline survives where a difference in hue alone would not.
+ */
+function coinSheet(name, o) {
+  const F = 8, S = 32;                       // eight frames, 32px cells
+  const img = new Img(S * F, S, [0, 0, 0, 0]);
+  const [dark, mid, lite, hot] = o.pal;
+  const R = o.radius, cy = S / 2, thick = o.thick;
+  for (let f = 0; f < F; f++) {
+    const a = (f / F) * Math.PI * 2;
+    const cw = Math.abs(Math.cos(a)) * R;    // half-width of the face this frame
+    const cx = f * S + S / 2;
+    const edgeDir = Math.sin(a) >= 0 ? 1 : -1;
+    // The milled edge first, so the face is drawn over its near side. Its
+    // width is the SLAB seen at this angle — nothing face-on, the full
+    // thickness edge-on — which is what stops it reading as a bar bolted to
+    // the side of the coin at every frame.
+    const ew = Math.round(thick * Math.abs(Math.sin(a)));
+    for (let dy = -R; dy <= R && ew > 0; dy++) {
+      if (Math.abs(dy) > R - 0.5) continue;
+      const x0 = cx + edgeDir * cw - (edgeDir > 0 ? 0 : ew);
+      for (let t = 0; t < ew; t++) {
+        // knurling: every other pixel down the edge catches the light
+        img.set(Math.round(x0 + t), Math.round(cy + dy), (dy & 1) ? dark : mid);
+      }
+    }
+    for (let dy = -R; dy <= R; dy++) {
+      for (let dx = -Math.ceil(cw); dx <= cw; dx++) {
+        const u = cw < 0.5 ? 0 : dx / cw, v = dy / R;
+        const r2 = u * u + v * v;
+        if (r2 > 1) continue;
+        // Shading rides the FACE, not the screen: a light from the upper left
+        // plus a narrow bright band that sweeps across as the coin turns,
+        // which is what sells the spin when the outline alone is nearly
+        // symmetric between one frame and the next.
+        const lit = -u * 0.6 - v * 0.8;      // > 0 toward the upper left
+        let c = mid;
+        if (r2 > 0.9) c = dark;                                    // the rim's shadow
+        else if (r2 > 0.72) c = lit > -0.2 ? lite : dark;          // the raised rim, bevelled
+        else if (o.innerRing && r2 > 0.46 && r2 < 0.58) c = dark;  // the gold's step
+        else if (lit > 0.42) c = lite;
+        else if (lit < -0.5) c = dark;
+        if (Math.abs(u - Math.cos(a) * 0.5) < 0.1 && Math.abs(v) < 0.6) c = hot; // the glint
+        // the stamped mark: a cross of raised metal, squashed with the face
+        if (o.mark && ((Math.abs(u) < 0.4 && Math.abs(v) < 0.1) || (Math.abs(u) < 0.1 && Math.abs(v) < 0.4))) {
+          c = r2 < 0.04 ? hot : dark;
+        }
+        img.set(Math.round(cx + dx), Math.round(cy + dy), c);
+      }
+    }
+  }
+  img.outline(o.line);
+  save(name, img);
+}
+
+// copper: the common one. Small, dull, and the least of the three.
+coinSheet('coin_copper.png', {
+  radius: 9, thick: 2, mark: true,
+  pal: [[104, 54, 28], [156, 88, 44], [206, 128, 66], [242, 186, 128]],
+  line: [38, 20, 12, 255],
+});
+// silver: a full-width plain piece — no stamp, just a milled rim.
+coinSheet('coin_silver.png', {
+  radius: 12, thick: 3,
+  pal: [[92, 98, 104], [148, 154, 160], [198, 204, 210], [244, 248, 252]],
+  line: [30, 34, 38, 255],
+});
+// gold: the broad one, with a stepped inner ring and a struck mark.
+coinSheet('coin_gold.png', {
+  radius: 13, thick: 3, mark: true, innerRing: true,
+  pal: [[122, 82, 14], [180, 134, 30], [226, 182, 62], [255, 238, 156]],
+  line: [46, 30, 8, 255],
+});
 
 { // health pack
   const img = new Img(32, 32, [0, 0, 0, 0]);
@@ -2571,6 +2741,86 @@ foliage('hedge.png', 64, [[28, 52, 26], [36, 64, 30], [44, 76, 36], [54, 88, 42]
     y -= h;
   }
   save('chalk_hopscotch.png', img);
+}
+
+/* --- the vendor, and the gun it sells ------------------------------- */
+
+{ // The vendor's lacquered enamel casing: a fairground machine's paintwork,
+  // deep oxblood over steel, crazed where a century of weather got into it.
+  const img = new Img(64, 64);
+  const pal = [[58, 22, 24], [82, 30, 30], [104, 38, 36], [126, 48, 42]];
+  noiseFill(img, pal, 5101, { baseCell: 22, ditherAmp: 0.1 });
+  const rng = mulberry32(5102);
+  for (let i = 0; i < 26; i++) crack(img, rng, [44, 18, 18], 18);  // crazing in the lacquer
+  for (let i = 0; i < 30; i++) {                                   // chips down to primer
+    const x = Math.floor(rng() * 64), y = Math.floor(rng() * 64);
+    img.disc(x, y, 0.6 + rng() * 1.6, rng() < 0.5 ? [138, 126, 108] : [70, 62, 54]);
+  }
+  for (let x = 0; x < 64; x++) {                                   // the bead moulding
+    img.set(x, 2, [156, 74, 62]); img.set(x, 3, [40, 16, 16]);
+    img.set(x, 60, [156, 74, 62]); img.set(x, 61, [40, 16, 16]);
+  }
+  save('vendor_enamel.png', img);
+}
+
+{ // Polished brass for the vendor's fittings — the bezels, the coin throat,
+  // the armature collars. Wiped bright on the faces people touch, dull in the
+  // corners nobody has reached since it was installed.
+  const img = new Img(64, 64);
+  const pal = [[104, 76, 22], [148, 114, 36], [190, 154, 58], [226, 196, 108]];
+  noiseFill(img, pal, 5104, { baseCell: 12, ditherAmp: 0.18 });
+  const rng = mulberry32(5105);
+  for (let i = 0; i < 90; i++) {                                   // the polishing grain
+    const y = Math.floor(rng() * 64), len = 8 + rng() * 26, x0 = rng() * 64;
+    const c = rng() < 0.5 ? [214, 182, 96] : [116, 88, 30];
+    for (let t = 0; t < len; t++) img.set(Math.round(x0 + t), y, c);
+  }
+  for (let i = 0; i < 22; i++) img.disc(rng() * 64, rng() * 64, 0.8 + rng() * 1.4, [86, 66, 26]); // verdigris pitting
+  save('vendor_brass.png', img);
+}
+
+{ // The trade sign that hangs off the kiosk: a coin struck on a board. Word
+  // blocks rather than letters, the same way the shop fascia does it.
+  const img = new Img(64, 32, [0, 0, 0, 0]);
+  const pal = [[46, 34, 22], [58, 44, 28], [70, 54, 34]];
+  noiseFill(img, pal, 5107, { baseCell: 10, ditherAmp: 0.14 });
+  img.rectC(0, 0, 64, 2, [96, 76, 48]);
+  img.rectC(0, 30, 64, 2, [26, 20, 12]);
+  img.disc(13, 16, 8, [122, 90, 20]);                              // the struck coin
+  img.disc(13, 16, 6, [200, 162, 58]);
+  img.disc(13, 16, 3, [122, 90, 20]);
+  img.disc(11, 14, 1.6, [246, 226, 150]);                          // its highlight
+  for (const [wx, w] of [[26, 9], [38, 6], [47, 12]]) {            // the trade name
+    img.rectC(wx, 12, w, 8, [204, 178, 104]);
+    img.rectC(wx, 12, w, 2, [238, 220, 158]);
+  }
+  const rng = mulberry32(5108);
+  for (let i = 0; i < 34; i++) img.set(Math.floor(rng() * 64), Math.floor(rng() * 32), [88, 70, 44]);
+  save('sign_tokens.png', img);
+}
+
+{ // The sentry's armour: depot olive-drab over sheet steel, stencilled and
+  // chipped back to bare metal on every edge a hand ever grabbed.
+  const img = new Img(64, 64);
+  const pal = [[46, 52, 34], [58, 66, 42], [70, 78, 50], [84, 92, 60]];
+  noiseFill(img, pal, 5110, { baseCell: 20, ditherAmp: 0.12 });
+  const rng = mulberry32(5111);
+  for (const y of [10, 52]) {                                      // rolled panel seams
+    for (let x = 0; x < 64; x++) { img.set(x, y, [34, 38, 24]); img.set(x, y + 1, [96, 104, 70]); }
+  }
+  for (const [rx, ry] of [[8, 6], [56, 6], [8, 57], [56, 57], [32, 6], [32, 57]]) {
+    img.disc(rx, ry, 2, [40, 44, 30]);                             // fixing rivets
+    img.disc(rx, ry - 0.5, 1.2, [110, 116, 84]);
+  }
+  for (let i = 0; i < 5; i++) {                                    // the stencilled block
+    img.rectC(10 + i * 9, 26, 6, 11, [26, 30, 20]);
+    img.rectC(11 + i * 9, 28, 4, 7, [82, 90, 58]);
+  }
+  for (let i = 0; i < 44; i++) {                                   // paint off, bare steel under
+    const x = Math.floor(rng() * 64), y = Math.floor(rng() * 64);
+    img.disc(x, y, 0.5 + rng() * 1.5, [126, 130, 122]);
+  }
+  save('sentry_plate.png', img);
 }
 
 console.log(`Wrote ${files.length} textures to ${OUT_DIR}:`);

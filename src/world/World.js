@@ -11,6 +11,7 @@ import { Secrets } from './Secrets.js';
 import { Anomalies } from './Anomalies.js';
 import { CompanionCube } from './CompanionCube.js';
 import { Scarecrow } from './Scarecrow.js';
+import { TradingPost, TRADING_POST } from './TradingPost.js';
 import { deconflict, deconflictResolved, resolve } from './Materials.js';
 import { WorldBarrier } from './Boundary.js';
 
@@ -365,6 +366,7 @@ export class World {
     this.anomalies.update(dt, time, cameraPos);
     this.companionCube.update(dt);
     this.scarecrow.update(dt, time, cameraPos);
+    this.tradingPost?.update(dt, time);
     this._updateClock();
   }
 
@@ -526,6 +528,16 @@ export class World {
   }
 
   _planTerrain() {
+    // The trading post's pitch, levelled at the grade it stands on.
+    //
+    // It has to be registered HERE, with the pond and before the ground mesh
+    // is built, because a pad applied afterwards would displace ground that
+    // has already been drawn — and the knoll it sits on rolls enough that a
+    // 3.6 m counter dropped on raw terrain stands proud at one end. It is a
+    // small pad with a wide blend, so the clearing reads as ground somebody
+    // flattened by using it rather than as a shelf cut into a hill.
+    this.terrain.padAtGrade(TRADING_POST.x, TRADING_POST.z, 3.4, 2.8, 7);
+
     // The pond basin.
     //
     // The water level is taken from the ground that SURROUNDS the pond, not
@@ -1588,6 +1600,56 @@ export class World {
       prompt: 'Push the swing [E]',
       onInteract: () => this.events.emit('subtitle', {
         text: 'It goes higher, and comes back exactly as fast as it left.',
+      }),
+    });
+
+    this._tradingPost();
+  }
+
+  /**
+   * The trading post, in its clearing on the knoll — the district's one
+   * counter that still takes money, and the first one a run walks past.
+   *
+   * The dressing is what makes the site read as a PLACE rather than as a shed
+   * in a field: ground worn to dirt where feet have stood, a track up from the
+   * Main St footway, a ring of trees standing back off the clearing, and the
+   * things that accumulate around anywhere people queue. The dirt patch does
+   * double duty — the knoll's tree scatter (see _eastgateNature) refuses to
+   * plant on anything that is not grass, so laying it here is also what keeps
+   * the clearing clear when the trees go in afterwards.
+   */
+  _tradingPost() {
+    const P = this.props;
+    const { x, z } = TRADING_POST;
+    // the ground people have stood on, and the track they wore getting here
+    this._patch(x, z + 1.2, 4.2, 3.4, 'dirt', 'dirt', 5);
+    this._road([[57.5, -6.5], [59, -11], [60.5, -15]], 'gravel', 1.9, 'dirt');
+    this._decal('rubble', x + 3.1, z + 2.4, 2.2, 0.4);
+
+    this.tradingPost = new TradingPost(this).build();
+
+    // A ring of trees standing back off the clearing: this is the natural
+    // ground on the knoll, and the post is IN it rather than beside it.
+    for (const [tx, tz, s] of [
+      [x - 5.4, z - 3.2, 1.25], [x + 5.8, z - 2.6, 1.1], [x - 6.2, z + 3.4, 0.95],
+      [x + 6.4, z + 3.8, 1.15], [x - 1.4, z - 5.6, 1.3], [x + 2.6, z - 5.9, 1.05],
+    ]) this.veg.tree(this.group, tx, tz, s);
+    for (const [bx, bz, s] of [
+      [x - 4.2, z + 3.9, 1.1], [x + 4.6, z + 4.2, 0.95], [x - 3.6, z - 4.4, 0.9],
+    ]) this.veg.bush(this.group, bx, bz, s);
+    this._sprinkleTufts(x, z + 4.5, 6, 2.5, 22);
+
+    // What collects around a counter: a bench for the wait, a bin, a crate
+    // somebody stands on, and a notice nailed to the tree by the track.
+    this._prop(P.bench(), x - 3.4, z + 2.6, { yaw: 0.5 });
+    this._prop(P.trashCan(), x + 3.0, z + 1.6, { nav: false });
+    this._prop(P.crateStack(2), x - 4.0, z - 1.4, { yaw: 0.3 });
+    this._prop(P.noticeBoard(), x + 4.2, z - 0.6, { yaw: -0.9 });
+    this.addInteractable({
+      x: x + 4.2, z: z - 0.6, y: this.terrain.heightAt(x + 4.2, z - 0.6), radius: 2.0,
+      prompt: 'Read the price list [E]',
+      onInteract: () => this.events.emit('subtitle', {
+        text: 'PRICES AS MARKED. NO CREDIT. NO EXCEPTIONS. The last line has been scratched out and rewritten in the same hand.',
       }),
     });
   }

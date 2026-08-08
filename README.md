@@ -79,8 +79,10 @@ the desktop shell.
 | 1–6 | Pistol / Shotgun / Assault Rifle / Sniper / Bat / Alien Blaster (once found) |
 | Mouse wheel | Cycle weapons (also reveals the weapon menu) |
 | R | Reload |
-| E | Interact |
-| Esc | Pause / resume — or, at an arcade cabinet, step away from the machine |
+| E | Interact (talk to the vendor, pack up a deployed sentry) |
+| Tab | Satchel — click a sentry there to take it in hand |
+| LMB / RMB (sentry in hand) | Set it down / put it back in the satchel |
+| Esc | Pause / resume — or, at an arcade cabinet or the vendor's counter, step away from it |
 | ` / ~ | Dev console |
 
 The weapon menu is hidden during play; a number key or a mouse-wheel scroll
@@ -324,7 +326,11 @@ There is deliberately no command that touches the kill counter — the
   and WAVE (a smoked trefoil-decal tube that rages during a wave and blinks
   through a respite) — plus a green CRT message log with a phosphor refresh
   sweep, a mechanical HP odometer, **two separate ammo odometers — LOADED (in
-  the gun) and RESERVE (carried)** whose wheels tick as they roll, a damage
+  the gun) and RESERVE (carried)** whose wheels tick as they roll, a **TOKENS
+  counter** on the same wheels beside them (the purse belongs with the
+  ammunition, not with the score: it is a consumable you are carrying, and the
+  coin under it lifts and lights gold as it fills, knocks red when the vendor
+  refuses a price), a damage
   alarm lamp (a domed glass cabochon, the one warm mass on the whole
   chassis), a centre **player portrait** on a green CRT
   monitor, an AIM ON/OFF indicator (lit while scoped), a WEAPON panel (an
@@ -619,6 +625,74 @@ There is deliberately no command that touches the kill counter — the
   reference — pale chamfered corners, magenta seams, a pink heart plate on
   every face — waiting in a back room somewhere high-rise adjacent, throwing
   no light of its own. Take it; it stows in the satchel and stays with you.
+- **Tokens:** the horde carries coins, and the coins are the only money in
+  town. Each one is an eight-frame **spin** rather than a still disc, and the
+  three are told apart by mass and by ear as well as by colour — copper is a
+  small dull tick, silver rings a fifth above it, the gold has a tail on it.
+  The drop table (`src/systems/TokenDrops.js`) is the whole economy:
+
+  | Killed | Coin | Worth | Chance |
+  | --- | --- | --- | --- |
+  | Walker / Sprinter / Tank | copper | 5 | 15% |
+  | Spitter | gold | 10 | 5% |
+  | Exploder | silver | 20 | 10% |
+
+  The Exploder's coin is rolled **separately from its ammunition drop**, so a
+  bomber that took itself out — which by design leaves no sniper ammo — still
+  pays. The purse is a resource, not a score: it rides on the HUD console beside
+  the ammunition, it is written into the save and comes back with a resumed
+  session, and it **rolls back with a checkpoint** on death, so dying costs you
+  the shopping you had not done yet rather than handing you a windfall.
+- **The Shopkeeper, and the trading post.** Out on the Eastgate knoll, a short
+  walk in from the district gate, there is a break in the trees with a track
+  worn up to it and an open-fronted timber kiosk in the clearing: shingled shed
+  roof, plank counter with a brass nosing, a hanging trade sign and the only
+  working lamp on that stretch of road. Behind the counter is a **coin-operated
+  upper-torso animatronic** — a fairground fortune-teller crossed with a
+  frontier shopkeeper. Lacquered oxblood cabinet on cast feet, brass coin
+  throat, delivery tray, pressure dial and a lit marquee; rising out of it, a
+  half-figure in a waistcoat with a moustache, a pipe, a wide-brim hat and
+  lamps for eyes, jointed at the waist, shoulders, elbows, neck and jaw. It has
+  no legs and never had any. **Cabinet and figure together stand no taller than
+  your chest** — you look down at it.
+
+  It is a machine that noticed you. Its head tracks you the whole time it is
+  awake, and it does not have *an* idle: it dozes when the road is empty, wakes
+  and straightens up when you come up the track, and while it waits it cycles
+  through a set of behaviours — surveying the road, wiping the counter, winding
+  the key in its own side, drumming its fingers, nodding off and catching
+  itself — picking a different one each time so you never see the same gesture
+  twice running. It presents the wares while the shop is open, sweeps a hand to
+  the delivery tray on a sale, and shakes its head when it cannot be paid.
+
+  **The horde ignores it entirely.** Not "it is very tough" — invisible: a
+  zombie acquires the player first and otherwise the nearest thing on the shared
+  friendly roster, and the vendor is never put on that roster, so nothing senses
+  it, hunts it, swings at it, and an Exploder detonating at the counter cannot
+  touch it either.
+- **The shop.** [E] at the counter opens it: the machine live on the left,
+  turning on its own little stage (a real 3D render of the same rig, not a
+  picture of one), the goods on the right in bubbled bays, the till along the
+  foot. It freezes the street the way the satchel and the arcade do, and
+  **Escape puts you straight back in the game with the mouse** — never in front
+  of the pause menu. It sells a **Portable Sentry at 100 tokens, two only**;
+  **every ammunition type separately at 10** a crate; and carries one dead bay
+  at the bottom for whatever has not arrived yet.
+- **Portable Sentry:** a tripod auto-pistol that stows in the satchel. Click it
+  there and it comes up **into your hands** (the gun goes away — you cannot hold
+  a rifle and a tripod at once), and the ground ahead of you shows exactly where
+  it would go: a **green 180° wedge** of precisely the radius it will cover,
+  draped over the real terrain with a bubble wall standing on its boundary, and
+  a ghost of the machine facing the way you are. Green means the click lands,
+  red means the ground will not take it. Click to set it down; it kicks its legs
+  out, cycles its head once, and starts sweeping. It reaches **about twenty
+  feet** over a **180° arc centred on the way you were looking**, and it is a
+  pistol on a stand quite literally — the same damage and the same fire rate,
+  read off the pistol's own config, so it is never better than the gun in your
+  hand, just a second one that never looks away. Nothing targets it: it is off
+  the friendly roster too. Press [E] on a deployed one and it folds back into
+  the satchel. Sentries roll back with a checkpoint, standing again where they
+  stood.
 - **Secrets:** fifteen of them, found by shooting, interacting, standing,
   looking, or killing exactly the right number. The mannequin is watching.
   Eastgate holds four: a **treehouse** you cannot see the deck of from the
@@ -639,25 +713,31 @@ src/engine/         game loop, input, event bus
 src/ai/             NPC AI: senses (360° ring + memory), context steering,
                     shared navigator, behaviour arbiter, opt-in flag registry
 src/entities/       player, zombies, exploder, spitter, NPC, savable citizen,
-                    cockroach, pickups
+                    cockroach, shopkeeper (the vendor animatronic), the
+                    deployable sentry, pickups (ammo, health, keys, coins)
 src/weapons/        weapon configs + firing/ammo/hit resolution
 src/rendering/      renderer, texture pipeline, billboards, HUD (console bar +
                     Portrait CRT + HudTextures), 3D weapon view + PBR weapon
                     materials, effects, the arcade cabinets and the four
-                    machines in them (Arcade.js)
+                    machines in them (Arcade.js), the vendor rig + its
+                    animation state machine (VendorModel.js), the shop
+                    overlay (ShopUI.js), the sentry model (SentryModel.js)
 src/audio/          WebAudio synthesis (all sounds)
 src/world/          terrain, buildings, props, vegetation, zones, nav, secrets,
                     anomalies (cosmic-horror layer + dynamic props and
                     surfaces), companion cube, scarecrow (aware animated set
                     piece, its easter-egg chain and the crash site), sky
 src/systems/        score/win condition, waves, spawning, savable-citizen
-                    director, game state, inventory
+                    director, game state, inventory, tokens (currency +
+                    the coin drop table), sentries (carrying, placement
+                    preview, deployed turrets)
 src/engine/Shell.js desktop-shell bridge (detects the Electron launcher)
 launcher/           Windows desktop launcher (Electron): startup window,
                     harmonograph boot animation, isolated fullscreen game window
 tests/              headless AI tests (ai.mjs), NPC behaviour tests against the
-                    real world (npc-behavior.mjs), Playwright smoke test
-                    (boot, combat, exact win condition)
+                    real world (npc-behavior.mjs), the vendor/tokens/sentry
+                    suite (shop.mjs), Playwright smoke test (boot, combat,
+                    exact win condition)
 ```
 
 ## Extensibility
@@ -696,6 +776,18 @@ tests/              headless AI tests (ai.mjs), NPC behaviour tests against the
   fringe it leaves is un-matted — the art these sheets are drawn on is white, so
   every silhouette texel is part white, and solving that blend back to the art's
   own colour is what keeps sprites from wearing a light halo.
+- **New shop line:** add an object to `SHOP_STOCK` in
+  `src/rendering/ShopUI.js` — a price, how many the machine has, which bay it
+  sits in, and a `buy` that emits an ordinary `pickup`. That is the whole
+  contract: ammunition reaches the guns and the sentry reaches the satchel
+  through the same event everything else in the world is collected by, so the
+  till never needs to know which is which. Stock and payment are enforced in
+  one place (`Game._buy`), not in the button.
+- **New coin / drop rate:** the coin values live in `COINS`
+  (`src/systems/TokenSystem.js`) and who drops what, how often, in
+  `COIN_DROPS` (`src/systems/TokenDrops.js`), keyed by the archetype's own
+  name — a type nobody thought about drops nothing rather than quietly
+  inheriting someone else's rate.
 - **Regenerate textures:** `node scripts/generate_textures.mjs`.
 
 ## Performance
@@ -717,6 +809,7 @@ npm install playwright-core           # anywhere; NODE_PATH it if needed
 node tests/world.mjs
 node tests/npc-behavior.mjs
 node tests/weapons.mjs
+node tests/shop.mjs
 node tests/smoke.mjs [--screens]
 ```
 

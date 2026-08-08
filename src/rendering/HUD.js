@@ -436,6 +436,21 @@ export class HUD {
     this.resOdo.style.backgroundImage = `url(${this._tex.inset})`;
     this._el('div', null, resCol, 'cons-ammo-sub').textContent = 'RESERVE';
 
+    // --- TOKENS: what you are carrying to the vendor.
+    //
+    // It belongs HERE, in the meter bank beside the ammunition, because it is
+    // the same kind of number: a consumable you are carrying, that goes down
+    // when you spend it. Putting it on the KILLS device instead would file it
+    // under "score", which is exactly what it is not. It rides the dock's own
+    // transform, so it scales with everything else on narrow windows, and the
+    // dock's ResizeObserver re-fits the row when the count gains a digit.
+    const tokBox = this._el('div', null, meters, 'cons-meter cons-tokens');
+    this._el('div', null, tokBox, 'cons-meter-label').textContent = 'TOKENS';
+    this.tokenOdo = this._el('div', null, tokBox, 'odometer');
+    this.tokenOdo.style.backgroundImage = `url(${this._tex.inset})`;
+    this._odoDigits(this.tokenOdo, 0, 4);
+    this.tokenCoin = this._el('div', null, tokBox, 'cons-token-coin');
+
     // --- alarm lamp ---
     // There was a MAP key here. It was never wired to anything and there is no
     // map to open, so it was a control that lied about what the panel could
@@ -816,7 +831,19 @@ export class HUD {
     });
     on('player:heal', () => { this._heal = 0.5; });
     on('pickup', ({ label, amount, type }) => {
-      this.logMsg(type === 'key' ? `You pick up the ${label}.` : `You gather ${amount} ${label}.`, 'good');
+      if (type?.startsWith('coin_')) { this.logMsg(`${label} — into the purse.`, 'gold'); return; }
+      this.logMsg(type === 'key' || type === 'sentry' ? `You pick up the ${label}.`
+        : `You gather ${amount} ${label}.`, 'good');
+    });
+    // The till: the counter blips whenever the balance moves, and the coin
+    // beside it flashes gold on the way up, red when a price was refused.
+    on('tokens:changed', ({ tokens, delta }) => {
+      this._tokens = tokens;
+      if (delta) this._tokenFlash = delta > 0 ? 1 : -1;
+    });
+    on('tokens:refused', ({ needed }) => {
+      this._tokenFlash = -1;
+      this.logMsg(`Short by ${Math.max(0, needed - (this._tokens ?? 0))} tokens.`, 'warn');
     });
     on('secret:found', ({ label, count, total }) => {
       this.logMsg(`SECRET (${count}/${total}) — ${label}.`, 'gold');
@@ -1304,6 +1331,16 @@ export class HUD {
       }
       this.resOdo.classList.toggle('empty', cur.reserve === 0 && cur.mag === 0);
     }
+
+    // --- console: TOKENS. Four digits, because the purse is a purse and not a
+    // kill count; the coin beside it lights on the way in and on a refusal.
+    const tokens = Math.max(0, d.tokens ?? this._tokens ?? 0);
+    this._odoDigits(this.tokenOdo, Math.min(9999, tokens), 4);
+    this.tokenOdo.classList.toggle('empty', tokens === 0);
+    this._tokenFlash = (this._tokenFlash ?? 0) * Math.max(0, 1 - dt * 2.6);
+    const gained = this._tokenFlash > 0;
+    this.tokenCoin.classList.toggle('gain', gained && this._tokenFlash > 0.05);
+    this.tokenCoin.classList.toggle('deny', !gained && this._tokenFlash < -0.05);
 
     // --- console: SPRINT meter — vertical stamina cell that drains as the
     // player sprints and recharges otherwise (see Player stamina). ---

@@ -1804,3 +1804,173 @@ html, body {
   transition: opacity 0.12s;
 }
 .inv-slot.droppable:hover .inv-drop { opacity: 1; }
+
+/* ===================================================================
+   TOKENS — the till on the console bar
+   ===================================================================
+   Same well, same wheels, same amber as the ammunition beside it,
+   because it is the same kind of readout: a thing you are carrying
+   that goes down when you spend it. The coin under it is the only
+   part that moves — it lifts and lights gold when the count goes up,
+   and knocks red when the vendor refuses a price. */
+.cons-tokens { position: relative; }
+.cons-token-coin {
+  width: 13px; height: 13px; border-radius: 50%;
+  background: radial-gradient(circle at 34% 30%, #ffe8a8 0 18%, #e0b840 42%, #8a5c12 78%, #4a3208 100%);
+  box-shadow: inset -1px -1px 0 rgba(0,0,0,0.6), inset 1px 1px 0 rgba(255,240,190,0.5);
+  opacity: 0.55; transition: opacity 0.15s;
+}
+.cons-token-coin.gain { opacity: 1; animation: tokGain 0.42s ease-out; }
+.cons-token-coin.deny { opacity: 1; animation: tokDeny 0.34s steps(2, end) 2; filter: hue-rotate(-48deg) saturate(1.6); }
+@keyframes tokGain {
+  0% { transform: translateY(5px) scale(0.7); filter: brightness(2.4); }
+  100% { transform: none; filter: none; }
+}
+@keyframes tokDeny {
+  0%, 100% { transform: none; }
+  50% { transform: translateX(-3px); }
+}
+
+/* ===================================================================
+   THE SHOP — the vendor's counter
+   ===================================================================
+   The same instrument case as everything else: painted plate, corner
+   screws, sunk wells. Two halves — the machine on the left behind
+   glass, the goods on the right in bubbled bays — because that is how
+   you stand at a counter: the proprietor on one side, the stock on the
+   other, and the price between you. */
+#shop {
+  position: absolute; inset: 0; z-index: 58;
+  display: none; align-items: center; justify-content: center;
+  background: rgba(4, 6, 6, 0.86); pointer-events: auto;
+}
+.shop-case {
+  position: relative;
+  display: flex; flex-direction: column; gap: 10px;
+  padding: 14px 18px 12px;
+  width: min(1060px, 92vw); max-height: 92vh;
+  background-color: var(--fo-steel); background-image: var(--tex-steel);
+  border: 1px solid var(--fo-steel-lo); border-radius: var(--rad-case);
+  box-shadow: var(--bev-out), var(--deco-key),
+    inset 0 0 34px rgba(0,0,0,0.42), 0 10px 34px rgba(0,0,0,0.8);
+  animation: shopIn 0.26s cubic-bezier(0.2, 1.15, 0.4, 1) both;
+}
+@keyframes shopIn {
+  0% { opacity: 0; transform: translateY(16px) scale(0.985); filter: brightness(1.9); }
+  100% { opacity: 1; transform: none; filter: none; }
+}
+.shop-head {
+  display: flex; align-items: baseline; justify-content: space-between;
+  padding-bottom: 8px; border-bottom: 1px solid var(--fo-steel-lo);
+  box-shadow: 0 1px 0 rgba(190,188,150,0.18);
+}
+.shop-title {
+  font-size: 18px; letter-spacing: 6px; color: var(--fo-tan);
+  text-shadow: 0 1px 0 rgba(0,0,0,0.8);
+}
+.shop-sub { font-size: 10px; letter-spacing: 3px; color: var(--fo-tan-dim); }
+.shop-body { display: flex; gap: 14px; min-height: 0; }
+
+/* --- the left half: the machine, lit, behind glass --- */
+.shop-stage {
+  position: relative; flex: 0 0 auto; width: 300px;
+  background-color: var(--fo-recess); background-image: var(--tex-recess);
+  border: 1px solid #000; border-radius: var(--rad-bay);
+  box-shadow: var(--bev-in);
+  display: flex; align-items: flex-end; justify-content: center;
+  overflow: hidden;
+}
+.shop-vendor { display: block; width: 300px; height: 420px; max-height: 56vh; image-rendering: pixelated; }
+.shop-stage-glass {           /* the same tube glare the CRTs wear */
+  position: absolute; inset: 0; pointer-events: none;
+  background:
+    radial-gradient(ellipse at 50% 88%, rgba(255,190,110,0.16), transparent 62%),
+    linear-gradient(114deg, rgba(255,255,255,0.07), rgba(255,255,255,0.015) 34%, transparent 52%),
+    repeating-linear-gradient(0deg, rgba(0,0,0,0.22) 0 2px, transparent 2px 4px);
+}
+.shop-plate {
+  position: absolute; left: 8px; top: 8px;
+  font-size: 8px; letter-spacing: 3px; color: var(--fo-green-dim);
+}
+.shop-say {
+  position: absolute; left: 10px; right: 10px; bottom: 10px;
+  font-size: 11px; line-height: 1.35; letter-spacing: 1px;
+  color: var(--fo-green); text-shadow: 0 0 8px rgba(64,240,64,0.35), 0 1px 0 #000;
+  opacity: 0;
+}
+.shop-say.on { animation: shopSay 5.5s ease-out forwards; }
+@keyframes shopSay {
+  0% { opacity: 0; }
+  6% { opacity: 1; }
+  80% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+/* --- the right half: the goods, in bubbled bays --- */
+.shop-bays { flex: 1 1 auto; display: flex; flex-direction: column; gap: 8px; min-width: 0; overflow-y: auto; }
+.shop-bay {
+  padding: 6px 10px 8px;
+  background-color: var(--fo-steel-deep); background-image: var(--tex-steel-deep);
+  border: 1px solid var(--fo-steel-lo); border-radius: 14px;
+  box-shadow: var(--bev-out);
+}
+.shop-bay.bay-soon { opacity: 0.72; }
+.bay-head {
+  display: flex; align-items: baseline; justify-content: space-between;
+  margin-bottom: 7px; padding-bottom: 5px;
+  border-bottom: 1px solid rgba(0,0,0,0.5);
+  box-shadow: 0 1px 0 rgba(190,188,150,0.12);
+}
+.bay-title { font-size: 12px; letter-spacing: 4px; color: var(--fo-tan); }
+.bay-note { font-size: 8px; letter-spacing: 2px; color: var(--fo-tan-dim); }
+.bay-items { display: flex; flex-direction: column; gap: 5px; }
+
+/* one line of stock: icon, what it is, what it costs */
+.shop-item {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  padding: 4px 10px 4px 6px; text-align: left; cursor: pointer;
+  font-family: inherit;
+  background-color: var(--fo-recess); background-image: var(--tex-recess);
+  border: 1px solid #000; border-radius: 10px;
+  box-shadow: var(--bev-in);
+  transition: box-shadow 0.12s, filter 0.12s;
+}
+.shop-item:hover { box-shadow: var(--bev-in), inset 0 0 22px rgba(240,160,32,0.28); }
+.shop-item:active { filter: brightness(1.35); }
+.shop-icon { flex: 0 0 auto; width: 46px; height: 46px; image-rendering: pixelated; }
+.shop-item-text { display: flex; flex-direction: column; gap: 2px; flex: 1 1 auto; min-width: 0; }
+.shop-item-name { font-size: 13px; letter-spacing: 3px; color: var(--fo-tan); }
+.shop-item-blurb { font-size: 10px; letter-spacing: 0.5px; color: var(--fo-tan-dim); }
+.shop-item-buy { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; flex: 0 0 auto; }
+.shop-price {
+  font-size: 21px; font-weight: bold; color: var(--fo-amber);
+  text-shadow: 0 0 7px rgba(240,160,32,0.5);
+}
+.shop-stock { font-size: 8px; letter-spacing: 2px; color: var(--fo-green-dim); }
+/* what you cannot have, and why: too dear, sold out, or not stocked yet */
+.shop-item.poor { cursor: not-allowed; }
+.shop-item.poor .shop-price { color: var(--fo-red); text-shadow: 0 0 7px rgba(184,40,28,0.5); }
+.shop-item.out, .shop-item.locked { cursor: not-allowed; filter: saturate(0.3) brightness(0.8); }
+.shop-item.out .shop-stock, .shop-item.locked .shop-stock { color: var(--fo-red); }
+.shop-item.locked .shop-item-name { color: var(--fo-tan-dim); }
+
+/* --- the foot: the till, and the way out --- */
+.shop-foot {
+  display: flex; align-items: center; justify-content: space-between; gap: 20px;
+  padding: 6px 10px;
+  background-color: var(--fo-steel-deep); background-image: var(--tex-steel-deep);
+  border: 1px solid var(--fo-steel-lo); border-radius: var(--rad-bay);
+  box-shadow: var(--bev-out);
+  font-size: 10px; letter-spacing: 2px; color: var(--fo-tan);
+}
+.shop-till b {
+  font-size: 20px; letter-spacing: 1px; color: var(--fo-amber);
+  text-shadow: 0 0 8px rgba(240,160,32,0.55);
+}
+.shop-hint { font-size: 8px; letter-spacing: 3px; color: var(--fo-tan-dim); }
+
+@media (max-width: 900px) {
+  .shop-body { flex-direction: column; }
+  .shop-stage { width: 100%; }
+  .shop-vendor { width: 100%; height: 220px; }
+}

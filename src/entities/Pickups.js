@@ -1,21 +1,34 @@
 import * as THREE from '../../lib/three.module.js';
-import { ItemBillboard } from '../rendering/Billboard.js';
+import { ItemBillboard, FlipbookBillboard } from '../rendering/Billboard.js';
+import { COINS } from '../systems/TokenSystem.js';
 
 /**
- * World pickups: ammo boxes (per weapon type), health packs and quest keys.
- * Billboarded sprites that bob, chime on collection, and apply their payload
- * through events so no system references another directly.
+ * World pickups: ammunition (a distinct sprite per weapon type), health packs,
+ * quest keys and the coins the horde drops. Billboarded sprites that bob,
+ * chime on collection, and apply their payload through events so no system
+ * references another directly.
  *
  * Spawn sources: initial world loot, zombie drops, wave-respite supply
- * drops and secret caches — all via the 'loot:spawn' event.
+ * drops, coin drops and secret caches — all via the 'loot:spawn' event.
+ *
+ * The four ammunition types used to share one white box tinted four ways.
+ * They now carry their own art — see assets/textures/ammo_*.png — because a
+ * tint is a legend and a silhouette is a picture: you should know a case of
+ * sniper rounds from a box of shells by its shape across the street. Coins
+ * are `spin: true`, which swaps the still billboard for a flipbook.
  */
 const TYPES = {
-  ammo_pistol: { tex: 'ammoBox', tint: 0xd8d8a0, label: 'Pistol ammo' },
-  ammo_shotgun: { tex: 'ammoBox', tint: 0xe09858, label: 'Shotgun shells' },
-  ammo_rifle: { tex: 'ammoBox', tint: 0x9fc06a, label: 'Rifle ammo' },
-  ammo_sniper: { tex: 'ammoBox', tint: 0x88b8d8, label: 'Sniper rounds' },
+  ammo_pistol: { tex: 'ammoPistol', tint: null, label: 'Pistol ammo' },
+  ammo_shotgun: { tex: 'ammoShotgun', tint: null, label: 'Shotgun shells' },
+  ammo_rifle: { tex: 'ammoRifle', tint: null, label: 'Rifle ammo' },
+  ammo_sniper: { tex: 'ammoSniper', tint: null, label: 'Sniper rounds' },
   health: { tex: 'healthPack', tint: null, label: 'Health pack' },
   key: { tex: 'key', tint: null, label: 'Rusty key' },
+  // the currency, defined once in TokenSystem so the coin's value, its sprite
+  // and its drop roll can never disagree about which coin is which
+  ...Object.fromEntries(Object.entries(COINS).map(([type, c]) => [
+    type, { tex: c.tex, tint: null, label: c.label, spin: true, size: c.size },
+  ])),
 };
 const PICKUP_RADIUS = 1.3;
 // Interior furniture (drawers, cabinets, lockers) registers many more loot
@@ -40,7 +53,10 @@ export class PickupManager {
       this.scene.remove(oldest.bb.mesh);
       oldest.bb.dispose();
     }
-    const bb = new ItemBillboard(this.texLib.get(def.tex), 0.55, def.tint);
+    const size = def.size ?? 0.55;
+    const bb = def.spin
+      ? new FlipbookBillboard(this.texLib.get(def.tex), size)
+      : new ItemBillboard(this.texLib.get(def.tex), size, def.tint);
     const groundY = y ?? this.world.groundHeightFor(x, z, 1e9);
     bb.mesh.position.set(x, groundY + 0.45, z);
     bb.baseY = groundY + 0.45;

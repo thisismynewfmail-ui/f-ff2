@@ -1,6 +1,7 @@
 import * as THREE from '../../lib/three.module.js';
 import { buildWeaponModel } from '../weapons/WeaponModels.js';
 import { WEAPON_CONFIGS } from '../weapons/WeaponConfigs.js';
+import { buildSentryModel } from './SentryModel.js';
 
 /**
  * First-person 3D weapon viewmodel.
@@ -29,6 +30,9 @@ import { WEAPON_CONFIGS } from '../weapons/WeaponConfigs.js';
  *
  * Interface mirrors the old sprite ViewModel: update(dt, player, weaponMgr).
  */
+/** Where a carried deployable sits in the first-person frame at rest. */
+const HELD_REST = { pos: new THREE.Vector3(0.11, -0.15, -0.46), rot: [0.30, 0.55, 0.05] };
+
 export class WeaponView {
   constructor(events, renderer, texLib) {
     this.events = events;
@@ -56,6 +60,7 @@ export class WeaponView {
 
     this._buildFlash(texLib);
     this._buildDebris();
+    this._buildHeldItem(texLib);
 
     // animation state
     this.t = 0;
@@ -69,6 +74,7 @@ export class WeaponView {
     this.swayX = 0; this.swayY = 0;
     this._lastYaw = 0; this._lastPitch = 0;
     this.scoped = false;
+    this.playing = false;    // set from 'state:change'; see _syncVisible
     this.reloadEnv = 0;
     this._reloadF = 0;       // previous frame's reload fraction (eject timing)
     this._ejectTimers = [];  // scheduled debris throws
@@ -212,16 +218,64 @@ export class WeaponView {
     }
   }
 
+  /**
+   * The two-handed carry pose for a deployable.
+   *
+   * A sentry taken out of the satchel is a real object in the player's hands,
+   * not an abstract "placement mode", so it is built here on the same overlay
+   * the guns live on: cradled low and centred, tipped back so you are looking
+   * at the top of the machine the way you would if you were carrying one.
+   * The gun is put away while it is up (see _syncVisible), because you cannot
+   * hold a rifle and a tripod at once.
+   */
+  _buildHeldItem(texLib) {
+    this.held = new THREE.Group();
+    this.held.visible = false;
+    this.holdingItem = false;
+    this.heldRaise = 1;                  // 1 = down/away, 0 = up in frame
+    const rig = buildSentryModel(texLib);
+    // The model already carries its world scale, so the carry copy scales it
+    // DOWN from that rather than setting an absolute size — resize the sentry
+    // and the thing in your hands is still the same object.
+    rig.group.scale.multiplyScalar(0.26);
+    rig.group.position.set(0, -0.10, 0);
+    // Folded for carrying: legs in, head straight, exactly how it comes out
+    // of the bag — the legs only kick out once it is standing on the ground.
+    for (const leg of rig.parts.legs) leg.group.rotation.x = 0.06;
+    rig.parts.body.position.y = 0.10;
+    this.heldRig = rig;
+    this.held.add(rig.group);
+    // Rest pose, and it has to be INSIDE the frustum: the overlay camera is a
+    // 52° lens, so at half a metre out the frame is only about 0.24 m tall
+    // from the middle — park it much below that and the whole carry animation
+    // plays off the bottom of the screen where nobody can see it.
+    this.held.position.copy(HELD_REST.pos);
+    this.held.rotation.set(...HELD_REST.rot);
+    this.root.add(this.held);
+  }
+
+  /** One place decides whether the overlay draws, and what is on it. */
+  _syncVisible() {
+    this.root.visible = this.playing && !this.scoped;
+    this.held.visible = this.holdingItem;
+  }
+
   _wire() {
     this.events.on('state:change', ({ next }) => {
-      this.root.visible = next === 'playing' && !this.scoped;
+      this.playing = next === 'playing';
+      this._syncVisible();
     });
     this.events.on('weapon:switch', ({ weapon }) => { this.swapTo = weapon.config.id; });
     this.events.on('weapon:fire', ({ weapon, alt }) => this._onFire(weapon, alt));
     this.events.on('weapon:reload:start', () => { this._reloadF = 0; });
     this.events.on('scope', ({ on }) => {
       this.scoped = on;
-      this.root.visible = !on;
+      this._syncVisible();
+    });
+    // A deployable came up into the hands (or went back in the bag).
+    this.events.on('sentry:hold', ({ on }) => {
+      this.holdingItem = !!on;
+      this._syncVisible();
     });
   }
 
@@ -271,6 +325,22 @@ export class WeaponView {
     if (this.camera.aspect !== this.renderer.camera.aspect) {
       this.camera.aspect = this.renderer.camera.aspect;
       this.camera.updateProjectionMatrix();
+    }
+
+    // --- a deployable in the hands stows the gun entirely ---
+    if (this.holdingItem) {
+      this._updateHeld(dt, player);
+      if (this.rigs[this.currentId]) this.rigs[this.currentId].group.visible = false;
+      this._heldStowed = true;
+      this.equip = 1;            // so the gun RAISES again when the hands are free
+      this.flash.visible = false;
+      this._updateDebris(dt);
+      return;
+    }
+    if (this._heldStowed) {
+      this._heldStowed = false;
+      if (this.rigs[this.currentId]) this.rigs[this.currentId].group.visible = true;
+      this.heldRaise = 1;
     }
 
     const weapon = weaponManager.current;
@@ -371,6 +441,41 @@ export class WeaponView {
     // --- muzzle flash + flying brass ---
     this._updateFlash(dt, rig);
     this._updateDebris(dt);
+  }
+
+  /**
+   * Carry animation for the held deployable: it comes up out of the bag, then
+   * rides the player's stride. Heavier and slower than a weapon — it is an
+   * armful of steel, so the bob is bigger, the sway lags further behind the
+   * look, and it tips gently as if it were being kept level.
+   */
+  _updateHeld(dt, player) {
+    this.heldRaise = Math.max(0, this.heldRaise - dt * 4.5);
+    const e = this.heldRaise * this.heldRaise;
+    const bx = Math.cos(player.bobPhase) * player.bobAmp * 0.9;
+    const by = Math.abs(Math.sin(player.bobPhase)) * player.bobAmp * 1.2;
+
+    let dYaw = player.yaw - this._lastYaw;
+    let dPitch = player.pitch - this._lastPitch;
+    this._lastYaw = player.yaw; this._lastPitch = player.pitch;
+    if (dYaw > Math.PI) dYaw -= Math.PI * 2; else if (dYaw < -Math.PI) dYaw += Math.PI * 2;
+    this.swayX += (THREE.MathUtils.clamp(dYaw * 4, -0.16, 0.16) - this.swayX) * Math.min(1, dt * 7);
+    this.swayY += (THREE.MathUtils.clamp(dPitch * 4, -0.16, 0.16) - this.swayY) * Math.min(1, dt * 7);
+
+    const r = HELD_REST;
+    this.held.position.set(
+      r.pos.x + bx + this.swayX,
+      r.pos.y - by + this.swayY - e * 0.34 + Math.sin(this.t * 1.3) * 0.006,
+      r.pos.z + e * 0.12,
+    );
+    this.held.rotation.set(
+      r.rot[0] + e * 0.55 - this.swayY * 0.7,
+      r.rot[1] + this.swayX * 0.8 + Math.sin(this.t * 0.8) * 0.02,
+      r.rot[2] + e * 0.3 + Math.sin(this.t * 1.05) * 0.015,
+    );
+    // its own dish keeps turning in your hands, and the lamp idles amber
+    this.heldRig.parts.dish.rotation.y += dt * 1.2;
+    this.heldRig.parts.lampMat.emissive.setRGB(0.42, 0.3, 0.05);
   }
 
   /** Three-phase recoil: windup, kickback, recovery. */
