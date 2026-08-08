@@ -1,6 +1,7 @@
 import * as THREE from '../../lib/three.module.js';
 import { local2world, mergeStatic, mulberry32 } from './Buildings.js';
-import { MACHINES, MACHINE_IDS, marqueeArt, screenArt } from '../rendering/Arcade.js';
+import { MACHINES, MACHINE_IDS, marqueeArt, screenSheet, sideArt, cabinetSkin }
+  from '../rendering/Arcade.js';
 
 /**
  * Interior population: furniture, equipment, loot containers, spawn points
@@ -81,12 +82,13 @@ export function officePartitions(w, d, door) {
 }
 
 /** A canvas as a nearest-neighbour texture — the arcade's marquee and tube art. */
-function retroCanvas(cv) {
+function retroCanvas(cv, { repeat = null } = {}) {
   const t = new THREE.CanvasTexture(cv);
   t.magFilter = THREE.NearestFilter;
   t.minFilter = THREE.NearestFilter;
   t.generateMipmaps = false;
   t.colorSpace = THREE.SRGBColorSpace;
+  if (repeat) { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(repeat, repeat); }
   t.needsUpdate = true;
   return t;
 }
@@ -553,17 +555,25 @@ export class InteriorKit {
    * texture and its own flicker phase.
    */
   arcadeCab(id) {
-    const m = MACHINES[id];
     const g = new THREE.Group();
-    const body = this.P.box(0.72, 1.75, 0.8, this.P.colorMat(m.body));
+    const body = this.P.box(0.72, 1.75, 0.8, this._cabSkin(id));
     body.position.y = 0.88;
-    // swept side art panels, so the flanks are not one flat colour
+    // PRINTED side art, not a coloured slab: deco rays, the title running up
+    // the flank, and the paint kicked off along the bottom edge. Planes rather
+    // than boxes for the same reason the marquee is one — P.box rescales UVs
+    // by physical size, which would crop the artwork instead of fitting it.
     for (const sx of [-1, 1]) {
-      const art = this.P.box(0.02, 1.1, 0.66, this.P.colorMat(m.trim));
-      art.position.set(sx * 0.365, 1.0, -0.02);
+      const art = new THREE.Mesh(new THREE.PlaneGeometry(0.66, 1.1), this._sideArtMat(id));
+      art.position.set(sx * 0.363, 1.0, -0.02);
+      // Yaw alone is enough, and a scale flip is actively wrong: turning the
+      // plane to face out already carries its U axis round with it, so
+      // mirroring on top of that reverses the printing and the title comes out
+      // backwards on one flank.
+      art.rotation.y = sx * Math.PI / 2;
       g.add(art);
     }
-    const screen = new THREE.Mesh(new THREE.PlaneGeometry(0.55, 0.42), this._screenFace(id));
+    const face = this._screenFace(id);
+    const screen = new THREE.Mesh(new THREE.PlaneGeometry(0.55, 0.42), face.mat);
     screen.position.set(0, 1.35, 0.412);
     const hood = this.P.box(0.62, 0.06, 0.1, this.P.colorMat(0x14161a));   // glare hood
     hood.position.set(0, 1.6, 0.44);
@@ -594,7 +604,7 @@ export class InteriorKit {
       btn.position.set(0.02 + i * 0.08, 1.0, 0.48);
       g.add(btn);
     }
-    return { group: g, collide: [0.38, 0.9, 0.45], live: true, machine: id };
+    return { group: g, collide: [0.38, 0.9, 0.45], live: true, machine: id, flip: face.flip };
   }
 
   /** The lit marquee: this machine's title, on its own flicker phase. */
@@ -605,12 +615,42 @@ export class InteriorKit {
     return mat;
   }
 
-  /** The tube: a real frame of the machine's own game, flickering. */
+  /**
+   * The tube: the machine's own game, PLAYING.
+   *
+   * Four frames of its attract loop live in one 2x2 atlas, and the world's
+   * existing flipbook driver walks them in order on a slow beat — so a cabinet
+   * across the room reads as something running rather than as a lit still. The
+   * tube flicker rides on top of it on its own phase, so a machine dying takes
+   * its picture with it.
+   */
   _screenFace(id) {
-    const tex = this._mat('screenTex:' + id, () => retroCanvas(screenArt(id)));
+    const tex = this._mat('screenSheet:' + id, () => retroCanvas(screenSheet(id)));
+    tex.repeat.set(0.5, 0.5);
+    tex.offset.set(0, 0.5);
     const mat = new THREE.MeshBasicMaterial({ map: tex, color: 0xffffff });
+    // The flip entry is handed back so _cabinet can stamp the cabinet's world
+    // position on it once it is placed — that is what lets the attract bleep
+    // come from the machine rather than from nowhere.
+    const flip = this.w._animateMat(null, 'flip', {
+      map: tex, cols: 2, rows: 2, rate: 0.34 + Math.random() * 0.1, frame: 0, steady: true, sound: id,
+    });
     this.w._animateMat(mat, 'tube', { r: 1, g: 1, b: 1, hi: 0.9, lo: 0.16, duty: 0.9, rate: 0.5 + Math.random() });
-    return mat;
+    return { mat, flip };
+  }
+
+  /** Painted sheet steel, tiled over the cabinet body. */
+  _cabSkin(id) {
+    return this._mat('cabSkin:' + id, () => new THREE.MeshLambertMaterial({
+      map: retroCanvas(cabinetSkin(id), { repeat: 4 }),
+    }));
+  }
+
+  /** The printed flank. Double-sided so the mirrored copy still shows. */
+  _sideArtMat(id) {
+    return this._mat('cabArt:' + id, () => new THREE.MeshLambertMaterial({
+      map: retroCanvas(sideArt(id)), side: THREE.DoubleSide,
+    }));
   }
 
   displayStand() {
@@ -1787,6 +1827,9 @@ export class InteriorKit {
     const g = this._put(b, cab, lx, lz, { yaw });
     if (!g) return null;
     g.userData.cab = id;
+    // now the cabinet has a place in the world, the attract loop can be heard
+    // from it — and culled by distance like every other surface animation
+    if (cab.flip) { cab.flip.x = g.position.x; cab.flip.z = g.position.z; }
     const reach = 0.75;
     const px = g.position.x + Math.sin(g.rotation.y) * reach;
     const pz = g.position.z + Math.cos(g.rotation.y) * reach;

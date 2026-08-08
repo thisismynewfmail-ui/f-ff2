@@ -371,14 +371,25 @@ export class Anomalies {
         // A flipbook of static frames. Cells step in order rather than at
         // random: a dead set rolls, and a roll you can follow for a second or
         // two before it breaks up is far more like a television than noise.
+        //
+        // `steady` turns that off: an arcade cabinet's attract loop is a real
+        // machine running its own game, so it steps one frame at a fixed beat.
+        // A dropped cell there reads as the loop stuttering, not as reception.
         a.t -= dt;
         if (a.t > 0) continue;
-        a.t = a.rate * (0.7 + Math.random() * 0.6);
-        a.frame = (a.frame + (Math.random() < 0.14 ? 2 : 1)) % (a.cols * a.rows);
+        a.t = a.steady ? a.rate : a.rate * (0.7 + Math.random() * 0.6);
+        a.frame = (a.frame + (!a.steady && Math.random() < 0.14 ? 2 : 1)) % (a.cols * a.rows);
         a.map.offset.set(
           (a.frame % a.cols) / a.cols,
           1 - (Math.floor(a.frame / a.cols) + 1) / a.rows,
         );
+        // A cabinet's attract noise comes off the SAME beat that steps its
+        // picture, so the machine you can hear is the machine you can see
+        // doing it. Every other frame, or four cabinets in one room turn into
+        // a wall of bleeping.
+        if (a.sound && (a.frame & 1) === 0) {
+          this.w.events.emit('arcade:attract', { pos: { x: a.x, z: a.z }, id: a.sound });
+        }
       } else if (a.kind === 'tube') {
         // Strike, hold, drop out. The hold is not steady either — mains hum
         // rides on top of it at a rate you register without being able to see.

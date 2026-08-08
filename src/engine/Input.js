@@ -47,6 +47,17 @@ const MOUSE_BASELINE_FLOOR = 8;
 const LOCK_SETTLE_MS = 150;
 // How often an outstanding pointer-lock request is retried.
 const LOCK_RETRY_MS = 260;
+// ...and how often while a grab is URGENT — the moment after an overlay closes,
+// when the player expects to be back in the game and instead has a cursor. The
+// browser may refuse for up to a second or so after an Escape (Chromium arms a
+// cooldown when the user leaves a lock, and Escape grants no fresh activation
+// of its own), so the only thing that helps is asking again the instant it is
+// allowed rather than four times a second.
+const LOCK_URGENT_RETRY_MS = 100;
+const LOCK_URGENT_MS = 2500;   // how long that faster cadence lasts
+// How long a lock must survive before it counts as the player being back at
+// the controls rather than the browser handing one over mid-refusal.
+const LOCK_SETTLED_MS = 1000;
 // Final backstop on what one frame may turn the view by: 1430 px is a full
 // 180° at default sensitivity, and nobody spins on the spot inside a single
 // frame. The per-event guard above is what actually catches spikes; this only
@@ -71,12 +82,38 @@ export class Input {
     this.lockWanted = false;     // the game wants the pointer (see requestPointerLock)
     this.lockReleased = true;    // ...and has explicitly given it up since
     this._lastLockTry = 0;
+    this._urgentUntil = 0;       // retry hard until this timestamp (see LOCK_URGENT_MS)
+    // True from an Escape the PAGE received until a lock has SURVIVED long
+    // enough to count as the player being back at the controls. The browser
+    // eats the Escape keydown whenever it is holding the pointer — that
+    // keypress is how you leave a lock — so an Escape that reaches the page is
+    // proof the pointer was already free, which makes everything that follows
+    // it our own plumbing rather than the player asking to pause. Game leans
+    // on this; see onPointerLockChange there.
+    this.escapeGrab = false;
+    this._settledTimer = null;
     this.onPointerLockChange = null;
     this.suppressed = false; // true while the dev console owns the keyboard
     // Live action → code map (rebindable in Settings). Seeded with the defaults
     // so movement works before any saved settings are applied.
     this.bindings = { ...DEFAULT_BINDINGS };
     this._boundCodes = new Set(Object.values(this.bindings));
+
+    /**
+     * Note every Escape the page actually receives — capture phase, and first,
+     * because the overlays stop Escape dead in their own capture handlers and
+     * this has to see it anyway.
+     *
+     * The reason this is worth recording: the browser EATS the Escape keydown
+     * when it is holding the pointer, since that keypress is how you leave a
+     * lock. So an Escape that reaches the page is proof the pointer was
+     * already free — which makes any unlock that follows it our own plumbing
+     * (an overlay closing and grabbing the pointer back), not the player
+     * asking to pause. Game leans on exactly that; see onPointerLockChange.
+     */
+    document.addEventListener('keydown', (e) => {
+      if (e.code === 'Escape') this.escapeGrab = true;
+    }, true);
 
     document.addEventListener('keydown', (e) => {
       // Any gesture is a chance to get an outstanding lock back.
@@ -90,6 +127,10 @@ export class Input {
     window.addEventListener('blur', () => this.keys.clear());
 
     document.addEventListener('mousemove', (e) => {
+      // A player who has just been handed a loose cursor moves it before they
+      // do anything else, so this is the earliest gesture there is to hang a
+      // retry on — and a gesture is exactly what a refusing browser wants.
+      if (this.lockPending) this._tryLock();
       if (!this.pointerLocked || this.suppressed) return;
       const dx = e.movementX || 0, dy = e.movementY || 0;
       if (this._isMouseSpike(dx, dy)) return;
@@ -122,7 +163,18 @@ export class Input {
       // captured under it and no outstanding intent to correct it. Hand it
       // straight back; the second change event reports the real state.
       if (this.pointerLocked && this.lockReleased) { document.exitPointerLock(); return; }
-      if (this.pointerLocked) { this.lockWanted = false; this._settleMouse(); }
+      if (this.pointerLocked) {
+        this.lockWanted = false;
+        this._settleMouse();
+        // Clear the Escape-grab on a lock that KEEPS, not on one that merely
+        // arrives. Measuring the lock's length after the fact instead means
+        // guessing a threshold, and a browser that dawdles over its refusal
+        // walks straight through any threshold you pick.
+        clearTimeout(this._settledTimer);
+        this._settledTimer = setTimeout(() => {
+          if (this.pointerLocked) this.escapeGrab = false;
+        }, LOCK_SETTLED_MS);
+      }
       this.onPointerLockChange?.(this.pointerLocked);
     });
     // A refused request is reported here on older engines. Nothing to do but
@@ -172,7 +224,7 @@ export class Input {
    * player does anything, since a real gesture is what the stricter engines
    * want. It stops the moment the lock lands or the game gives up wanting it.
    */
-  requestPointerLock() {
+  requestPointerLock({ urgent = false } = {}) {
     // Already holding it: the request is satisfied on arrival. Leaving the
     // intent standing here would be worse than useless — Game treats a live
     // intent as "an unlock event is our own doing, ignore it", so a resume
@@ -181,6 +233,7 @@ export class Input {
     if (this.pointerLocked) { this.lockWanted = false; return; }
     this.lockWanted = true;
     this.lockReleased = false;
+    if (urgent) this._urgentUntil = performance.now() + LOCK_URGENT_MS;
     this._tryLock();
   }
 
@@ -194,12 +247,16 @@ export class Input {
    *  what the HUD's "click to look" hint is driven from. */
   get lockPending() { return this.lockWanted && !this.pointerLocked; }
 
+
   _tryLock(force = false) {
     if (!this.lockWanted || this.pointerLocked || !this.element) return;
     const now = performance.now();
     // Throttled: a refused request logs in the console, and asking sixty times
-    // a second turns one refusal into a wall of them.
-    if (!force && now - this._lastLockTry < LOCK_RETRY_MS) return;
+    // a second turns one refusal into a wall of them. An urgent grab asks much
+    // more often, because there the cost of waiting is the player sitting in
+    // the game unable to look around.
+    const gap = now < this._urgentUntil ? LOCK_URGENT_RETRY_MS : LOCK_RETRY_MS;
+    if (!force && now - this._lastLockTry < gap) return;
     this._lastLockTry = now;
     try {
       const p = this.element.requestPointerLock();

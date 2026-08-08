@@ -27,7 +27,7 @@ const NOTICE_CPS = 46;
  *     the panel's left edge (the old left vacuum-tube bank is gone; the
  *     right bank carries the console's remaining glass)
  *   - mechanical HP and AMMO odometer counters whose wheels tick as they roll
- *   - a red alarm lamp (pulses on damage) and a MAP lamp
+ *   - a red alarm lamp (pulses on damage), the one warm mass on the chassis
  *   - the centre PLAYER PORTRAIT in a green CRT monitor (see Portrait.js —
  *     health-driven head with a well-spaced look-around idle above 50% HP)
  *   - an AIM ON/OFF indicator (lit while the sniper scope is up)
@@ -436,11 +436,12 @@ export class HUD {
     this.resOdo.style.backgroundImage = `url(${this._tex.inset})`;
     this._el('div', null, resCol, 'cons-ammo-sub').textContent = 'RESERVE';
 
-    // --- alarm lamp + MAP lamp ---
+    // --- alarm lamp ---
+    // There was a MAP key here. It was never wired to anything and there is no
+    // map to open, so it was a control that lied about what the panel could
+    // do; the lamp beside it is the whole cluster now.
     const lamps = this._el('div', 'cons-lamps', bar);
     this.alarmLamp = this._el('div', null, lamps, 'cons-lamp alarm');
-    this.mapLamp = this._el('div', null, lamps, 'cons-lamp map');
-    this.mapLamp.textContent = 'MAP';
 
     // --- centre portrait monitor ---
     const mon = this._el('div', 'cons-monitor', bar);

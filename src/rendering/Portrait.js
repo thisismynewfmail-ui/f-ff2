@@ -15,6 +15,14 @@
  *
  * Only the >50% band animates, exactly because the lower-health heads have no
  * left/right variants.
+ *
+ * On top of the pose, the TUBE itself is alive. A monitor feed that holds
+ * perfectly still reads as a photograph pasted behind glass, so the tube gets
+ * the four artefacts a real one has, all of them deliberately faint: a retrace
+ * band drifting down the screen, scanlines that crawl rather than sit, a slow
+ * breath in the phosphor glow, and — rarely — a sync tick that snaps the
+ * picture sideways for a frame or two and brightens as it recovers. None of it
+ * is allowed to obscure the face; it is there to make the face look LIVE.
  */
 import { assetUrl } from './assetUrl.js';
 
@@ -41,6 +49,10 @@ export class Portrait {
 
     this._t = 0;
     this._hpFrac = 1;
+    // the tube's own life (see _render): retrace drift and the next sync tick
+    this._roll = Math.random();
+    this._syncIn = 6 + Math.random() * 8;
+    this._syncFor = 0;
 
     for (const [name, url] of Object.entries(SRC)) {
       const img = new Image();
@@ -56,6 +68,14 @@ export class Portrait {
   /** Advance the idle glance timer (only meaningful above 50% HP). */
   update(dt) {
     this._t += dt;
+    // the retrace band drifts down the tube once every ~6.5s, forever
+    this._roll = (this._roll + dt / 6.5) % 1;
+    // ...and every so often the picture loses sync for a couple of frames
+    if (this._syncFor > 0) this._syncFor -= dt;
+    else if ((this._syncIn -= dt) <= 0) {
+      this._syncFor = 0.09 + Math.random() * 0.08;
+      this._syncIn = 7 + Math.random() * 11;
+    }
     if (this._hpFrac > 0.5) {
       if (this._glanceHold > 0) {
         this._glanceHold -= dt;
@@ -83,10 +103,18 @@ export class Portrait {
 
   _render() {
     const c = this.ctx, W = this.canvas.width, H = this.canvas.height;
+    const t = this._t;
+    // The tube breathes: the phosphor glow swells and settles on two beats
+    // that do not divide into each other, so it never looks like a loop.
+    const breath = 1 + 0.05 * Math.sin(t * 1.7) + 0.03 * Math.sin(t * 0.63 + 1.2);
+    // A sync tick throws the picture sideways and floods the gun for an
+    // instant. `slip` is 1 at the start of the tick and eases out.
+    const slip = this._syncFor > 0 ? this._syncFor / 0.17 : 0;
+
     // CRT background — a dark green tube with a soft central glow
     const glow = this._hpFrac <= 0.25 ? '#3a1414' : this._hpFrac <= 0.5 ? '#3a3410' : '#14361c';
     const base = this._hpFrac <= 0.25 ? '#160707' : '#08160c';
-    const g = c.createRadialGradient(W / 2, H * 0.46, H * 0.1, W / 2, H * 0.5, H * 0.8);
+    const g = c.createRadialGradient(W / 2, H * 0.46, H * 0.1 * breath, W / 2, H * 0.5, H * 0.8);
     g.addColorStop(0, glow); g.addColorStop(1, base);
     c.fillStyle = g; c.fillRect(0, 0, W, H);
 
@@ -95,7 +123,10 @@ export class Portrait {
       // draw the keyed head centred, head-and-shoulders crop
       const scale = (W / head.width) * 1.18;
       const dw = head.width * scale, dh = head.height * scale;
-      const dx = (W - dw) / 2, dy = H - dh + H * 0.06;
+      // a hair of horizontal wander, plus the sync tick when one is running
+      const wander = Math.sin(t * 0.83) * 0.5 + Math.sin(t * 0.31 + 2.1) * 0.35;
+      const dx = (W - dw) / 2 + wander + slip * 3.5;
+      const dy = H - dh + H * 0.06;
       c.imageSmoothingEnabled = true;
       c.globalAlpha = 0.98;
       c.drawImage(head, dx, dy, dw, dh);
@@ -112,11 +143,24 @@ export class Portrait {
       c.textAlign = 'center'; c.fillText('◌', W / 2, H * 0.58);
     }
 
-    // scanlines
+    // Scanlines that CRAWL. One pixel of phase drift is the difference
+    // between a tube that is scanning and a texture of stripes.
+    const phase = Math.floor(t * 5) % 3;
     c.fillStyle = 'rgba(0,0,0,0.22)';
-    for (let y = 0; y < H; y += 3) c.fillRect(0, y, W, 1);
-    // flicker + vignette
-    c.fillStyle = `rgba(120,255,160,${0.02 + 0.015 * Math.sin(this._t * 9)})`;
+    for (let y = -3 + phase; y < H; y += 3) if (y >= 0) c.fillRect(0, y, W, 1);
+
+    // The retrace band: a soft bright seam sliding down the picture. Kept
+    // under 5% so it reads as the tube working, not as a wipe.
+    const by = (this._roll * (H + 26)) - 13;
+    const band = c.createLinearGradient(0, by - 9, 0, by + 9);
+    band.addColorStop(0, 'rgba(150,255,180,0)');
+    band.addColorStop(0.5, 'rgba(150,255,180,0.045)');
+    band.addColorStop(1, 'rgba(150,255,180,0)');
+    c.fillStyle = band; c.fillRect(0, by - 9, W, 18);
+    c.fillStyle = 'rgba(0,0,0,0.05)'; c.fillRect(0, by + 8, W, 1);
+
+    // flicker (now on the breath) + the sync tick's flash + vignette
+    c.fillStyle = `rgba(120,255,160,${(0.018 + 0.012 * Math.sin(t * 9) + slip * 0.05).toFixed(4)})`;
     c.fillRect(0, 0, W, H);
     const v = c.createRadialGradient(W / 2, H / 2, H * 0.25, W / 2, H / 2, H * 0.72);
     v.addColorStop(0, 'rgba(0,0,0,0)'); v.addColorStop(1, 'rgba(0,0,0,0.55)');

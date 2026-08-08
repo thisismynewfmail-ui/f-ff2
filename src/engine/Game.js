@@ -136,7 +136,7 @@ export class Game {
       },
       onClose: () => {
         this.input.setSuppressed(false);
-        if (!this.testMode && this.state.is('playing')) this.input.requestPointerLock();
+        this._reclaimPointer();
       },
     });
 
@@ -152,8 +152,9 @@ export class Game {
       },
       onClose: () => {
         this.input.setSuppressed(false);
-        if (!this.testMode && this.state.is('playing')) this.input.requestPointerLock();
+        this._reclaimPointer();
       },
+      onBeep: (kind, id) => this.audio.arcadeBeep(kind, id),
       onScore: (id, score, best, won) => this._arcadeScore(id, score, best, won),
     });
     this.events.on('arcade:play', ({ id }) => {
@@ -170,6 +171,35 @@ export class Game {
     return this;
   }
 
+  /**
+   * Take the pointer back after an overlay (the arcade, the satchel) closes.
+   *
+   * Both of those close on Escape, and Escape is the one key that must not be
+   * holding the pointer request. Chromium grants a lock asked for inside an
+   * Escape keydown and then the SAME keypress takes it straight back off you a
+   * beat later — by which time the overlay is closed, so the game reads that
+   * unlock as the player walking away and pauses. That is the "Escape at a
+   * cabinet drops me on the pause screen with a loose cursor" report, and it
+   * never showed up in the suite because test mode skips pointer lock whole.
+   *
+   * So the request waits for the next frame, out from under the keypress, and
+   * an unlock arriving in the moments after an overlay closed is treated as
+   * the tail of that keypress rather than as the player leaving: the pump is
+   * re-armed instead of the game pausing. Escape in ORDINARY play is nowhere
+   * near this window, so it still pauses exactly as before.
+   */
+  _reclaimPointer() {
+    this._overlayClosedAt = performance.now();
+    if (this.testMode || !this.state.is('playing')) return;
+    requestAnimationFrame(() => {
+      if (this.state.is('playing') && !this.inventory.open && !this.arcade.open) {
+        // Urgent: the browser may refuse for the first second or so after an
+        // Escape, and the player is standing in the street the whole time.
+        this.input.requestPointerLock({ urgent: true });
+      }
+    });
+  }
+
   _wire() {
     // Losing pointer lock while playing = pause (unless the satchel took it).
     this.input.onPointerLockChange = (locked) => {
@@ -181,6 +211,28 @@ export class Game {
       // two later). Pausing on it would bounce them straight out of the game
       // they just came back to.
       if (this.input.lockWanted) return;
+      // ...nor is one that lands in the wake of an overlay closing: see
+      // _reclaimPointer. Ask again rather than pausing.
+      if (performance.now() - (this._overlayClosedAt ?? -Infinity) < POINTER_REGRAB_MS) {
+        this.input.requestPointerLock({ urgent: true });
+        return;
+      }
+      // ...nor is one that belongs to an Escape the PAGE received. The browser
+      // eats that keydown whenever it is holding the pointer — that keypress
+      // IS how you leave a lock — so an Escape that arrived here proves the
+      // pointer was already free when it was pressed, and everything after it
+      // is our own plumbing: the overlay closing, the re-grab, and however
+      // many times the browser hands the lock over and takes it back again
+      // before it settles. An Escape MEANT as "pause" never reaches the page,
+      // so this cannot swallow one.
+      //
+      // The flag clears itself once a lock has SURVIVED a second, which is
+      // what stops it latching on forever: by then the player is back at the
+      // controls, the next Escape is theirs, and it pauses.
+      if (this.input.escapeGrab) {
+        this.input.requestPointerLock({ urgent: true });
+        return;
+      }
       this.pause();
     };
     /**
@@ -588,6 +640,11 @@ export class Game {
  * was. Idempotent: re-applying the same state is a cheap no-op-ish reassign.
  */
 const XRAY_RENDER_ORDER = 4000;
+// How long after an overlay closes an unlock still counts as the tail of the
+// keypress that closed it rather than the player leaving. Long enough to cover
+// Chromium's grant-then-revoke on Escape, short enough that a player who
+// closes the satchel and immediately alt-tabs still gets their pause screen.
+const POINTER_REGRAB_MS = 700;
 function setSeeThrough(root, on) {
   root.traverse((o) => {
     if (!o.isMesh) return;
