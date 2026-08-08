@@ -329,8 +329,13 @@ export function marqueeArt(id) {
 /**
  * The attract frame the cabinet shows out in the world — a still of the game
  * itself, so a machine across the room is the machine you played.
+ *
+ * `step` walks the simulation on before the frame is taken, which is what
+ * makes screenSheet's four frames a SEQUENCE rather than four unrelated
+ * stills: the ball is further along its arc, the snake is longer, the line has
+ * lost another block.
  */
-export function screenArt(id) {
+export function screenArt(id, step = 0) {
   const m = MACHINES[id];
   const c = canvas(W, H);
   const ctx = c.getContext('2d');
@@ -339,7 +344,7 @@ export function screenArt(id) {
   g.reset();
   // walk it forward a little so the frame is a game in progress, not a set-up
   const keys = new Set(['Space']);
-  for (let i = 0; i < 90; i++) g.update(1 / 30, keys, new Set());
+  for (let i = 0; i < 90 + step; i++) g.update(1 / 30, keys, new Set());
   g.draw(ctx);
   ctx.fillStyle = m.hot;
   ctx.font = 'bold 16px "Courier New", monospace';
@@ -354,6 +359,112 @@ export function screenArt(id) {
   }
   return c;
 }
+
+/** How many frames the cabinet's attract loop runs on. */
+export const ATTRACT_FRAMES = 4;
+/** Simulation ticks between one attract frame and the next. */
+const ATTRACT_STEP = 11;
+
+/**
+ * The attract LOOP, as a 2x2 atlas.
+ *
+ * A cabinet whose screen holds one frozen still is a poster, not a machine.
+ * Four frames of the machine's own game, stepped in order on a slow beat, is
+ * enough to read as "something is playing over there" from across the room —
+ * and it costs one texture and one UV offset per cabinet, because the world's
+ * existing flipbook driver (World._animateMat, kind 'flip') already knows how
+ * to walk an atlas.
+ */
+export function screenSheet(id) {
+  const sheet = canvas(W * 2, H * 2);
+  const ctx = sheet.getContext('2d');
+  for (let i = 0; i < ATTRACT_FRAMES; i++) {
+    const frame = screenArt(id, i * ATTRACT_STEP);
+    ctx.drawImage(frame, (i % 2) * W, Math.floor(i / 2) * H);
+  }
+  return sheet;
+}
+
+/**
+ * The printed SIDE ART — the thing that actually makes an arcade cabinet look
+ * like an arcade cabinet rather than a coloured box. Deco rays fanning off a
+ * corner, the title set sideways up the flank, and the paint scuffed along the
+ * bottom edge where a decade of shoes went past it.
+ */
+export function sideArt(id) {
+  const w = 96, h = 160;
+  const m = MACHINES[id];
+  const c = canvas(w, h);
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = hexOf(m.body); ctx.fillRect(0, 0, w, h);
+  // rays fanning from the top-front corner
+  ctx.save();
+  ctx.translate(w, 0);
+  for (let i = 0; i < 9; i++) {
+    ctx.fillStyle = i % 2 ? m.hot : m.ink;
+    ctx.globalAlpha = 0.5 - i * 0.035;
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    const a0 = (i / 9) * Math.PI * 0.62 + Math.PI * 0.52;
+    const a1 = ((i + 0.62) / 9) * Math.PI * 0.62 + Math.PI * 0.52;
+    ctx.lineTo(Math.cos(a0) * 260, Math.sin(a0) * 260);
+    ctx.lineTo(Math.cos(a1) * 260, Math.sin(a1) * 260);
+    ctx.closePath(); ctx.fill();
+  }
+  ctx.restore();
+  ctx.globalAlpha = 1;
+  // a deco band and the title running up the flank
+  ctx.fillStyle = m.trim !== undefined ? hexOf(m.trim) : m.hot;
+  ctx.fillRect(6, h * 0.5, w - 12, 3);
+  ctx.fillRect(6, h * 0.5 + 6, w - 12, 1);
+  ctx.save();
+  ctx.translate(w * 0.46, h * 0.78);
+  ctx.rotate(-Math.PI / 2);
+  ctx.fillStyle = m.hot;
+  ctx.font = 'bold 17px "Courier New", monospace';
+  ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+  ctx.fillText(m.title, 0, 0);
+  ctx.restore();
+  // wear: scuffs along the kick strip, grime in the bottom corners
+  ctx.fillStyle = 'rgba(0,0,0,0.4)';
+  ctx.fillRect(0, h - 14, w, 14);
+  for (let i = 0; i < 60; i++) {
+    const x = Math.random() * w, y = h - Math.random() * Math.random() * 46;
+    ctx.fillStyle = `rgba(${Math.random() < 0.5 ? '0,0,0' : '210,206,190'},${(Math.random() * 0.18).toFixed(3)})`;
+    ctx.fillRect(x, y, 1 + Math.random() * 5, 1);
+  }
+  return c;
+}
+
+/** Painted sheet steel for the cabinet body — tiles, and takes the machine's
+ *  own colour so the four cabinets are four products, not one repainted. */
+export function cabinetSkin(id) {
+  const n = 64;
+  const m = MACHINES[id];
+  const c = canvas(n, n);
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = hexOf(m.body); ctx.fillRect(0, 0, n, n);
+  const img = ctx.getImageData(0, 0, n, n);
+  const d = img.data;
+  for (let i = 0; i < d.length; i += 4) {
+    // orange-peel in the paint, plus the odd bright fleck of bare metal
+    const k = 0.86 + Math.random() * 0.26;
+    const fleck = Math.random() > 0.996 ? 46 : 0;
+    d[i] = Math.min(255, d[i] * k + fleck);
+    d[i + 1] = Math.min(255, d[i + 1] * k + fleck);
+    d[i + 2] = Math.min(255, d[i + 2] * k + fleck);
+  }
+  ctx.putImageData(img, 0, 0);
+  for (let i = 0; i < 14; i++) {              // hairline scratches
+    ctx.strokeStyle = `rgba(235,232,220,${(0.04 + Math.random() * 0.07).toFixed(3)})`;
+    ctx.beginPath();
+    const x = Math.random() * n, y = Math.random() * n, a = Math.random() * Math.PI;
+    ctx.moveTo(x, y); ctx.lineTo(x + Math.cos(a) * 14, y + Math.sin(a) * 14); ctx.stroke();
+  }
+  return c;
+}
+
+function hexOf(v) { return '#' + v.toString(16).padStart(6, '0'); }
 
 /* ------------------------------------------------------------------ */
 /* the overlay                                                          */

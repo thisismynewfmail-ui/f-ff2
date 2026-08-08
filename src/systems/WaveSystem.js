@@ -9,10 +9,12 @@ import { WIN_KILLS } from './ScoreSystem.js';
  * advances the wave. When a wave clears there is a short respite with a supply
  * drop, then the next (larger) wave begins.
  *
- * Difficulty escalates on three axes: the wave number, overall progress toward
- * the 250,000-kill goal, and "heat" — an extra ramp that kicks in past 250
- * kills, shortening the spawn interval and swelling the horde without letting
- * it overflow the active cap.
+ * Difficulty escalates on four axes: the wave number, overall progress toward
+ * the 250,000-kill goal, "heat" — an extra ramp that kicks in past 250 kills —
+ * and, past wave 6, an escalation keyed to the WAVE rather than the kill count,
+ * so the horde thickens even for a player who is taking their time. All of them
+ * shorten the spawn interval and swell the horde without letting it overflow
+ * the active cap.
  *
  * Checkpoints: every tenth wave the run is snapshotted (see the checkpoint
  * wiring in Game). On death the run rolls back to the last checkpoint and that
@@ -52,6 +54,13 @@ export const SPITTER_RAMP_GATE = 120;
 // The opening waves stream a small surplus over the quota so the early field
 // feels a touch busier — a few bodies still standing when the wave clears.
 const EARLY_WAVES = 5;
+// Every ramp above is keyed to the KILL count, which means a careful player who
+// takes their time never feels the horde thicken — the waves keep arriving at
+// roughly the opening tempo. So there is one ramp on the WAVE clock too: past
+// wave 6 the horde starts pressing harder whether or not the kills are there,
+// and the per-wave ramp itself steepens as it goes.
+export const ESCALATION_WAVE = 6;
+const ESCALATION_SPAN = 8;      // waves over which the escalation climbs 0 → 1
 
 export class WaveSystem {
   constructor(events, score) {
@@ -93,6 +102,15 @@ export class WaveSystem {
    */
   get hordePush() { return Math.min(1, Math.max(0, (this.score.kills - HORDE_PUSH_GATE) / HORDE_PUSH_SPAN)); }
 
+  /**
+   * Wave-clock escalation: 0 through wave 6, climbing to 1 by wave 14. Unlike
+   * heat / surge / hordePush this does not care how many kills are banked, so
+   * a player who is clearing waves slowly still feels the pressure build. It
+   * shortens the interval, fattens the pulse, steepens the per-wave ramp and
+   * lifts the cap to leave the extra bodies somewhere to stand.
+   */
+  get escalation() { return Math.min(1, Math.max(0, (this.wave - ESCALATION_WAVE) / ESCALATION_SPAN)); }
+
   /** Kills needed to clear wave n — grows with the wave, steepened by heat. */
   waveQuota(n) {
     const base = 8 + n * 3;
@@ -102,8 +120,12 @@ export class WaveSystem {
   /** Seconds between spawn pulses — falls with the wave, progress, heat and the
    *  post-400-kill surge (which drops the floor so pulses can come faster). */
   spawnInterval() {
-    const perWave = 0.08 + this.heat * 0.05;   // waves ramp faster once past the gate
-    return Math.max(0.3, 2.1 - this.wave * perWave - this.progress * 0.8 - this.heat * 0.7 - this.surge * 0.6);
+    // Past wave 6 each further wave shaves a little more off than the one
+    // before it, so the ramp itself ramps.
+    const perWave = 0.08 + this.heat * 0.05 + this.escalation * 0.02;
+    const floor = 0.3 - this.escalation * 0.04;
+    return Math.max(floor, 2.1 - this.wave * perWave - this.progress * 0.8
+      - this.heat * 0.7 - this.surge * 0.6 - this.escalation * 0.3);
   }
 
   /** Zombies per spawn pulse — a bigger trickle once the standard horde push
@@ -111,14 +133,16 @@ export class WaveSystem {
    *  still once the surge kicks in past ~400 kills. */
   batchSize() {
     return 2 + Math.round(this.hordePush * 3) + Math.round(this.heat * 3)
-      + Math.round(this.surge * 3) + ((Math.random() * 4) | 0);
+      + Math.round(this.surge * 3) + Math.round(this.escalation * 2)
+      + ((Math.random() * 4) | 0);
   }
 
   /** Concurrent-zombie cap — lifts with the post-100-kill horde push, again with
    *  heat, and again with the post-400-kill surge, so the thicker spawn stream
    *  always has room to stay on the field. */
   activeCap() {
-    return Math.round(55 + this.hordePush * 15 + this.heat * 22 + this.surge * 22);
+    return Math.round(55 + this.hordePush * 15 + this.heat * 22 + this.surge * 22
+      + this.escalation * 14);
   }
 
   typeWeights() {

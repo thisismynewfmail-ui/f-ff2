@@ -968,7 +968,11 @@ check('the guaranteed wave-2 citizen is inside a building', cit.waveTwoIsIndoors
 const surge = await page.evaluate(() => {
   const g = window.__game;
   const kR = g.score.kills, wR = g.waves.wave;
-  g.waves.wave = 20; // fixed so only the kills-driven terms move
+  // Wave 6: fixed so only the kills-driven terms move, and specifically the
+  // last wave before the wave-clock escalation engages — past that the
+  // interval is pinned to its floor and no kills-driven term can show up in
+  // it, which says nothing about whether the surge works.
+  g.waves.wave = 6;
   const at = (k) => {
     g.score.kills = k;
     return { surge: g.waves.surge, intv: g.waves.spawnInterval(), cap: g.waves.activeCap(),
@@ -1173,6 +1177,33 @@ check('the odometer rolls up to the score', pauseData.score === '014820', pauseD
 // four are compared against each other and against their own resting state.
 // Driven by real pointer moves rather than element.focus(), because
 // :focus-visible is a heuristic and a scripted focus does not always trip it.
+// The bays are readouts, not controls: nothing in them is clickable, so they
+// must not twitch under a cursor that is on its way to a button — and their
+// supporting figures must be on screen without having to point at them.
+const bayRest = await page.evaluate(() => [...document.querySelectorAll('.bay')].map((b) => {
+  const r = b.getBoundingClientRect();
+  return { key: r.top.toFixed(1) + '|' + getComputedStyle(b).transform, cx: r.x + r.width / 2, cy: r.y + r.height / 2 };
+}));
+const bayMoved = [];
+for (const b of bayRest) {
+  await page.mouse.move(b.cx, b.cy);
+  await page.waitForTimeout(260);
+  const now = await page.evaluate(() => [...document.querySelectorAll('.bay')].map((e) => {
+    const r = e.getBoundingClientRect();
+    return r.top.toFixed(1) + '|' + getComputedStyle(e).transform;
+  }));
+  now.forEach((v, j) => { if (v !== bayRest[j].key) bayMoved.push(`bay${j}`); });
+}
+const bayDetails = await page.evaluate(() => [...document.querySelectorAll('.bay-detail')]
+  .map((d) => ({ t: d.textContent.trim(), h: d.getBoundingClientRect().height })));
+await page.mouse.move(4, 4);
+check('the pause readouts do not move under the pointer',
+  bayRest.length >= 7 && bayMoved.length === 0,
+  `${bayRest.length} bays probed, moved: ${[...new Set(bayMoved)].join(' ') || 'none'}`);
+check('and every bay shows its supporting figure without being pointed at',
+  bayDetails.length >= 7 && bayDetails.every((d) => d.h > 0 && d.t.length > 0),
+  `${bayDetails.filter((d) => d.h > 0 && d.t).length}/${bayDetails.length} on screen`);
+
 const readPact = () => window.__game && [...document.querySelectorAll('.pact')].map((b) => {
   const w = b.querySelector('.pact-wipe'), k = b.querySelector('.pact-key');
   const cs = getComputedStyle(b);
@@ -1287,6 +1318,37 @@ check('and the town starts moving again', arc.worldResumed);
 /* ------------------------------------------------------------------ */
 /* wave 3 is the Exploder's, and only wave 3                            */
 /* ------------------------------------------------------------------ */
+// Every other difficulty ramp is keyed to the KILL count, so a player who
+// clears waves slowly never feels the horde thicken. Past wave 6 there is a
+// ramp on the wave clock too — with kills pinned at zero so only the wave
+// number can be doing the work.
+const escal = await page.evaluate(() => {
+  const g = window.__game;
+  const w = g.waves;
+  const keep = { wave: w.wave, kills: g.score.kills };
+  g.score.kills = 0;                    // silence heat / surge / hordePush / progress
+  const at = (n) => {
+    w.wave = n;
+    return { esc: w.escalation, iv: w.spawnInterval(), cap: w.activeCap() };
+  };
+  const out = { rows: {} };
+  for (const n of [1, 5, 6, 7, 10, 14]) out.rows[n] = at(n);
+  w.wave = keep.wave; g.score.kills = keep.kills;
+  return out;
+});
+const r = escal.rows;
+check('waves 1-6 are untouched by the wave-clock escalation',
+  r[1].esc === 0 && r[5].esc === 0 && r[6].esc === 0 && r[6].cap === r[1].cap,
+  `esc ${r[1].esc}/${r[5].esc}/${r[6].esc}, cap ${r[1].cap} -> ${r[6].cap}`);
+check('and past wave 6 the horde spawns faster and thicker',
+  r[7].esc > 0 && r[7].iv < r[6].iv && r[10].iv < r[7].iv && r[14].iv < r[10].iv
+  && r[14].cap > r[6].cap,
+  `interval ${r[6].iv.toFixed(2)} -> ${r[7].iv.toFixed(2)} -> ${r[10].iv.toFixed(2)}`
+  + ` -> ${r[14].iv.toFixed(2)}, cap ${r[6].cap} -> ${r[14].cap}`);
+check('and the ramp itself steepens rather than staying linear',
+  (r[7].iv - r[10].iv) < (r[10].iv - r[14].iv),
+  `w7->10 drops ${(r[7].iv - r[10].iv).toFixed(2)}, w10->14 drops ${(r[10].iv - r[14].iv).toFixed(2)}`);
+
 const waveMix = await page.evaluate(() => {
   const w = window.__game.waves;
   const keep = { wave: w.wave, kills: window.__game.score.kills };
@@ -1402,11 +1464,15 @@ const lockFix = await page.evaluate(async () => {
   // outstanding to correct it. Simulate exactly that: take the lock while
   // paused, behind the game's back.
   real();
-  for (let i = 0; i < 30 && !document.pointerLockElement; i++) {
+  for (let i = 0; i < 40 && !document.pointerLockElement; i++) {
     await frame(); await new Promise((r) => setTimeout(r, 30));
   }
   out.lateGrantLanded = true;   // whether it landed at all is the browser's call
-  for (let i = 0; i < 30 && document.pointerLockElement; i++) {
+  // The hand-back is two async hops (the grant's change event, then our exit's
+  // own change event), and headless runs those at whatever rate it manages —
+  // so wait on the OUTCOME with plenty of room rather than on a frame count
+  // that happens to be enough on a fast machine.
+  for (let i = 0; i < 80 && (document.pointerLockElement || g.input.pointerLocked); i++) {
     await frame(); await new Promise((r) => setTimeout(r, 30));
   }
   out.lateGrantReturned = !document.pointerLockElement && !g.input.pointerLocked;
@@ -1526,6 +1592,115 @@ check('and every interface surface is cut from them',
   Object.values(material.panels).every((v) => v === true),
   Object.entries(material.panels).map(([k, v]) => `${k}:${v === true ? 'ok' : v}`).join(' '));
 
+/* the cabinets out in the world are machines, not coloured boxes           */
+// Two separate claims: the bodies and flanks carry real artwork, and the
+// screens are RUNNING — four frames of the machine's own attract loop stepped
+// in order. A cabinet showing one frozen still is a poster.
+const cabs = await page.evaluate(async () => {
+  const g = window.__game;
+  const out = { bodies: 0, textured: 0, art: 0, ids: new Set() };
+  const cabRoots = [];
+  g.world.group.traverse((o) => { if (o.userData && o.userData.cab) cabRoots.push(o); });
+  for (const root of cabRoots) {
+    out.ids.add(root.userData.cab);
+    root.traverse((o) => {
+      if (!o.isMesh) return;
+      const m = o.material;
+      if (!m || !m.map) return;
+      if (o.geometry.type === 'BoxGeometry') { out.bodies++; out.textured++; }
+      else if (o.geometry.type === 'PlaneGeometry') out.art++;
+    });
+  }
+  out.cabinets = cabRoots.length;
+  out.ids = [...out.ids];
+
+  // the attract loop: sample the flipbook's UV offset over a few seconds
+  const sheets = (g.world.matAnims || []).filter((a) => a.kind === 'flip' && a.steady);
+  out.sheets = sheets.length;
+  const seen = new Set();
+  const one = sheets[0];
+  if (one) {
+    for (let i = 0; i < 90; i++) {
+      seen.add(one.map.offset.x.toFixed(2) + ',' + one.map.offset.y.toFixed(2));
+      await new Promise((r) => setTimeout(r, 40));
+    }
+  }
+  out.cells = [...seen];
+  return out;
+});
+check('every cabinet body and flank carries real artwork, not a flat colour',
+  cabs.cabinets >= 4 && cabs.ids.length === 4 && cabs.textured >= cabs.cabinets
+  && cabs.art >= cabs.cabinets * 3,
+  `${cabs.cabinets} cabinets (${cabs.ids.join(' ')}), ${cabs.textured} textured bodies, ${cabs.art} art planes`);
+check('and their screens run a four-frame attract loop',
+  cabs.sheets >= 4 && cabs.cells.length === 4,
+  `${cabs.sheets} sheets, cells visited: ${cabs.cells.join(' ')}`);
+
+/* Escape at a cabinet returns you to the STREET, pointer and all           */
+// The check above proves this in test mode, where pointer lock is skipped
+// whole — which is precisely why it missed the real bug. Chromium grants a
+// lock requested inside an Escape keydown and then the same keypress revokes
+// it; the revoke lands after the arcade has closed, and the game used to read
+// it as the player walking away and pause. Reproduce that exact sequence.
+const arcEsc = await page.evaluate(async () => {
+  const g = window.__game;
+  const canvas = document.getElementById('game-canvas');
+  // This check runs late in a long suite, with the world live between blocks —
+  // top the player back up so a stray zombie cannot turn a pointer-lock test
+  // into a death test.
+  g.player.health = g.player.maxHealth;
+  g.hud.showScreen(null); g.state.state = 'playing';
+  g.arcade.close();
+  const wasTest = g.testMode;
+  g.testMode = false;                       // the whole point: the real path
+  const frame = () => new Promise((r) => requestAnimationFrame(r));
+  const settle = async (n = 10) => { for (let i = 0; i < n; i++) { await frame(); await new Promise((r) => setTimeout(r, 50)); } };
+
+  const realGet = Object.getOwnPropertyDescriptor(Document.prototype, 'pointerLockElement');
+  const realReq = canvas.requestPointerLock.bind(canvas);
+  const realExit = document.exitPointerLock.bind(document);
+  let locked = false, escaping = false;
+  Object.defineProperty(document, 'pointerLockElement', { configurable: true, get: () => (locked ? canvas : null) });
+  const change = () => document.dispatchEvent(new Event('pointerlockchange'));
+  canvas.requestPointerLock = () => {
+    locked = true;
+    const revoke = escaping;                // granted, then taken back by the ESC
+    setTimeout(() => { change(); if (revoke) setTimeout(() => { locked = false; change(); }, 20); }, 0);
+    return Promise.resolve();
+  };
+  document.exitPointerLock = () => { locked = false; setTimeout(change, 0); };
+
+  g.input.requestPointerLock();
+  await settle(4);
+  const out = { startLocked: g.input.pointerLocked };
+  g.arcade.play('brickfall');
+  await settle(6);
+  out.openedUnlocked = g.arcade.open && !g.input.pointerLocked && g.state.state === 'playing';
+
+  escaping = true;
+  document.dispatchEvent(new KeyboardEvent('keydown', { code: 'Escape', key: 'Escape', bubbles: true }));
+  setTimeout(() => { escaping = false; }, 120);
+  await settle(12);
+  out.closed = !g.arcade.open;
+  out.state = g.state.state;
+  out.locked = g.input.pointerLocked;
+  out.pauseShown = getComputedStyle(document.getElementById('screen-pause')).display;
+
+  // put the real plumbing back
+  Object.defineProperty(document, 'pointerLockElement', realGet);
+  canvas.requestPointerLock = realReq; document.exitPointerLock = realExit;
+  g.testMode = wasTest;
+  g.hud.showScreen(null); g.state.state = 'playing'; g.hud.setLockHint(false);
+  g.input.releasePointerLock();
+  return out;
+});
+check('Escape at a cabinet goes back to the street, not the pause menu',
+  arcEsc.startLocked && arcEsc.openedUnlocked && arcEsc.closed
+  && arcEsc.state === 'playing' && arcEsc.pauseShown === 'none',
+  `closed ${arcEsc.closed}, state ${arcEsc.state}, pause ${arcEsc.pauseShown}`);
+check('and the pointer comes back with you',
+  arcEsc.locked, `locked ${arcEsc.locked}`);
+
 /* a weapon you have not found leaves an EMPTY bay, not a preview          */
 // The Alien Blaster is a secret. A dimmed silhouette of it sitting in slot 6
 // from the first frame of a run tells the player there is a sixth weapon and
@@ -1636,18 +1811,34 @@ const face = await page.evaluate(async () => {
     g.hud.portrait.setHealth(frac);
     for (let i = 0; i < Math.round(secs / 0.05); i++) g.hud.portrait.update(0.05);
   };
-  const out = { idle: new Set(), states: {} };
+  const out = { idle: new Set(), states: {}, poses: new Set() };
   // 24 seconds of standing still at full health: the glance cycle has to move
-  for (let i = 0; i < 48; i++) { step(0.5, 1); out.idle.add(hash()); }
+  for (let i = 0; i < 48; i++) { step(0.5, 1); out.idle.add(hash()); out.poses.add(g.hud.portrait.pose); }
   out.idleFrames = out.idle.size;
+  out.poses = [...out.poses];
+  // ...and separately, the TUBE has to be alive while the pose is pinned: a
+  // face that only moves when the glance timer fires is a slideshow.
+  const still = new Set();
+  g.hud.portrait.pose = 'forward';
+  for (let i = 0; i < 14; i++) {
+    g.hud.portrait.setHealth(1);
+    g.hud.portrait.update(0.05);
+    g.hud.portrait.pose = 'forward';       // hold it, so only the tube can move
+    still.add(hash());
+  }
+  out.stillFrames = still.size;
   for (const [name, frac] of [['healthy', 1], ['hurt', 0.4], ['critical', 0.15]]) {
     step(0.4, frac);
     out.states[name] = hash();
   }
-  return { idleFrames: out.idleFrames, states: out.states };
+  return { idleFrames: out.idleFrames, poses: out.poses, stillFrames: out.stillFrames, states: out.states };
 });
 check('the portrait keeps glancing around while nothing happens',
-  face.idleFrames > 1, `${face.idleFrames} distinct frames over 24s of idle`);
+  face.idleFrames > 1 && face.poses.length > 1,
+  `${face.idleFrames} distinct frames over 24s of idle, poses ${face.poses.join('/')}`);
+check('and the tube is alive even when the pose is not',
+  face.stillFrames > 3,
+  `${face.stillFrames} distinct frames from one held pose`);
 check('and the face changes as the wound gets worse',
   new Set(Object.values(face.states)).size === 3,
   Object.entries(face.states).map(([k, v]) => `${k}:${v.toString(16)}`).join(' '));

@@ -334,7 +334,11 @@ There is deliberately no command that touches the kill counter — the
   because a dimmed silhouette of the Alien Blaster in slot 6 would give the
   secret away on the first frame. The portrait is driven by health — a well-spaced
   forward/left/right **look-around idle above 50% HP**, a stern face at ≤50%,
-  a drained face at ≤25% (the CRT tints green → amber → red to match). Flanking
+  a drained face at ≤25% (the CRT tints green → amber → red to match). The
+  **tube itself is alive** under the pose: a retrace band drifting down the
+  screen, scanlines that crawl rather than sit, a slow breath in the phosphor
+  glow, and a rare sync tick that snaps the picture sideways and flares as it
+  recovers — all faint enough never to obscure the face. Flanking
   it sit two **field-device side HUDs** — the same radiused olive-steel
   housings with corner screws, coloured **bar meters**, round **icon lamps**
   and an aged-ivory **analog needle gauge** behind glass. The left unit is the
@@ -347,16 +351,23 @@ There is deliberately no command that touches the kill counter — the
   mechanical odometer, the needle and teal bar sweeping toward 250,000, a red
   bar through the current 1,000, a blue accuracy bar, lamps that blip on each
   kill and flash at every 1,000-kill milestone, and a REMAINING nameplate. Run
-  stats live on the **pause screen**, not on the HUD.
+  stats live on the **pause screen**, not on the HUD — seven instruments, each
+  with its supporting figure permanently on screen. The bays are readouts, not
+  controls, so **nothing in them moves under the pointer**; the action row is
+  where the pointer means something, and that still responds.
 - **The arcade works.** Four cabinets in the Downtown arcade, and each one is
   a MACHINE rather than a coloured box: **BRICKFALL**, **VERMIN**, **SIEGE**
-  and **RALLY**, each with its own marquee, its own palette, and a screen
-  showing a real frame of its own game so a cabinet across the room is
-  recognisably the one you played. Walk up and press [E] and you are playing
+  and **RALLY**, each with its own marquee, its own palette, **printed side
+  art** (deco rays off the front corner, the title running up the flank, paint
+  kicked off along the kick strip), a body in painted sheet steel, and a screen
+  running a **four-frame attract loop of its own game** — stepped in order on a
+  slow beat, so a cabinet across the room reads as something PLAYING rather
+  than a lit still. Walk up and press [E] and you are playing
   it, on a 320x240 tube in a gunmetal cabinet with its own scanlines. The town
   is HELD while you play — the world clock does not advance, so nothing on the
   street can reach you at the machine — and **Escape steps away from the
-  cabinet straight back into the street**, never into the pause menu. Clearing
+  cabinet straight back into the street**, never into the pause menu, with the
+  pointer already back in the game. Clearing
   a machine for the first time leaves something in the coin tray.
 - **The pause screen is the same case, opened on the bench.** Seven readouts
   and seven DIFFERENT instruments, because a panel of identical rings makes
@@ -396,7 +407,12 @@ There is deliberately no command that touches the kill counter — the
   active cap — ramping over the waves that follow without overflowing, and past
   **~400 kills** a second, steeper **surge** on the overall spawn rate kicks in
   (shorter spawn interval, fatter batches, higher concurrent cap) so the field
-  thickens tangibly deeper into a run. Sprinter/tank share rises with wave
+  thickens tangibly deeper into a run. Those ramps are all keyed to the KILL
+  count, which means a careful player who takes their time never feels them, so
+  there is one more on the WAVE clock: **past wave 6** the horde starts pressing
+  harder whether or not the kills are there — shorter interval, fatter pulses,
+  higher cap — and the per-wave ramp itself steepens as it goes, reaching full
+  tilt around wave 14. Waves 1–6 are untouched. Sprinter/tank share rises with wave
   number and progress toward 250,000,
   spitters join the table once you clear 100 kills (their share stepping up
   past 120), and exploders once you clear 120 kills (their share stepping up
