@@ -115,10 +115,16 @@ export class HUD {
     // right side HUD: the CONFIRMED KILLS tally device toward 250,000
     this._buildKillDevice(this.dockInner);
 
-    // fit the dock to the window now, and keep it fitted on every resize
+    // Fit the dock to the window now, and keep it fitted. The window is only
+    // half the story: the dock's own natural width moves too — the weapon
+    // nameplate grows with a longer name, the odometers gain a digit — and a
+    // one-shot measurement taken during construction is always the width of a
+    // half-built dock. A ResizeObserver on the inner row catches every one of
+    // those, and cannot loop, because --dock-scale is a transform and
+    // transforms do not change the layout width being observed.
     this._layoutDock();
     window.addEventListener('resize', () => this._layoutDock());
-    requestAnimationFrame(() => this._layoutDock());
+    new ResizeObserver(() => this._layoutDock()).observe(this.dockInner);
 
     // top-center: fly-in ARMORY names on weapon switch (detail-on-demand;
     // the persistent grid lives in the console ARMS panel).

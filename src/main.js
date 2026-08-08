@@ -1,6 +1,7 @@
 import { Game } from './engine/Game.js';
 import { LoadingScreen } from './rendering/LoadingScreen.js';
 import { TEXTURES, SPRITES } from './rendering/TextureConfig.js';
+import { installHudTextures } from './rendering/HudTextures.js';
 
 /**
  * Boot: load assets behind the animated loading screen (a Hilbert-curve
@@ -15,6 +16,10 @@ import { TEXTURES, SPRITES } from './rendering/TextureConfig.js';
  */
 const params = new URLSearchParams(location.search);
 const testMode = params.get('test') === '1';
+
+// Bake the panel materials before anything paints — the loading screen is the
+// first thing on the glass and it is cut from the same olive plate as the HUD.
+installHudTextures();
 
 const canvas = document.getElementById('game-canvas');
 const hudRoot = document.getElementById('hud');
