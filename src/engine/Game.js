@@ -23,6 +23,7 @@ import { WeaponView } from '../rendering/WeaponView.js';
 import { HUD } from '../rendering/HUD.js';
 import { AudioManager } from '../audio/AudioManager.js';
 import { Shell } from './Shell.js';
+import { Arcade } from '../rendering/Arcade.js';
 
 /**
  * Wires every system together and runs the frame loop. Owns nothing
@@ -139,6 +140,26 @@ export class Game {
       },
     });
 
+    // The arcade cabinets. Playing one freezes the world exactly the way the
+    // satchel does — no update, so nothing on the street can reach the player
+    // while they are at the machine — and Escape (handled inside Arcade, in
+    // the capture phase) puts them straight back in the street rather than in
+    // front of the pause menu.
+    this.arcade = new Arcade(this.hudRoot, {
+      onOpen: () => {
+        this.input.setSuppressed(true);
+        if (!this.testMode) this.input.releasePointerLock();
+      },
+      onClose: () => {
+        this.input.setSuppressed(false);
+        if (!this.testMode && this.state.is('playing')) this.input.requestPointerLock();
+      },
+      onScore: (id, score, best, won) => this._arcadeScore(id, score, best, won),
+    });
+    this.events.on('arcade:play', ({ id }) => {
+      if (this.state.is('playing') && !this.inventory.open) this.arcade.play(id);
+    });
+
     this._wire();
     this._startAutosave();
     // Push the loaded settings (sliders + key bindings) live now that every
@@ -152,7 +173,8 @@ export class Game {
   _wire() {
     // Losing pointer lock while playing = pause (unless the satchel took it).
     this.input.onPointerLockChange = (locked) => {
-      if (locked || !this.state.is('playing') || this.testMode || this.inventory.open) return;
+      if (locked || !this.state.is('playing') || this.testMode) return;
+      if (this.inventory.open || this.arcade.open) return;
       // An unlock that arrives while we are still ASKING for the pointer is
       // not the player leaving — it is the tail of an exit we requested
       // ourselves before they resumed (exitPointerLock reports back a frame or
@@ -176,6 +198,8 @@ export class Game {
      */
     document.addEventListener('keydown', (e) => {
       if (e.code !== 'Escape' || this.devConsole.open || this.inventory.open) return;
+      // Arcade already swallowed it in the capture phase; belt and braces.
+      if (this.arcade.open) return;
       // The pause settings overlay eats Escape first (HUD._wire) to close
       // itself; if it is open, this must not also fire.
       if (this.hud.pauseSettingsEl && !this.hud.pauseSettingsEl.hidden) return;
@@ -336,6 +360,23 @@ export class Game {
     this.input.setBindings(s.bindings);
   }
 
+  /**
+   * A machine paid out. The first clear on each cabinet leaves something in
+   * the coin tray — a working arcade in a dead town ought to be worth the
+   * detour, not just a curiosity you look at once.
+   */
+  _arcadeScore(id, score, best, won) {
+    if (!won || this._arcadePaid?.has(id)) return;
+    (this._arcadePaid ??= new Set()).add(id);
+    const p = this.player.position;
+    const drop = [['health', 25], ['ammo_rifle', 60], ['ammo_shotgun', 12], ['ammo_sniper', 8]];
+    const [type, amount] = drop[[...this._arcadePaid].length - 1] ?? drop[0];
+    this.events.emit('loot:spawn', {
+      x: p.x + (Math.random() - 0.5), y: p.y + 0.5, z: p.z + (Math.random() - 0.5), type, amount,
+    });
+    this.events.emit('subtitle', { text: 'Something drops into the coin tray. It was never a coin machine.' });
+  }
+
   pause() {
     if (!this.state.to('paused')) return;
     // Give the pointer back, and — the part that matters — stop WANTING it.
@@ -410,10 +451,12 @@ export class Game {
     // The satchel freezes the world while it's open (mouse is on the UI).
     if (this.state.is('menu')) {
       this._menuCinematic(dt);
-    } else if (this.state.is('playing') && !this.inventory.open) {
+    } else if (this.state.is('playing') && !this.inventory.open && !this.arcade.open) {
       this.time += dt;
       this.update(dt);
     }
+    // The machine runs on its own clock while the town holds its breath.
+    this.arcade.update(dt);
     // No first-person weapon floating over the title cinematic.
     this.renderer.overlayEnabled = !this.state.is('menu');
     this.renderer.render();

@@ -1632,33 +1632,53 @@ export class PropKit {
    * sits just under a porch canopy (~2.5 m over the deck), so the seat lands
    * at sitting height rather than swinging round somebody's head.
    */
+  /**
+   * A porch swing. `hang(h)` re-hangs it under a canopy h metres up, keeping
+   * the seat at sitting height and stretching the chains to suit — the caller
+   * knows where the real canopy is (see BuildingKit._porch) and this must not
+   * guess, or the chains run up through the roof they hang from.
+   */
   porchSwing() {
     const g = new THREE.Group();
     const pivot = new THREE.Group();
-    // The hanger sits just under a porch canopy, and the seat lands at sitting
-    // height below it. Both numbers are the porch's, not guesses: get them
-    // wrong and the chains run up through the roof they hang from.
     pivot.position.y = PORCH_SWING_HANG;
-    for (const s of [-0.72, 0.72]) {
+    const chains = [];
+    for (const s of [-0.62, 0.62]) {
       const chain = this.box(0.03, 1.8, 0.03, this.colorMat(0x3a4148));
       chain.position.set(s, -0.9, 0);
       pivot.add(chain);
+      chains.push(chain);
       const eye = this.box(0.07, 0.06, 0.07, this.colorMat(0x5a6068));
       eye.position.set(s, 0.03, 0);
       pivot.add(eye);
     }
-    const seat = this.box(1.7, 0.08, 0.5, 'wallWood');
-    seat.position.y = -1.85;
-    const back = this.box(1.7, 0.45, 0.07, 'wallWood');
-    back.position.set(0, -1.61, -0.22);
-    for (const s of [-0.8, 0.8]) {
+    const W = PORCH_SWING_HALF * 2;
+    const seat = this.box(W, 0.08, 0.5, 'wallWood');
+    const back = this.box(W, 0.45, 0.07, 'wallWood');
+    const arms = [];
+    for (const s of [-1, 1]) {
       const arm = this.box(0.07, 0.07, 0.48, 'wallWood');
-      arm.position.set(s, -1.62, 0);
+      arm.position.set(s * (PORCH_SWING_HALF - 0.05), -1.62, 0);
       pivot.add(arm);
+      arms.push(arm);
     }
     pivot.add(seat, back);
     g.add(pivot);
-    return { group: g, pivot };
+    const seatDrop = 1.85;
+    seat.position.y = -seatDrop;
+    back.position.set(0, -seatDrop + 0.24, -0.22);
+    return {
+      group: g, pivot,
+      hang(canopyH) {
+        const h = Math.max(1.9, canopyH - 0.14);
+        pivot.position.y = h;
+        const drop = h - 0.5;               // seat lands half a metre off the deck
+        for (const c of chains) { c.scale.y = (drop - 0.14) / 1.8; c.position.y = -(drop - 0.14) / 2; }
+        seat.position.y = -drop;
+        back.position.y = -drop + 0.24;
+        for (const a of arms) a.position.y = -drop + 0.23;
+      },
+    };
   }
 
   /** Lawn sprinkler. The head turns. Nothing comes out of it. */
@@ -2066,6 +2086,9 @@ export class PropKit {
 /** How high above a porch deck the swing's hanger sits — under the canopy
  *  (see BuildingKit._porch: the roof underside lands around 2.49 m up). */
 export const PORCH_SWING_HANG = 2.35;
+/** Half the seat width. Anything placing one has to know how wide it is to
+ *  keep it out of the porch posts — see World's porch-swing placement. */
+export const PORCH_SWING_HALF = 0.75;
 
 /** Blend two packed 0xRRGGBB colours; used to soot a wreck's paint down. */
 function mixHex(a, b, t) {

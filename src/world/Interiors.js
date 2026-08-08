@@ -1,5 +1,6 @@
 import * as THREE from '../../lib/three.module.js';
 import { local2world, mergeStatic, mulberry32 } from './Buildings.js';
+import { MACHINES, MACHINE_IDS, marqueeArt, screenArt } from '../rendering/Arcade.js';
 
 /**
  * Interior population: furniture, equipment, loot containers, spawn points
@@ -77,6 +78,17 @@ export function officePartitions(w, d, door) {
     { axis: 'x', at: -cd / 2 + 4, from: cw / 2 - 4.5, to: cw / 2 - 0.3, gapAt: cw / 2 - 3.6, gapW: 1.2 },
     { axis: 'z', at: cw / 2 - 4.5, from: -cd / 2 + 0.3, to: -cd / 2 + 4, gapW: 0 },
   ]);
+}
+
+/** A canvas as a nearest-neighbour texture — the arcade's marquee and tube art. */
+function retroCanvas(cv) {
+  const t = new THREE.CanvasTexture(cv);
+  t.magFilter = THREE.NearestFilter;
+  t.minFilter = THREE.NearestFilter;
+  t.generateMipmaps = false;
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.needsUpdate = true;
+  return t;
 }
 
 export class InteriorKit {
@@ -181,7 +193,13 @@ export class InteriorKit {
     const g = maker.group;
     g.position.set(p.x, baseY, p.z);
     g.rotation.y = yaw;
-    this._bucket.add(g);
+    // A `live` maker keeps its hierarchy: it goes straight into the world
+    // instead of the merge bucket. mergeStatic flattens a group into one mesh
+    // per material and clears it, which silently detaches every sub-group
+    // inside it — the piano's hinged key bank was registered for animation,
+    // dutifully animated every frame, and no longer attached to anything you
+    // could see. Anything with a moving part or its own screen has to opt out.
+    (maker.live ? this.w.group : this._bucket).add(g);
     if (box) {
       this._room.push(box);
       this.w.collision.addBoxCentered(p.x, baseY + box.hy, p.z,
@@ -521,52 +539,78 @@ export class InteriorKit {
   }
 
   /**
-   * An arcade cabinet still running its attract loop.
+   * An arcade cabinet — a specific machine, not a coloured box.
    *
-   * There are three screen materials, handed out round-robin, and each one
-   * strikes and drops on its own beat — because a row of seven cabinets
-   * blinking in perfect time is one machine seen seven times, and a row of
-   * three phases is an arcade. The marquee above the screen is lit off the
-   * same tube, so a cabinet dying takes its own sign with it.
+   * Each one wears its own game: the marquee carries that game's title, the
+   * screen shows a real frame OF that game (drawn by Arcade.screenArt, so a
+   * cabinet across the room is recognisably the machine you played), and the
+   * body and trim are in its palette. The tube keeps the attract flicker every
+   * screen in this town has; the marquee runs off the same tube, so a cabinet
+   * dying takes its own sign with it.
+   *
+   * `live`: the cabinet keeps its own materials and hierarchy rather than
+   * being flattened into the room's merge, because its screen is its own
+   * texture and its own flicker phase.
    */
-  arcadeCab(color = 0x39465e) {
+  arcadeCab(id) {
+    const m = MACHINES[id];
     const g = new THREE.Group();
-    const body = this.P.box(0.72, 1.75, 0.8, this.P.colorMat(color));
+    const body = this.P.box(0.72, 1.75, 0.8, this.P.colorMat(m.body));
     body.position.y = 0.88;
-    const tube = this._screenMat();
-    const screen = this.P.box(0.55, 0.45, 0.04, tube);
-    screen.position.set(0, 1.35, 0.41);
-    const marquee = this.P.box(0.6, 0.16, 0.03, tube);
-    marquee.position.set(0, 1.68, 0.41);
+    // swept side art panels, so the flanks are not one flat colour
+    for (const sx of [-1, 1]) {
+      const art = this.P.box(0.02, 1.1, 0.66, this.P.colorMat(m.trim));
+      art.position.set(sx * 0.365, 1.0, -0.02);
+      g.add(art);
+    }
+    const screen = new THREE.Mesh(new THREE.PlaneGeometry(0.55, 0.42), this._screenFace(id));
+    screen.position.set(0, 1.35, 0.412);
+    const hood = this.P.box(0.62, 0.06, 0.1, this.P.colorMat(0x14161a));   // glare hood
+    hood.position.set(0, 1.6, 0.44);
+    // A PLANE, not a box: PropKit.box rescales UVs by physical size for tiling
+    // wall textures, which maps a corner of a 128x32 sign across the whole
+    // face — the marquee came out as a flat coloured bar with the title
+    // stretched off the edge of it. Art wants 0..1 UVs.
+    const marquee = new THREE.Mesh(new THREE.PlaneGeometry(0.6, 0.17), this._marqueeMat(id));
+    marquee.position.set(0, 1.71, 0.428);
+    const marqueeBox = this.P.box(0.64, 0.19, 0.05, this.P.colorMat(0x0c0e0a));
+    marqueeBox.position.set(0, 1.71, 0.4);
     const deck = this.P.box(0.6, 0.08, 0.3, this.P.colorMat(0x1c2026));
     deck.position.set(0, 0.95, 0.48);
-    // stick and buttons, so the deck reads as something you could play
+    g.add(body, screen, hood, marqueeBox, marquee, deck);
+    // stick, buttons and a coin door, so the deck reads as something you play
     const stick = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.02, 0.1, 5), this.P.colorMat(0x14161a));
     stick.position.set(-0.17, 1.03, 0.48);
     const ball = new THREE.Mesh(new THREE.SphereGeometry(0.035, 6, 5), this.P.colorMat(0x8c2a22));
     ball.position.set(-0.17, 1.09, 0.48);
-    g.add(body, screen, marquee, deck, stick, ball);
+    const coin = this.P.box(0.24, 0.16, 0.03, this.P.colorMat(0x2a2d24));
+    coin.position.set(0, 0.62, 0.41);
+    const slot = this.P.box(0.02, 0.06, 0.02, this.P.colorMat(0x07080a));
+    slot.position.set(0, 0.64, 0.43);
+    g.add(stick, ball, coin, slot);
     for (let i = 0; i < 3; i++) {
       const btn = new THREE.Mesh(new THREE.CylinderGeometry(0.026, 0.026, 0.02, 6),
         this.P.colorMat([0xc8b040, 0x3a6ea8, 0x40a06a][i]));
       btn.position.set(0.02 + i * 0.08, 1.0, 0.48);
       g.add(btn);
     }
-    return { group: g, collide: [0.38, 0.9, 0.45] };
+    return { group: g, collide: [0.38, 0.9, 0.45], live: true, machine: id };
   }
 
-  /** One of three attract-mode tubes, each on its own strike/dropout cycle. */
-  _screenMat() {
-    this._screenAt = ((this._screenAt ?? -1) + 1) % 3;
-    const i = this._screenAt;
-    return this._mat('screen' + i, () => {
-      const rgb = [[0.30, 0.62, 1.0], [0.36, 1.0, 0.62], [1.0, 0.62, 0.28]][i];
-      const mat = new THREE.MeshBasicMaterial({ color: 0x10161c });
-      this.w._animateMat(mat, 'tube', {
-        r: rgb[0], g: rgb[1], b: rgb[2], hi: 0.62, lo: 0.07, duty: 0.9, rate: 0.5 + i * 0.31,
-      });
-      return mat;
-    });
+  /** The lit marquee: this machine's title, on its own flicker phase. */
+  _marqueeMat(id) {
+    const tex = this._mat('marqueeTex:' + id, () => retroCanvas(marqueeArt(id)));
+    const mat = new THREE.MeshBasicMaterial({ map: tex, color: 0xffffff });
+    this.w._animateMat(mat, 'tube', { r: 1, g: 1, b: 1, hi: 0.95, lo: 0.22, duty: 0.93, rate: 0.6 + Math.random() });
+    return mat;
+  }
+
+  /** The tube: a real frame of the machine's own game, flickering. */
+  _screenFace(id) {
+    const tex = this._mat('screenTex:' + id, () => retroCanvas(screenArt(id)));
+    const mat = new THREE.MeshBasicMaterial({ map: tex, color: 0xffffff });
+    this.w._animateMat(mat, 'tube', { r: 1, g: 1, b: 1, hi: 0.9, lo: 0.16, duty: 0.9, rate: 0.5 + Math.random() });
+    return mat;
   }
 
   displayStand() {
@@ -1190,12 +1234,24 @@ export class InteriorKit {
     const fall = this.P.box(1.4, 0.13, 0.06, this.P.colorMat(0x120d09));   // fallboard
     fall.position.set(0, 0.85, 0.32);
     g.add(body, lid, front, desk, sheet, fall);
-    for (const sx of [-0.5, 0.5]) {                                        // candle sconces
+    // Candle sconces, with wicks that catch while it is being played. Nobody
+    // lights them. That is the point of them.
+    const flames = [];
+    for (const sx of [-0.5, 0.5]) {
       const arm = this.P.box(0.14, 0.02, 0.02, this.P.colorMat(0x8a7433));
       arm.position.set(sx, 1.1, 0.28);
       const candle = this.P.box(0.03, 0.11, 0.03, this.P.colorMat(0xd6cdb2));
       candle.position.set(sx + 0.06, 1.16, 0.28);
       g.add(arm, candle);
+      const flame = new THREE.Mesh(new THREE.ConeGeometry(0.022, 0.075, 5, 1, true),
+        new THREE.MeshBasicMaterial({
+          color: 0xffd070, transparent: true, opacity: 0, depthWrite: false,
+          blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
+        }));
+      flame.position.set(sx + 0.06, 1.26, 0.28);
+      flame.renderOrder = 3;
+      g.add(flame);
+      flames.push(flame);
     }
     // the keyboard: a hinged bank so it can be played
     const keys = new THREE.Group();
@@ -1239,7 +1295,9 @@ export class InteriorKit {
       castor.position.set(sx * 0.62, 0.045, 0.16);
       g.add(castor);
     }
-    return { group: g, collide: [0.78, 0.6, 0.36], keys };
+    // `live`: the hinged key bank and the flames must survive the interior
+    // merge (see _put)
+    return { group: g, collide: [0.78, 0.6, 0.36], keys, flames, live: true };
   }
 
   /** Potting bench with seed trays — the working surface of a glasshouse. */
@@ -1722,15 +1780,38 @@ export class InteriorKit {
     this._papers(b, 0.8, 1.8, 3);
   }
 
+  /** Stand a cabinet, and make it a machine you can actually walk up to and
+   *  play. The prompt stands in FRONT of the deck, not inside the cabinet. */
+  _cabinet(b, id, lx, lz, yaw) {
+    const cab = this.arcadeCab(id);
+    const g = this._put(b, cab, lx, lz, { yaw });
+    if (!g) return null;
+    g.userData.cab = id;
+    const reach = 0.75;
+    const px = g.position.x + Math.sin(g.rotation.y) * reach;
+    const pz = g.position.z + Math.cos(g.rotation.y) * reach;
+    this.w.addInteractable({
+      x: px, z: pz, y: b.spec.y, radius: 1.9,
+      prompt: `Play ${MACHINES[id].title} [E]`,
+      onInteract: () => this.w.events.emit('arcade:play', { id }),
+    });
+    return g;
+  }
+
   _arcade(b) {
     const c = this._canon(b.spec);
     const hw = c.cw / 2, hd = c.cd / 2;
-    const cols = [0x5e2430, 0x39465e, 0x2e4433, 0x6b4a1e];
-    for (let i = 0; i < 4; i++) this._put(b, this.arcadeCab(cols[i]), -hw + 1.0 + i * 1.1, -hd + 0.8);
-    for (let i = 0; i < 3; i++) this._put(b, this.arcadeCab(cols[(i + 2) % 4]), -hw + 1.2 + i * 1.1, 0.5, { yaw: Math.PI });
+    // The back wall carries one of each machine, in order, so a player walking
+    // in meets the whole line-up before anything repeats.
+    for (let i = 0; i < 4; i++) {
+      this._cabinet(b, MACHINE_IDS[i], -hw + 1.0 + i * 1.1, -hd + 0.8, 0);
+    }
+    for (let i = 0; i < 3; i++) {
+      this._cabinet(b, MACHINE_IDS[(i + 2) % 4], -hw + 1.2 + i * 1.1, 0.5, Math.PI);
+    }
     this._put(b, this.registerCounter(1.8), hw - 1.5, hd - 2.0, { yaw: Math.PI, loot: [0, -0.9] });
     this._put(b, this.vending(), hw - 0.6, -hd + 1.2, { yaw: -Math.PI / 2 });
-    this._put(b, this.arcadeCab(0x8a2a24), hw - 0.8, -0.8, { yaw: -Math.PI / 2 });
+    this._cabinet(b, MACHINE_IDS[1], hw - 0.8, -0.8, -Math.PI / 2);
     this._put(b, this.rug(2.2, 1.5, 'carpetRed'), -0.6, 1.8, { collide: null });
     this._dropCeiling(b, 2.9);
     this._closet(b, -hw + 1.3, hd - 1.2, 1.5, 1.3);
@@ -1869,14 +1950,14 @@ export class InteriorKit {
     const pg = this._put(b, pn, -hw + 3.2, -hd + 1.5, { lift: 0.54, loot: [0, 1.4] });
     if (pg) {
       this._put(b, this.stool(), -hw + 3.2, -hd + 2.5, { lift: 0.54 });
-      const press = this.w._animate(pn.keys, 'press', pg.position.x, pg.position.z,
-        { axis: 'x', amp: 0.055, speed: 3.4 });
+      const press = this.w._animate(pn.keys, 'keys', pg.position.x, pg.position.z,
+        { axis: 'x', amp: 0.13, dur: 3.2, beat: 6.2, t: 0, flames: pn.flames });
       const pos = { x: pg.position.x, y: b.spec.y + 1.3, z: pg.position.z };
       this.w.addInteractable({
         x: pg.position.x, z: pg.position.z + 1.0, y: b.spec.y, radius: 2.2,
         prompt: 'Play the piano [E]',
         onInteract: () => {
-          if (press) press.impulse = 1;
+          if (press) press.t = press.dur;
           this.w.events.emit('anomaly:sound', { kind: 'piano', pos });
           // A hall piano in an empty street is the loudest thing you own.
           this.w.events.emit('noise', { pos, radius: 85 });

@@ -1121,6 +1121,91 @@ html, body {
 
 /* the dead / victory screens still use the plain stat grid */
 
+/* ===================================================================
+   ARCADE — the cabinet you stand at, drawn as a cabinet
+   ===================================================================
+   Same materials as the HUD dock and the pause case: gunmetal body,
+   corner screws, a dark bezel around a phosphor tube with its own
+   scanlines. Each machine sets --ink / --dim / --hot, so the whole
+   frame takes the palette of whatever game is in it.
+   =================================================================== */
+#arcade {
+  position: absolute; inset: 0; z-index: 60;
+  display: none; align-items: center; justify-content: center;
+  background: rgba(4, 6, 6, 0.9); pointer-events: auto;
+}
+.arc-cab {
+  position: relative;
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  padding: 14px 20px 12px;
+  background: linear-gradient(#22241e, #14150f);
+  border: 2px solid #0c0d0b; border-radius: 12px;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.07), inset 0 0 30px rgba(0,0,0,0.6),
+    0 10px 34px rgba(0,0,0,0.8);
+  animation: arcIn 0.28s cubic-bezier(0.2, 1.2, 0.4, 1) both;
+}
+@keyframes arcIn {
+  0% { opacity: 0; transform: scaleY(0.5); filter: brightness(2.6); }
+  100% { opacity: 1; transform: none; filter: none; }
+}
+/* the lit marquee over the tube */
+.arc-marquee {
+  display: flex; align-items: baseline; gap: 12px; justify-content: center;
+  width: 100%; padding: 5px 12px;
+  background: linear-gradient(#0e100c, #05060480);
+  border: 2px solid var(--hot, #e6c24a); border-radius: 4px;
+  box-shadow: 0 0 16px -4px var(--hot, #e6c24a), inset 0 0 14px rgba(0,0,0,0.7);
+  animation: arcMarquee 3.1s steps(1, end) infinite;
+}
+@keyframes arcMarquee {
+  0%, 96% { opacity: 1; }
+  97%, 98% { opacity: 0.55; }
+  99%, 100% { opacity: 1; }
+}
+.arc-title {
+  font-size: 21px; letter-spacing: 7px; font-weight: bold;
+  color: var(--hot, #e6c24a); text-shadow: 0 0 10px var(--hot, #e6c24a);
+}
+.arc-sub { font-size: 9px; letter-spacing: 3px; color: var(--ink, #7be07b); }
+/* the tube */
+.arc-bezel {
+  position: relative; padding: 10px; border-radius: 8px;
+  background: #0a0b08; border: 2px solid #131411;
+  box-shadow: inset 0 0 22px rgba(0,0,0,0.95), 0 2px 5px rgba(0,0,0,0.7);
+}
+.arc-screen {
+  display: block; width: 640px; height: 480px; max-width: 76vw; max-height: 58vh;
+  image-rendering: pixelated; background: #05070a; border-radius: 4px;
+}
+.arc-glass {                  /* scanlines + a glare across the glass */
+  position: absolute; inset: 10px; border-radius: 4px; pointer-events: none;
+  background:
+    linear-gradient(114deg, rgba(255,255,255,0.09), rgba(255,255,255,0.02) 34%, transparent 52%),
+    repeating-linear-gradient(0deg, rgba(0,0,0,0.28) 0 2px, transparent 2px 4px);
+}
+.arc-msg {
+  position: absolute; left: 0; right: 0; top: 54%; text-align: center;
+  font-size: 15px; letter-spacing: 4px; color: var(--hot, #e6c24a);
+  text-shadow: 0 0 8px rgba(0,0,0,0.95), 0 0 14px var(--hot, #e6c24a);
+  opacity: 0; pointer-events: none;
+}
+.arc-msg.on { opacity: 1; animation: arcBlink 1s steps(2, end) infinite; }
+@keyframes arcBlink { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
+/* the control deck: score, controls, best */
+.arc-deck {
+  display: flex; align-items: center; justify-content: space-between; gap: 20px;
+  width: 100%; padding: 6px 10px;
+  background: linear-gradient(#1a1c16, #0e0f0a);
+  border: 2px solid #0c0d0b; border-radius: 4px;
+  font-size: 10px; letter-spacing: 2px; color: #8f8a72;
+}
+.arc-deck b { color: var(--ink, #7be07b); font-size: 15px; letter-spacing: 1px; }
+.arc-how { color: var(--hot, #e6c24a); letter-spacing: 3px; }
+.arc-coin {
+  font-size: 8px; letter-spacing: 3px; color: #5c6154;
+}
+
 /* developer console (` / ~) */
 #console {
   position: absolute; top: 0; left: 0; right: 0; height: 46%;

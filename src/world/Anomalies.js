@@ -329,6 +329,27 @@ export class Anomalies {
           if (!(a.impulse > 0)) continue;
           a.impulse = Math.max(0, a.impulse - dt * a.speed);
           a.node.rotation[a.axis] = a.impulse * a.amp;
+        } else if (a.kind === 'keys') {
+          // A struck chord rather than one dip: the key bank goes down several
+          // times, softer each time, over the whole length of the note — and
+          // the candles catch while it plays, which nobody did.
+          if (!(a.t > 0)) {
+            if (a.lit) { for (const f of a.flames) f.material.opacity = 0; a.lit = false; }
+            continue;
+          }
+          a.t = Math.max(0, a.t - dt);
+          const fade = a.t / a.dur;                       // 1 → 0 over the phrase
+          const hit = Math.max(0, Math.sin((a.dur - a.t) * a.beat));
+          a.node.rotation[a.axis] = hit * hit * a.amp * fade;
+          if (a.flames) {
+            a.lit = true;
+            const flick = 0.6 + Math.sin(time * 17.3) * 0.2 + Math.sin(time * 6.1) * 0.2;
+            const up = Math.min(1, (a.dur - a.t) * 3);    // they take a moment to catch
+            for (const f of a.flames) {
+              f.material.opacity = up * Math.min(1, fade * 1.8) * flick;
+              f.scale.y = 0.8 + flick * 0.4;
+            }
+          }
         } else if (a.kind === 'swing') {
           a.node.rotation[a.axis] = Math.sin(time * a.speed + a.phase) * a.amp
             * (0.6 + 0.4 * Math.sin(time * 0.043 + a.phase));   // the arc breathes, never stops

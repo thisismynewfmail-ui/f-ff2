@@ -80,7 +80,7 @@ the desktop shell.
 | Mouse wheel | Cycle weapons (also reveals the weapon menu) |
 | R | Reload |
 | E | Interact |
-| Esc | Pause / resume (toggles the pause screen either way) |
+| Esc | Pause / resume — or, at an arcade cabinet, step away from the machine |
 | ` / ~ | Dev console |
 
 The weapon menu is hidden during play; a number key or a mouse-wheel scroll
@@ -327,6 +327,16 @@ There is deliberately no command that touches the kill counter — the
   bar through the current 1,000, a blue accuracy bar, lamps that blip on each
   kill and flash at every 1,000-kill milestone, and a REMAINING nameplate. Run
   stats live on the **pause screen**, not on the HUD.
+- **The arcade works.** Four cabinets in the Downtown arcade, and each one is
+  a MACHINE rather than a coloured box: **BRICKFALL**, **VERMIN**, **SIEGE**
+  and **RALLY**, each with its own marquee, its own palette, and a screen
+  showing a real frame of its own game so a cabinet across the room is
+  recognisably the one you played. Walk up and press [E] and you are playing
+  it, on a 320x240 tube in a gunmetal cabinet with its own scanlines. The town
+  is HELD while you play — the world clock does not advance, so nothing on the
+  street can reach you at the machine — and **Escape steps away from the
+  cabinet straight back into the street**, never into the pause menu. Clearing
+  a machine for the first time leaves something in the coin tray.
 - **The pause screen is the same case, opened on the bench.** Seven readouts
   and seven DIFFERENT instruments, because a panel of identical rings makes
   you read every one of them from scratch every time — health is a **graduated
@@ -369,7 +379,11 @@ There is deliberately no command that touches the kill counter — the
   number and progress toward 250,000,
   spitters join the table once you clear 100 kills (their share stepping up
   past 120), and exploders once you clear 120 kills (their share stepping up
-  past 150).
+  past 150). **Wave 3 is the Exploder's wave and nothing else's** — one
+  scripted round where the whole field is bombers, so you meet the type
+  properly instead of first learning what one is by standing next to it. It is
+  the only wave that overrides the mix; wave 4 picks the ordinary progression
+  back up exactly where it left off.
 - **Checkpoints & death:** the run is checkpointed every **tenth wave**. When
   you die, every zombie on the map is cleared and the run rolls back to the last
   checkpoint — kills, score and wave all restored — then that wave respawns from
@@ -591,7 +605,8 @@ src/entities/       player, zombies, exploder, spitter, NPC, savable citizen,
 src/weapons/        weapon configs + firing/ammo/hit resolution
 src/rendering/      renderer, texture pipeline, billboards, HUD (console bar +
                     Portrait CRT + HudTextures), 3D weapon view + PBR weapon
-                    materials, effects
+                    materials, effects, the arcade cabinets and the four
+                    machines in them (Arcade.js)
 src/audio/          WebAudio synthesis (all sounds)
 src/world/          terrain, buildings, props, vegetation, zones, nav, secrets,
                     anomalies (cosmic-horror layer + dynamic props and
@@ -726,7 +741,12 @@ third of Eastgate's front doors that used to open onto open grass.
 `smoke.mjs` drives the real game headless: boot without errors, movement, town
 structure, wave spawning, ammo consumption, an end-to-end gunfire kill, zone
 unlocks, and the exact-250,000 victory (no win at 249,999; stats screen at
-250,000). It plays the reported pause/resume dead end back at the game with the
+250,000). It walks up to an arcade cabinet and plays it, which is three
+claims at once: the town is HELD while the machine runs (world clock and
+health both frozen, so nothing on the street can reach a player at a cabinet),
+the machine itself is running, and Escape steps away from it into the STREET
+rather than into the pause menu. It plays the reported pause/resume dead end
+back at the game with the
 harness's pointer-lock bypass switched OFF and the browser made to refuse the
 first few requests — the one path that decides whether a player can carry on
 playing was also the one path the suite never exercised, which is exactly how
