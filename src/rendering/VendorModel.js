@@ -26,11 +26,21 @@ import * as THREE from '../../lib/three.module.js';
  * lives in VendorAnimator (below), which both users drive: the world NPC picks
  * its state from what the player is doing, the shop UI pins it to 'deal'.
  */
+/**
+ * How big the finished machine is.
+ *
+ * The parts below are laid out at a natural 1:1 and the assembled group is
+ * scaled as a whole, so the proportions are authored once and the SIZE is one
+ * number. It stood chest-high at first and read as a novelty; at this scale it
+ * is a machine you stand in front of rather than lean over — still comfortably
+ * under the player's own 1.75 m, which is the constraint that matters.
+ */
+export const SCALE = 1.18;
 // Total height, ground to the crown of the hat — measured off the assembled
 // model rather than declared and hoped for (tests/shop.mjs checks the two
-// agree, and that it stays well under Player.height).
-export const HEIGHT = 1.34;
-export const BASE_H = 0.62;          // the cabinet: counter height
+// agree, and that it stays under Player.height).
+export const HEIGHT = 1.34 * SCALE;  // ≈ 1.58 m
+export const BASE_H = 0.62;          // the cabinet, in the model's own units
 export const BASE_W = 0.78;
 export const BASE_D = 0.56;
 
@@ -282,6 +292,7 @@ export function buildVendorModel(texLib = null) {
   hat.add(at(cyl(0.102, 0.102, 0.022, leather, 14), 0, 0.03, 0));      // the band
   parts.hat = hat;
 
+  g.scale.setScalar(SCALE);
   return { group: g, parts, height: HEIGHT };
 }
 
@@ -534,6 +545,8 @@ export class VendorAnimator {
   _apply(o, breath) {
     const p = this.parts;
     if (p.torso) {
+      // These are the MODEL's own units — the group's scale is applied above
+      // them — so the rest height here is the unscaled cabinet, not HEIGHT.
       p.torso.rotation.set(o.torsoPitch, o.torsoYaw, 0);
       p.torso.position.y = BASE_H + 0.01 + o.torsoLift + breath;
     }

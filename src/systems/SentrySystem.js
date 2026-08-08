@@ -84,7 +84,7 @@ export class SentrySystem {
     this.preview = new THREE.Group();
     this.preview.visible = false;
 
-    const SEG = 28, RINGS = 5;
+    const SEG = 28, RINGS = 8;
     /**
      * The ground fan, as a polar GRID rather than a single flat triangle fan.
      *
@@ -95,7 +95,10 @@ export class SentrySystem {
      * preview was invisible because the hill was in front of it. So the fan
      * carries intermediate rings and is re-draped onto the real ground every
      * frame (see _drapeFan), which makes the green lie ON the terrain the way
-     * a projection would.
+     * a projection would. The ring count is set against the terrain lattice
+     * rather than picked: at this radius eight rings put a drape sample every
+     * couple of metres, comfortably inside the ground's own 3.2 m cells, so
+     * the sheet follows the slope instead of chording across it.
      *
      * RingGeometry gives that grid for free. Its wedge is authored in the XY
      * plane running counter-clockwise from +X, so the rotation is BAKED into
@@ -108,11 +111,12 @@ export class SentrySystem {
       0, SENTRY_RANGE, SEG, RINGS, -Math.PI, SENTRY_ARC);
     fanGeo.rotateX(-Math.PI / 2);
     this._fanGeo = fanGeo;
-    // Bright enough to READ on grass in daylight. A wash this faint is the
-    // difference between a preview and a rumour, and the fan is the part that
-    // actually answers "does it cover that doorway".
+    // Bright enough to READ on grass in daylight, and no brighter. The wedge
+    // covers most of a street at this range, so what was a legible tint over
+    // six metres becomes a coat of paint over eighteen; the bright EDGE below
+    // is what carries the boundary, and the fill only has to say "inside".
     this.fanMat = new THREE.MeshBasicMaterial({
-      color: 0x4cff88, transparent: true, opacity: 0.34,
+      color: 0x4cff88, transparent: true, opacity: 0.20,
       side: THREE.DoubleSide, depthWrite: false, fog: false,
     });
     const fan = new THREE.Mesh(fanGeo, this.fanMat);
@@ -132,7 +136,7 @@ export class SentrySystem {
     const wallGeo = new THREE.CylinderGeometry(
       SENTRY_RANGE, SENTRY_RANGE, WALL_H, SEG, 1, true, -SENTRY_ARC / 2, SENTRY_ARC);
     this.domeMat = new THREE.MeshBasicMaterial({
-      color: 0x4cff88, transparent: true, opacity: 0.20,
+      color: 0x4cff88, transparent: true, opacity: 0.22,
       side: THREE.DoubleSide, depthWrite: false, fog: false,
     });
     const wall = new THREE.Mesh(wallGeo, this.domeMat);
@@ -343,8 +347,8 @@ export class SentrySystem {
     // a slow breath on the bubble, so it reads as a projection rather than
     // as a piece of level geometry somebody left switched on
     const b = 0.9 + Math.sin(performance.now() * 0.003) * 0.1;
-    this.fanMat.opacity = 0.30 * b;
-    this.domeMat.opacity = 0.20 * b;
+    this.fanMat.opacity = 0.20 * b;
+    this.domeMat.opacity = 0.22 * b;
 
     if (blocked || !input) return;
     if (input.wasClicked(0)) this.place();

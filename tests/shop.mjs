@@ -10,14 +10,14 @@
  *      by design and must still drop its silver
  *   2. tokens are banked on pickup, spent at the till, and survive a save /
  *      resume round trip and a checkpoint rollback
- *   3. the vendor stands in its kiosk in Eastgate, is no taller than the
- *      player's chest, and the horde IGNORES IT ENTIRELY — no zombie ever
- *      acquires it, and an Exploder detonating at the counter cannot hurt it
+ *   3. the vendor stands in its pitch in Eastgate, shorter than the player,
+ *      facing the road, and the horde IGNORES IT ENTIRELY — no zombie ever
+ *      acquires it, and an Exploder going off at the pitch cannot hurt it
  *   4. the shop opens on [E], sells what it says it sells, refuses what it
  *      cannot be paid for, runs out of sentries after exactly two, and leaves
  *      on Escape straight back into the game rather than to the pause menu
  *   5. a sentry deploys facing where the player looked, covers a 180° arc to
- *      twenty feet, shoots at the pistol's rate for the pistol's damage,
+ *      sixty feet, shoots at the pistol's rate for the pistol's damage,
  *      ignores what is behind it, and packs back into the satchel on [E]
  *
  * Usage: node tests/shop.mjs
@@ -169,27 +169,65 @@ const vendor = await page.evaluate(async () => {
   const box = new THREE.Box3().setFromObject(k.mesh);
   const post = g.world.tradingPost;
   const zone = g.world.zones.zoneAt(k.position.x, k.position.z);
+  // Which way it faces, and whether you can get to it. The pitch is open at
+  // the front and packed at the sides, so a probe walked in along the machine's
+  // OWN facing must reach it, and probes walked in from either flank must not.
+  const reach = (bearing, from) => {
+    const p = new THREE.Vector3(
+      k.position.x + Math.sin(bearing) * from, k.position.y, k.position.z + Math.cos(bearing) * from);
+    const want = { x: p.x, z: p.z };
+    // step toward the machine, resolving against the world the way a player does
+    for (let t = 0; t < 40; t++) {
+      p.x -= Math.sin(bearing) * 0.12;
+      p.z -= Math.cos(bearing) * 0.12;
+      g.world.collision.resolveCapsule(p, g.player.radius, g.player.height);
+    }
+    return Math.hypot(p.x - k.position.x, p.z - k.position.z);
+  };
+  const side = k.yaw + Math.PI / 2;
   return {
     declared: HEIGHT,
     measured: box.max.y - box.min.y,
     playerHeight: g.player.height,
     zone: zone.name,
-    atCounter: Math.hypot(k.position.x - post.site.x, k.position.z - post.site.z) < 1.0,
+    atCounter: Math.hypot(k.position.x - post.site.x, k.position.z - post.site.z) < 1.2,
     fromSpawn: Math.hypot(k.position.x - g.world.playerSpawn.x, k.position.z - g.world.playerSpawn.z),
     onFriendlyRoster: g.friendlies.includes(k),
     tagged: [...k.tags],
     hasPrompt: g.world.interactables.some((it) => String(it.prompt).includes('shopkeeper')),
+    // It faces the road: Main St East runs along +Z from here, and an entity
+    // faces (+sin yaw, +cos yaw), so facing the road means cos(yaw) ≈ +1.
+    facesRoad: Math.cos(k.yaw) > 0.9,
+    cosYaw: Math.cos(k.yaw),
+    // ...and its own facing is the way in
+    reachFront: reach(k.yaw, 4),
+    reachLeft: reach(side, 4),
+    reachRight: reach(side + Math.PI, 4),
+    reachBack: reach(k.yaw + Math.PI, 4),
+    interactRadius: g.world.interactables.find((it) => String(it.prompt).includes('shopkeeper'))?.radius,
   };
 });
 check('the vendor stands at the trading post counter, in Eastgate',
   vendor.atCounter && vendor.zone === 'Eastgate Residential', `${vendor.zone}`);
 check('...a short walk from where the run starts', vendor.fromSpawn < 90, `${vendor.fromSpawn.toFixed(0)}m from spawn`);
-check('the whole machine is no taller than the player\'s chest',
-  vendor.measured < vendor.playerHeight * 0.8 && Math.abs(vendor.measured - vendor.declared) < 0.05,
-  `${vendor.measured.toFixed(2)}m vs player ${vendor.playerHeight}m (declared ${vendor.declared})`);
+// The hard constraint on the machine, and the only one: cabinet and figure
+// together must come in UNDER the player, by enough that you are plainly
+// looking at it rather than up at it. The declared HEIGHT has to match what
+// the assembled model actually measures, or every camera and collider derived
+// from it is quietly wrong.
+check('the whole machine still stands shorter than the player',
+  vendor.measured < vendor.playerHeight - 0.1 && Math.abs(vendor.measured - vendor.declared) < 0.05,
+  `${vendor.measured.toFixed(2)}m vs player ${vendor.playerHeight}m (declared ${vendor.declared.toFixed(2)})`);
 check('it is not on the roster the horde hunts from',
   !vendor.onFriendlyRoster && !vendor.tagged.includes('friendly'), vendor.tagged.join('/'));
 check('and it offers a trade prompt', vendor.hasPrompt);
+check('the pitch faces the road', vendor.facesRoad, `cos(yaw) ${vendor.cosYaw.toFixed(3)}`);
+check('the open front lets you walk up to the machine',
+  vendor.reachFront <= vendor.interactRadius,
+  `stopped ${vendor.reachFront.toFixed(2)}m out, prompt reaches ${vendor.interactRadius}m`);
+check('...and the stacked stock keeps you out of the sides and the back',
+  vendor.reachLeft > 1.0 && vendor.reachRight > 1.0 && vendor.reachBack > 1.0,
+  `left ${vendor.reachLeft.toFixed(2)}m, right ${vendor.reachRight.toFixed(2)}m, back ${vendor.reachBack.toFixed(2)}m`);
 
 // The real test of "zombies ignore it": put a horde around it with no player
 // to chase and check that not one of them ever acquires it, then set off an
@@ -274,10 +312,33 @@ const shop = await page.evaluate(async () => {
   out.lockedFree = g.tokens.tokens === spentBefore;
 
   // Escape leaves the counter and goes back to the game, never to the pause
-  document.dispatchEvent(new KeyboardEvent('keydown', { code: 'Escape', key: 'Escape', bubbles: true }));
+  const key = (code, init = {}) =>
+    document.dispatchEvent(new KeyboardEvent('keydown', { code, key: code, bubbles: true, ...init }));
+  key('Escape');
   out.closed = !g.shop.open;
   out.state = g.state.state;
   out.pause = getComputedStyle(document.getElementById('screen-pause')).display;
+
+  // ...and so does every other way out. There are four on purpose: a browser
+  // only hands the pointer back to a page holding user activation, and Escape
+  // grants none — so the button, the backdrop and the interact key are the
+  // exits that always recapture the mouse on the spot.
+  const open = () => { g.events.emit('shop:open', {}); return g.shop.open; };
+  out.byInteract = (open(), key(g.input.bindings.interact), !g.shop.open);
+  out.byButton = (open(), g.shop.closeBtn.dispatchEvent(new MouseEvent('click', { bubbles: true })), !g.shop.open);
+  out.byBackdrop = (open(), g.shop.el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })), !g.shop.open);
+  // clicking the case itself is not a way out
+  open();
+  g.shop.el.querySelector('.shop-case').dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+  out.caseHolds = g.shop.open;
+  // an auto-repeat of the key that opened it must not close it again
+  key(g.input.bindings.interact, { repeat: true });
+  out.survivesRepeat = g.shop.open;
+  // Tab belongs to the satchel, and the satchel declines to open here — so at
+  // the counter it does nothing at all rather than doing both things at once
+  key('Tab');
+  out.tabHolds = g.shop.open && !g.inventory.open;
+  g.shop.close();
   return out;
 });
 const stockOf = (id) => shop.lines.find((l) => l.id === id);
@@ -299,6 +360,12 @@ check('ammunition costs 10 and reaches the gun',
 check('Escape leaves the counter for the street, not the pause menu',
   shop.closed && shop.state === 'playing' && shop.pause === 'none',
   `state ${shop.state}, pause ${shop.pause}`);
+check('the button, the backdrop and [E] all leave too',
+  shop.byInteract && shop.byButton && shop.byBackdrop,
+  `interact ${shop.byInteract}, button ${shop.byButton}, backdrop ${shop.byBackdrop}`);
+check('and nothing else does — the case holds, a key repeat holds, Tab holds',
+  shop.caseHolds && shop.survivesRepeat && shop.tabHolds,
+  `case ${shop.caseHolds}, repeat ${shop.survivesRepeat}, tab ${shop.tabHolds}`);
 
 /* ------------------------------------------------------------------ */
 /* 5. the sentry                                                        */
@@ -367,8 +434,8 @@ const sentry = await page.evaluate(async () => {
   inArc.toRemove = true; behind.toRemove = true;
   return out;
 });
-check('the sentry reaches about twenty feet over a 180° arc',
-  Math.abs(sentry.range - 6.096) < 0.01 && Math.abs(sentry.arc - Math.PI) < 1e-9,
+check('the sentry reaches about sixty feet over a 180° arc',
+  Math.abs(sentry.range - 18.288) < 0.01 && Math.abs(sentry.arc - Math.PI) < 1e-9,
   `${sentry.range.toFixed(2)}m, ${(sentry.arc * 180 / Math.PI).toFixed(0)}°`);
 check('it shoots for the pistol\'s damage at the pistol\'s rate',
   sentry.damage === sentry.pistolDamage && sentry.interval === sentry.pistolInterval,

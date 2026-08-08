@@ -46,7 +46,7 @@ const AMMO_LINES = [
 export const SHOP_STOCK = [
   {
     id: 'sentry', name: 'PORTABLE SENTRY', price: 100, stock: 2, bay: 'hardware',
-    blurb: 'Tripod auto-pistol. Covers a 180° arc, twenty feet out. Folds into the satchel.',
+    blurb: 'Tripod auto-pistol. Covers a 180° arc, sixty feet out. Folds into the satchel.',
     buy: (events) => events.emit('pickup', { type: 'sentry', amount: 1, label: 'Portable Sentry' }),
   },
   ...AMMO_LINES.map((a) => ({
@@ -102,7 +102,8 @@ export class ShopUI {
         </div>
         <div class="shop-foot">
           <span class="shop-till">TOKENS <b>0</b></span>
-          <span class="shop-hint">CLICK TO BUY &nbsp;·&nbsp; ESC — STEP BACK FROM THE COUNTER</span>
+          <span class="shop-hint">CLICK TO BUY</span>
+          <button type="button" class="shop-close">STEP BACK &nbsp;[ESC]</button>
         </div>
       </div>`;
     root.appendChild(this.el);
@@ -110,6 +111,7 @@ export class ShopUI {
     this.tillEl = this.el.querySelector('.shop-till b');
     this.sayEl = this.el.querySelector('.shop-say');
     this.canvas = this.el.querySelector('.shop-vendor');
+    this.closeBtn = this.el.querySelector('.shop-close');
 
     // Three bubbled bays, in the order a customer reads them.
     this.bays = {};
@@ -323,11 +325,35 @@ export class ShopUI {
       if (!row) return;
       this._tryBuy(row.dataset.id);
     });
+    // Two CLICK ways out, and they are not decoration.
+    //
+    // A browser only hands the pointer back to a page that asks for it while
+    // it holds user activation, and a click is the cleanest activation there
+    // is — so leaving by the button or by clicking off the case recaptures the
+    // mouse instantly and without fail. Escape (below) cannot promise that on
+    // its own, because Escape grants no activation at all.
+    this.closeBtn.addEventListener('click', () => this.close());
+    this.el.addEventListener('mousedown', (e) => { if (e.target === this.el) this.close(); });
+
     // Capture phase, and stopped dead: leaving the counter must put the player
     // back in the street with the mouse, never in front of the pause screen.
     document.addEventListener('keydown', (e) => {
-      if (!this.open) return;
-      if (e.code === 'Escape' || e.code === 'Tab') {
+      // `repeat` matters here: the counter is OPENED by holding a key down for
+      // one frame, and an auto-repeat of that same key half a second later
+      // would otherwise close it again under the player's finger.
+      if (!this.open || e.repeat) return;
+      // Escape, and the interact key that opened it. The second is here for a
+      // real reason rather than for symmetry: an ORDINARY key press carries
+      // user activation where Escape does not, so leaving with the same key
+      // you arrived with is the exit that always gets the mouse back on the
+      // spot.
+      //
+      // Tab is deliberately NOT one of them. The satchel owns Tab, it listens
+      // in the capture phase too, and it is registered first — so closing on
+      // Tab here meant the one keypress opened the satchel AND shut the shop,
+      // leaving the player in an inventory they never asked for. The satchel
+      // simply declines to open at the counter instead (see Game.load).
+      if (e.code === 'Escape' || e.code === this.cb.interactCode?.()) {
         e.preventDefault();
         e.stopImmediatePropagation();
         this.close();

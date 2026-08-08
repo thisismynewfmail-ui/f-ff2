@@ -155,7 +155,9 @@ export class Game {
     // Inventory (Tab): frees the mouse for the UI and freezes the sim while
     // open; hands the mouse back to the game on close.
     this.inventory = new Inventory(this.events, this.hudRoot, {
-      canOpen: () => this.state.is('playing') && !this.devConsole.open,
+      // ...but not over the vendor's counter: Tab there would put a second
+      // overlay on top of the first, and only one of them can own the mouse.
+      canOpen: () => this.state.is('playing') && !this.devConsole.open && !this.shop?.open,
       onOpen: () => {
         this.input.setSuppressed(true);
         if (!this.testMode) this.input.releasePointerLock();
@@ -208,6 +210,10 @@ export class Game {
       },
       tokens: () => this.tokens.tokens,
       onBuy: (entry) => this._buy(entry),
+      // The live binding for [E], so the key that opened the counter also
+      // closes it — and does it with an activation the browser will accept a
+      // pointer-lock request under (see ShopUI._wire and _reclaimPointer).
+      interactCode: () => this.input.bindings.interact,
     });
     this.events.on('shop:open', () => this.shop.openShop());
 
@@ -237,17 +243,35 @@ export class Game {
    * the tail of that keypress rather than as the player leaving: the pump is
    * re-armed instead of the game pausing. Escape in ORDINARY play is nowhere
    * near this window, so it still pauses exactly as before.
+   *
+   * ...but the deferred ask CANNOT be the only one, and that is what left a
+   * player leaving the vendor's counter looking at a loose cursor and a "click
+   * to take the mouse back" prompt. Chromium only grants a lock while the
+   * document holds TRANSIENT USER ACTIVATION, and **Escape does not grant
+   * activation**. A frame later there is no gesture on the stack at all, so
+   * every deferred request is refused until the player clicks — which is
+   * exactly the prompt, and exactly what they should not have to do. (The
+   * arcade got away with it only by accident: playing a cabinet means pressing
+   * keys, and each of those IS an activation.)
+   *
+   * So the ask happens TWICE: once synchronously, while whatever closed the
+   * overlay is still on the stack and its activation is still live, and again
+   * on the next frame in case that one was the grant-then-revoke above. The
+   * immediate one is what actually lands, and the guards described above are
+   * what make it safe to make.
    */
   _reclaimPointer() {
     this._overlayClosedAt = performance.now();
     if (this.testMode || !this.state.is('playing')) return;
-    requestAnimationFrame(() => {
+    const ask = () => {
       if (this.state.is('playing') && !this.inventory.open && !this.arcade.open && !this.shop.open) {
         // Urgent: the browser may refuse for the first second or so after an
         // Escape, and the player is standing in the street the whole time.
         this.input.requestPointerLock({ urgent: true });
       }
-    });
+    };
+    ask();
+    requestAnimationFrame(ask);
   }
 
   /**

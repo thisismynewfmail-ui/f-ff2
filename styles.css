@@ -1967,7 +1967,19 @@ html, body {
   font-size: 20px; letter-spacing: 1px; color: var(--fo-amber);
   text-shadow: 0 0 8px rgba(240,160,32,0.55);
 }
-.shop-hint { font-size: 8px; letter-spacing: 3px; color: var(--fo-tan-dim); }
+.shop-hint { font-size: 8px; letter-spacing: 3px; color: var(--fo-tan-dim); margin-left: auto; }
+/* The way out, as a BUTTON. A click carries the user activation a browser
+   wants before it will hand the pointer back, which is why leaving by this
+   (or by clicking off the case) recaptures the mouse on the spot. */
+.shop-close {
+  font-family: inherit; font-size: 10px; letter-spacing: 3px; cursor: pointer;
+  padding: 7px 14px; color: var(--fo-tan);
+  background-color: var(--fo-steel); background-image: var(--tex-steel);
+  border: 1px solid var(--fo-steel-lo); border-radius: var(--rad-bay);
+  box-shadow: var(--bev-out); text-shadow: 0 1px 0 rgba(0,0,0,0.8);
+}
+.shop-close:hover { color: var(--fo-amber); box-shadow: var(--bev-out), inset 0 0 18px rgba(240,160,32,0.3); }
+.shop-close:active { box-shadow: var(--bev-in); }
 
 @media (max-width: 900px) {
   .shop-body { flex-direction: column; }
