@@ -69,6 +69,7 @@ export class Input {
     this.wheelDelta = 0;
     this.pointerLocked = false;
     this.lockWanted = false;     // the game wants the pointer (see requestPointerLock)
+    this.lockReleased = true;    // ...and has explicitly given it up since
     this._lastLockTry = 0;
     this.onPointerLockChange = null;
     this.suppressed = false; // true while the dev console owns the keyboard
@@ -113,6 +114,14 @@ export class Input {
 
     document.addEventListener('pointerlockchange', () => {
       this.pointerLocked = document.pointerLockElement === this.element;
+      // A grant that lands AFTER we gave the pointer up is the tail of a
+      // request that was already in flight when the player paused. The browser
+      // owes us nothing here — releasePointerLock ran while the lock did not
+      // yet exist, so there was nothing for it to exit — and if this is left
+      // alone the pause screen ends up sitting there with the pointer still
+      // captured under it and no outstanding intent to correct it. Hand it
+      // straight back; the second change event reports the real state.
+      if (this.pointerLocked && this.lockReleased) { document.exitPointerLock(); return; }
       if (this.pointerLocked) { this.lockWanted = false; this._settleMouse(); }
       this.onPointerLockChange?.(this.pointerLocked);
     });
@@ -171,11 +180,13 @@ export class Input {
     // Escape the player pressed.
     if (this.pointerLocked) { this.lockWanted = false; return; }
     this.lockWanted = true;
+    this.lockReleased = false;
     this._tryLock();
   }
 
   releasePointerLock() {
     this.lockWanted = false;
+    this.lockReleased = true;
     if (document.pointerLockElement) document.exitPointerLock();
   }
 

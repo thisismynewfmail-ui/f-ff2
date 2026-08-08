@@ -115,10 +115,16 @@ export class HUD {
     // right side HUD: the CONFIRMED KILLS tally device toward 250,000
     this._buildKillDevice(this.dockInner);
 
-    // fit the dock to the window now, and keep it fitted on every resize
+    // Fit the dock to the window now, and keep it fitted. The window is only
+    // half the story: the dock's own natural width moves too — the weapon
+    // nameplate grows with a longer name, the odometers gain a digit — and a
+    // one-shot measurement taken during construction is always the width of a
+    // half-built dock. A ResizeObserver on the inner row catches every one of
+    // those, and cannot loop, because --dock-scale is a transform and
+    // transforms do not change the layout width being observed.
     this._layoutDock();
     window.addEventListener('resize', () => this._layoutDock());
-    requestAnimationFrame(() => this._layoutDock());
+    new ResizeObserver(() => this._layoutDock()).observe(this.dockInner);
 
     // top-center: fly-in ARMORY names on weapon switch (detail-on-demand;
     // the persistent grid lives in the console ARMS panel).
@@ -276,9 +282,11 @@ export class HUD {
     ctx.save();
     ctx.scale(2, 2);
     const W = cv.width / 2, H = cv.height / 2;
-    // ivory dial card, yellowed toward the rim + foxing speckles
+    // Aged dial card, yellowed toward the rim + foxing speckles. Kept well
+    // below paper-white: on a chassis this dark a bright dial is the first
+    // thing the eye goes to, and the dial is not the readout that matters.
     const age = ctx.createRadialGradient(W / 2, H - 5, 6, W / 2, H - 5, W * 0.72);
-    age.addColorStop(0, '#e6ddc1'); age.addColorStop(0.7, '#dcd2ae'); age.addColorStop(1, '#c2b58c');
+    age.addColorStop(0, '#cdc3a0'); age.addColorStop(0.7, '#bcb18d'); age.addColorStop(1, '#9d9370');
     ctx.fillStyle = age; ctx.fillRect(0, 0, W, H);
     for (let i = 0; i < 26; i++) {
       ctx.fillStyle = `rgba(122,96,54,${(0.03 + this._n01(i, 4) * 0.05).toFixed(3)})`;
@@ -1354,6 +1362,10 @@ export class HUD {
       s.slot.classList.toggle('empty', !!w.locked);
       s.slot.classList.toggle('active', w.active && !w.locked);
       s.slot.classList.toggle('dry', !w.locked && w.mag === 0 && w.reserve === 0 && w.id !== 'bat');
+      // A bay for a weapon the run has not found is EMPTY, and empty means
+      // empty: showing a dimmed silhouette of the Alien Blaster tells the
+      // player there is a secret weapon in slot 6 and roughly what it looks
+      // like, which is the one thing a secret must not do.
       if (w.locked) { s.rsv.textContent = ''; return; }
       const rsv = w.mag === Infinity ? '∞' : w.energy ? '∞' : w.reserve === Infinity ? '∞' : w.reserve;
       const mag = w.mag === Infinity ? '·' : w.mag;
@@ -1424,10 +1436,17 @@ export class HUD {
     }
     d.weapons.forEach((w, i) => {
       const slot = this.slotEls[i];
-      slot.classList.toggle('active', w.active);
-      slot.classList.toggle('dry', w.mag === 0 && w.reserve === 0 && w.id !== 'bat');
+      // Same rule as the ARMS grid: an unfound weapon is a blank rack, not a
+      // preview of what is coming.
+      slot.classList.toggle('empty', !!w.locked);
+      slot.classList.toggle('active', w.active && !w.locked);
+      slot.classList.toggle('dry', !w.locked && w.mag === 0 && w.reserve === 0 && w.id !== 'bat');
+      // A non-breaking space, not an empty string: the rack has to keep its
+      // shape when a bay is blank, and a div with no text has no height.
+      slot.querySelector('.wm-name').textContent = w.locked ? '\u00a0' : (w.flavor || w.name);
       const ammo = slot.querySelector('.wm-ammo');
-      ammo.textContent = w.mag === Infinity ? 'MELEE'
+      ammo.textContent = w.locked ? '\u00a0'
+        : w.mag === Infinity ? 'MELEE'
         : `${w.mag} / ${w.reserve === Infinity ? '∞' : w.reserve}`;
     });
     if (this._menuTimer > 0) {

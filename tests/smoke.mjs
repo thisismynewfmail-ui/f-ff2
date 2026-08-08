@@ -1395,6 +1395,23 @@ const lockFix = await page.evaluate(async () => {
   out.askedWhilePaused = asked - askedAtPause;
   out.hintGoneWhilePaused = !document.getElementById('lock-hint').classList.contains('on');
 
+  // ...and a grant that arrives AFTER the pause has to be handed straight
+  // back. releasePointerLock can only exit a lock that already exists, so a
+  // request still in flight when the player paused used to land underneath
+  // the pause screen and stay there — pointer captured, menu up, nothing
+  // outstanding to correct it. Simulate exactly that: take the lock while
+  // paused, behind the game's back.
+  real();
+  for (let i = 0; i < 30 && !document.pointerLockElement; i++) {
+    await frame(); await new Promise((r) => setTimeout(r, 30));
+  }
+  out.lateGrantLanded = true;   // whether it landed at all is the browser's call
+  for (let i = 0; i < 30 && document.pointerLockElement; i++) {
+    await frame(); await new Promise((r) => setTimeout(r, 30));
+  }
+  out.lateGrantReturned = !document.pointerLockElement && !g.input.pointerLocked;
+  out.stillPaused = g.state.state;
+
   // and Escape gets back out of it a second time, which is the exact sequence
   // in the report: pause, resume, pause, and then stuck.
   esc();
@@ -1403,12 +1420,18 @@ const lockFix = await page.evaluate(async () => {
   // The RESUME button is the other way out, and it has to ask for the pointer
   // the same way — it was reported stuck too.
   g.pause();
-  // exitPointerLock reports back asynchronously; wait for the pointer to
-  // actually be gone before resuming, or this is testing a different thing.
-  for (let i = 0; i < 30 && document.pointerLockElement; i++) {
+  // Everything about pointer lock reports back asynchronously — the exit, and
+  // any request still in flight from the Escape path above, which the browser
+  // is free to grant AFTER the pause. Settle both before clicking, or the
+  // button gets tested against an input layer that still believes it holds
+  // the pointer, sees nothing to ask for, and looks broken when it is not.
+  // Wait on the game's own view of it, not just the document's, and require
+  // the quiet to hold for a few frames so a late grant cannot slip in.
+  for (let i = 0, calm = 0; i < 60 && calm < 4; i++) {
+    if (!document.pointerLockElement && !g.input.pointerLocked) calm++; else calm = 0;
     await frame(); await new Promise((r) => setTimeout(r, 30));
   }
-  out.unlockedBeforeClick = !document.pointerLockElement;
+  out.unlockedBeforeClick = !document.pointerLockElement && !g.input.pointerLocked;
   const askedAtClick = asked;
   refuse = 999;
   document.getElementById('btn-resume').dispatchEvent(new MouseEvent('click', { bubbles: true }));
@@ -1446,6 +1469,9 @@ check('pausing cancels an outstanding pointer request',
   `dropped ${lockFix.requestDropped}, ${lockFix.askedWhilePaused} asks while paused`);
 check('and pausing while unlocked still works', lockFix.paused1 === 'paused' && lockFix.paused2 === 'paused',
   `${lockFix.paused1} / ${lockFix.paused2}`);
+check('a lock that lands after the pause is handed straight back',
+  lockFix.lateGrantReturned && lockFix.stillPaused === 'paused',
+  `returned ${lockFix.lateGrantReturned}, state ${lockFix.stillPaused}`);
 check('RESUME gets the pointer back too, refusals and all',
   // The retry pump itself is proven by the Escape path above; what this adds
   // is that the button enters the same pump rather than asking once and
@@ -1454,6 +1480,177 @@ check('RESUME gets the pointer back too, refusals and all',
   && (lockFix.btnLocked || lockFix.btnStillAsking),
   `unlocked first ${lockFix.unlockedBeforeClick}, state ${lockFix.btnResumed},`
   + ` ${lockFix.btnAsked} asks, locked ${lockFix.btnLocked}`);
+
+/* ------------------------------------------------------------------ */
+/* one material family: every interface is cut from the same plate      */
+/* ------------------------------------------------------------------ */
+// The whole UI paints itself from four procedural bakes published as CSS
+// tokens at boot (installHudTextures). If that install is ever dropped, or a
+// new panel is written that forgets the material, nothing throws — the panels
+// just quietly go back to being flat rectangles. So assert it: the tokens hold
+// real image data, and every top-level surface actually resolves one.
+const material = await page.evaluate(async () => {
+  const g = window.__game;
+  g.hud.showScreen(null); g.state.state = 'playing';
+  const root = getComputedStyle(document.documentElement);
+  const out = { tokens: {}, panels: {} };
+  for (const t of ['--tex-steel', '--tex-bar', '--tex-plate', '--tex-recess', '--tex-paper']) {
+    out.tokens[t] = /^url\("?data:image\/png/.test(root.getPropertyValue(t).trim());
+  }
+  // Open every overlay in turn so its panels are laid out and measurable.
+  g.inventory.toggle();
+  g.arcade.play('brickfall');
+  const probe = (label, sel) => {
+    const el = document.querySelector(sel);
+    out.panels[label] = el ? /data:image\/png/.test(getComputedStyle(el).backgroundImage) : 'MISSING';
+  };
+  probe('side device', '.side-hud');
+  probe('console bar', '#console-bar');
+  probe('nameplate', '.dev-plate');
+  probe('log well', '#cons-log-wrap');
+  probe('satchel', '.inv-panel');
+  probe('satchel slot', '.inv-slot');
+  probe('cabinet', '.arc-cab');
+  g.arcade.close();
+  g.inventory.toggle();
+  g.pause();
+  probe('pause case', '#pause-case');
+  probe('pause bay', '.bay');
+  g.hud.showScreen(null); g.state.state = 'playing';
+  return out;
+});
+check('the panel materials are baked and published as CSS tokens',
+  Object.values(material.tokens).every(Boolean),
+  Object.entries(material.tokens).map(([k, v]) => `${k}:${v ? 'ok' : 'EMPTY'}`).join(' '));
+check('and every interface surface is cut from them',
+  Object.values(material.panels).every((v) => v === true),
+  Object.entries(material.panels).map(([k, v]) => `${k}:${v === true ? 'ok' : v}`).join(' '));
+
+/* a weapon you have not found leaves an EMPTY bay, not a preview          */
+// The Alien Blaster is a secret. A dimmed silhouette of it sitting in slot 6
+// from the first frame of a run tells the player there is a sixth weapon and
+// roughly what it looks like, which is exactly the thing a secret must not
+// do — so a locked bay shows the bay number and nothing else, in both the
+// persistent ARMS grid and the ARMORY fly-in.
+const bays = await page.evaluate(async () => {
+  const g = window.__game;
+  g.hud.showScreen(null); g.state.state = 'playing';
+  const frame = () => new Promise((r) => requestAnimationFrame(r));
+  const read = () => {
+    const arms = [...document.querySelectorAll('.arms-slot')];
+    const rack = [...document.querySelectorAll('.wm-slot')];
+    const vis = (el) => !!el && getComputedStyle(el).visibility !== 'hidden';
+    const words = (el) => (el ? el.textContent.trim().replace(/\u00a0/g, '') : '');
+    return {
+      armsGlyph: arms.map((s) => vis(s.querySelector('.arms-icon'))),
+      armsText: arms.map((s) => words(s.querySelector('.arms-rsv'))),
+      rackGlyph: rack.map((s) => vis(s.querySelector('.wm-glyph'))),
+      rackText: rack.map((s) => words(s.querySelector('.wm-name')) + words(s.querySelector('.wm-ammo'))),
+      locked: g.weapons.hudState().map((w) => !!w.locked),
+    };
+  };
+  g.hud.showWeaponMenu?.();
+  await frame(); await frame();
+  const before = read();
+  g.events.emit('weapon:unlock', { id: 'blaster' });
+  for (let i = 0; i < 4; i++) await frame();
+  const after = read();
+  return { before, after };
+});
+const lockedIdx = bays.before.locked.indexOf(true);
+check('an unfound weapon leaves a blank bay in both racks',
+  lockedIdx >= 0
+  && !bays.before.armsGlyph[lockedIdx] && bays.before.armsText[lockedIdx] === ''
+  && !bays.before.rackGlyph[lockedIdx] && bays.before.rackText[lockedIdx] === '',
+  `slot ${lockedIdx + 1}: arms glyph ${bays.before.armsGlyph[lockedIdx]}`
+  + ` "${bays.before.armsText[lockedIdx]}", rack glyph ${bays.before.rackGlyph[lockedIdx]}`
+  + ` "${bays.before.rackText[lockedIdx]}"`);
+check('and finding it fills the bay in',
+  lockedIdx >= 0 && !bays.after.locked[lockedIdx]
+  && bays.after.armsGlyph[lockedIdx] && bays.after.armsText[lockedIdx] !== ''
+  && bays.after.rackGlyph[lockedIdx] && bays.after.rackText[lockedIdx] !== '',
+  `arms "${bays.after.armsText[lockedIdx]}", rack "${bays.after.rackText[lockedIdx]}"`);
+check('and no OTHER bay was blank to begin with',
+  bays.before.armsGlyph.filter((v) => !v).length === 1,
+  `${bays.before.armsGlyph.filter((v) => !v).length} blank of ${bays.before.armsGlyph.length}`);
+
+/* the dock always fits the window, however wide its contents get         */
+// The dock is scaled to fit by measuring its own natural width. Measured once
+// during construction that number is the width of a HALF-BUILT dock, and the
+// assembled thing then hangs off both edges of the screen — which is exactly
+// what happened. A ResizeObserver re-fits it whenever the contents move, so
+// this checks the fit AFTER forcing the width up.
+const dockFit = await page.evaluate(async () => {
+  const g = window.__game;
+  const inner = document.getElementById('hud-dock-inner');
+  const frame = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+  const measure = () => {
+    const r = inner.getBoundingClientRect();
+    return { left: r.left, right: r.right, natural: inner.offsetWidth };
+  };
+  await frame();
+  const rest = measure();
+  // Widen the row without touching the window: a fourth device bolted into
+  // the dock is the same event as a panel growing, and it is the case the
+  // one-shot measurement got wrong.
+  const filler = document.createElement('div');
+  filler.style.cssText = 'width:300px;flex:0 0 300px;';
+  inner.appendChild(filler);
+  await frame(); await new Promise((r) => setTimeout(r, 80)); await frame();
+  const grown = measure();
+  filler.remove();
+  await frame(); await new Promise((r) => setTimeout(r, 80)); await frame();
+  const back = measure();
+  return { rest, grown, back, view: window.innerWidth, g: !!g };
+});
+const fits = (m, view) => m.left >= -1 && m.right <= view + 1;
+check('the instrument dock fits the window',
+  fits(dockFit.rest, dockFit.view),
+  `${dockFit.rest.left.toFixed(0)}..${dockFit.rest.right.toFixed(0)} in ${dockFit.view}`);
+check('and re-fits itself when its contents grow',
+  dockFit.grown.natural > dockFit.rest.natural && fits(dockFit.grown, dockFit.view)
+  && Math.abs(dockFit.back.right - dockFit.rest.right) < 2,
+  `natural ${dockFit.rest.natural} -> ${dockFit.grown.natural},`
+  + ` ${dockFit.grown.left.toFixed(0)}..${dockFit.grown.right.toFixed(0)} in ${dockFit.view},`
+  + ` back to ${dockFit.back.right.toFixed(0)}`);
+
+/* the portrait keeps looking around, and keeps reporting the wound      */
+// Two separate things share one canvas and each has broken independently: the
+// idle glance (which must keep running while nothing is happening) and the
+// head swap on damage. Hash the pixels rather than trusting the state, and do
+// the damage half at full health first so a changed frame cannot be the idle.
+const face = await page.evaluate(async () => {
+  const g = window.__game;
+  g.hud.showScreen(null); g.state.state = 'playing';
+  const cv = g.hud.portraitCanvas;
+  const ctx = cv.getContext('2d');
+  const hash = () => {
+    const d = ctx.getImageData(0, 0, cv.width, cv.height).data;
+    let h = 2166136261;
+    for (let i = 0; i < d.length; i += 17) { h ^= d[i]; h = Math.imul(h, 16777619); }
+    return h >>> 0;
+  };
+  // Drive the portrait directly on a fixed dt so the sampling does not depend
+  // on how many frames a software renderer manages to produce.
+  const step = (secs, frac) => {
+    g.hud.portrait.setHealth(frac);
+    for (let i = 0; i < Math.round(secs / 0.05); i++) g.hud.portrait.update(0.05);
+  };
+  const out = { idle: new Set(), states: {} };
+  // 24 seconds of standing still at full health: the glance cycle has to move
+  for (let i = 0; i < 48; i++) { step(0.5, 1); out.idle.add(hash()); }
+  out.idleFrames = out.idle.size;
+  for (const [name, frac] of [['healthy', 1], ['hurt', 0.4], ['critical', 0.15]]) {
+    step(0.4, frac);
+    out.states[name] = hash();
+  }
+  return { idleFrames: out.idleFrames, states: out.states };
+});
+check('the portrait keeps glancing around while nothing happens',
+  face.idleFrames > 1, `${face.idleFrames} distinct frames over 24s of idle`);
+check('and the face changes as the wound gets worse',
+  new Set(Object.values(face.states)).size === 3,
+  Object.entries(face.states).map(([k, v]) => `${k}:${v.toString(16)}`).join(' '));
 
 check('no console errors across the whole run', errors.length === 0, errors.slice(0, 3).join(' | '));
 
