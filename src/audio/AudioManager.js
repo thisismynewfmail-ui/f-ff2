@@ -31,6 +31,8 @@ export class AudioManager {
     on('pickup', ({ type }) => (type === 'health' ? this.healthChime()
       : type === 'key' ? this.keyChime()
       : type === 'companionCube' ? this.cubeChime()
+      : type?.startsWith('coin_') ? this.coinChime(type)
+      : type === 'sentry' ? this.sentryStow()
       : this.ammoChime()));
     on('player:damage', () => this.hurt());
     on('player:heal', () => {});
@@ -39,6 +41,11 @@ export class AudioManager {
     on('exploder:explode', ({ pos }) => this.explosion(pos));
     on('barrier:explode', (b) => this.barrierBlast(b));
     on('spitter:fire', ({ pos }) => this.spitterShot(pos));
+    on('sentry:fire', ({ pos }) => this.sentryShot(pos));
+    on('sentry:deployed', ({ pos }) => this.sentryDeploy(pos));
+    on('vendor:greet', ({ pos }) => this.vendorWake(pos));
+    on('shop:bought', () => this.tillChime());
+    on('tokens:refused', () => this.tillRefuse());
     on('zombie:aggro', ({ pos }) => this.growl(pos));
     on('wave:start', () => this.horn());
     on('zone:unlock', () => this.rumble());
@@ -552,6 +559,70 @@ export class AudioManager {
     const seq = [[392, 0], [494, 0.09], [587, 0.18], [784, 0.3]];
     for (const [f, w] of seq) this._tone('triangle', f, 0.3, 0.12, w);
     this._tone('sine', 1568, 0.8, 0.05, 0.42);
+  }
+
+  /* ---------------- tokens, the vendor and the sentry ---------------- */
+
+  /**
+   * A coin going into the purse. The three are told apart by ear as well as
+   * by eye: copper is a small dull tick, silver rings a fifth above it, and
+   * the gold is the one with a tail on it — so you know what you picked up
+   * without looking down at your feet in the middle of a wave.
+   */
+  coinChime(type) {
+    const base = type === 'coin_gold' ? 1046 : type === 'coin_silver' ? 880 : 660;
+    this._tone('triangle', base, 0.05, 0.11);
+    this._tone('triangle', base * 1.5, 0.09, 0.09, 0.035);
+    if (type === 'coin_gold') this._tone('sine', base * 3, 0.35, 0.035, 0.07);
+    this._noise(0.03, 'bandpass', 5200, 3, 0.05);   // the metal-on-metal edge
+  }
+
+  /** The till: a purchase landing, and the machine refusing one. */
+  tillChime() {
+    this._tone('square', 784, 0.05, 0.1);
+    this._tone('square', 1046, 0.07, 0.1, 0.05);
+    this._noise(0.09, 'bandpass', 2600, 2, 0.07, 0.03);   // the drawer
+    this._tone('sine', 1568, 0.5, 0.045, 0.1);            // the bell on top of it
+  }
+
+  tillRefuse() {
+    this._tone('square', 220, 0.09, 0.12);
+    this._tone('square', 196, 0.16, 0.12, 0.08);
+    this._noise(0.06, 'lowpass', 900, 1, 0.09, 0.02);
+  }
+
+  /** The animatronic coming awake behind the counter: a motor and a relay. */
+  vendorWake(pos) {
+    const s = this._spatial(pos, 24);
+    if (!s) return;
+    this._tone('sawtooth', 62, 0.5, 0.07 * s.vol, 0, s.pan, 96);      // the drive motor
+    this._noise(0.07, 'bandpass', 1400, 3, 0.09 * s.vol, 0.02, s.pan); // the relay
+    this._tone('square', 330, 0.05, 0.05 * s.vol, 0.24, s.pan);        // its bell tapping once
+  }
+
+  /** The sentry: legs locking out, and the flat crack of its pistol. */
+  sentryDeploy(pos) {
+    const s = this._spatial(pos, 30);
+    if (!s) return;
+    this._noise(0.12, 'bandpass', 900, 2, 0.14 * s.vol, 0, s.pan);
+    this._tone('square', 180, 0.07, 0.08 * s.vol, 0.14, s.pan, 260);
+    this._tone('square', 520, 0.05, 0.06 * s.vol, 0.3, s.pan);
+  }
+
+  sentryShot(pos) {
+    const s = this._spatial(pos, 50);
+    if (!s) return;
+    // Deliberately thinner and drier than the player's pistol: the same
+    // cartridge, but coming out of a little machine across the street.
+    this._punch(300, 84, 0.045, 0.24 * s.vol, 0, s.pan, 'triangle');
+    this._noise(0.035, 'bandpass', 3800, 1.4, 0.22 * s.vol, 0, s.pan);
+    this._tone('sine', 5200, 0.04, 0.02 * s.vol, 0.04, s.pan, 3600);
+  }
+
+  /** It folding itself back into the satchel. */
+  sentryStow() {
+    this._noise(0.1, 'lowpass', 1100, 1, 0.1);
+    this._tone('square', 260, 0.06, 0.07, 0.06, 0, 180);
   }
 
   /* ---------------- the arcade ---------------- */

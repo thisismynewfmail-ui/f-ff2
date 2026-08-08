@@ -1,5 +1,5 @@
 import * as THREE from '../../lib/three.module.js';
-import { SHEET_LAYOUT } from './TextureConfig.js';
+import { SHEET_LAYOUT, COIN_LAYOUT } from './TextureConfig.js';
 
 /**
  * Camera-facing sprite entity rendering (Doom-style cylindrical billboards).
@@ -183,5 +183,42 @@ export class ItemBillboard {
   dispose() {
     this.mesh.geometry.dispose();
     this.mesh.material.dispose();
+  }
+}
+
+/**
+ * A pickup billboard that plays a horizontal sprite STRIP instead of showing
+ * one still image — the dropped coins (see COIN_LAYOUT), which turn on the
+ * spot so a token on the grass catches the eye the way a box of ammo never
+ * has to.
+ *
+ * The texture is shared (one upload per coin type), so the frame window lives
+ * in the geometry's UVs rather than in texture.offset — otherwise every coin
+ * in the world would step in lockstep off one shared texture. The phase is
+ * per-coin, so a handful dropped together do not spin as one object.
+ */
+export class FlipbookBillboard extends ItemBillboard {
+  constructor(texture, size, { frames = COIN_LAYOUT.frames, fps = COIN_LAYOUT.fps } = {}) {
+    super(texture, size, null);
+    this.frames = frames;
+    this.fps = fps;
+    this.frameOffset = (Math.random() * frames) | 0;
+    this._frame = -1;
+    this._setFrame(this.frameOffset);
+  }
+
+  _setFrame(i) {
+    if (i === this._frame) return;
+    this._frame = i;
+    const u0 = i / this.frames, u1 = (i + 1) / this.frames;
+    const uv = this.mesh.geometry.attributes.uv;
+    uv.setXY(0, u0, 1); uv.setXY(1, u1, 1);   // PlaneGeometry order: TL, TR, BL, BR
+    uv.setXY(2, u0, 0); uv.setXY(3, u1, 0);
+    uv.needsUpdate = true;
+  }
+
+  update(time, camPos) {
+    super.update(time, camPos);
+    this._setFrame((((time * this.fps) | 0) + this.frameOffset) % this.frames);
   }
 }

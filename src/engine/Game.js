@@ -8,6 +8,7 @@ import { Sky } from '../world/Sky.js';
 import { Player } from '../entities/Player.js';
 import { NPC } from '../entities/NPC.js';
 import { Cockroach } from '../entities/Cockroach.js';
+import { ShopKeeper } from '../entities/ShopKeeper.js';
 import { PickupManager } from '../entities/Pickups.js';
 import { CitizenSystem } from '../systems/CitizenSystem.js';
 import { WeaponManager } from '../weapons/WeaponManager.js';
@@ -18,9 +19,12 @@ import { GameState } from '../systems/GameState.js';
 import { Inventory } from '../systems/Inventory.js';
 import { SaveSystem } from '../systems/SaveSystem.js';
 import { SettingsStore } from '../systems/SettingsStore.js';
+import { TokenSystem } from '../systems/TokenSystem.js';
+import { SentrySystem } from '../systems/SentrySystem.js';
 import { Effects } from '../rendering/Effects.js';
 import { WeaponView } from '../rendering/WeaponView.js';
 import { HUD } from '../rendering/HUD.js';
+import { ShopUI } from '../rendering/ShopUI.js';
 import { AudioManager } from '../audio/AudioManager.js';
 import { Shell } from './Shell.js';
 import { Arcade } from '../rendering/Arcade.js';
@@ -65,6 +69,9 @@ export class Game {
     this.player = new Player(this.events, this.world, this.input);
     this.world.attach(this);
     this.score = new ScoreSystem(this.events);
+    // Tokens: the vendor's currency. Separate from score on purpose — one is
+    // a record, the other is a resource you spend (see systems/TokenSystem.js).
+    this.tokens = new TokenSystem(this.events);
     this.waves = new WaveSystem(this.events, this.score);
     // Checkpoint: the run-state to roll back to on death. Refreshed every tenth
     // wave (see _wire); the initial one is the pristine start (wave 0, no kills).
@@ -81,13 +88,32 @@ export class Game {
     // pristine snapshot is reused to refill the guns on a NEW GAME restart.
     this._pristineAmmo = this.weapons.snapshotAmmo();
     this.checkpoint.weapons = this._pristineAmmo;
+    // ...and the purse rolls back with it: dying costs you the shopping you
+    // had not done yet rather than handing you a windfall.
+    this.checkpoint.tokens = this.tokens.snapshot();
     this.pickups = new PickupManager(this.events, this.world, this.texLib, this.renderer.scene);
     this.pickups.seedInitial();
+    // The deployable sentries: the ones in the satchel, the one in the hands
+    // and the ones standing in the street. Given the live zombie list every
+    // frame from the same shared AI context the horde is stepped with.
+    this.sentries = new SentrySystem(
+      this.events, this.world, this.texLib, this.renderer.scene, this.player);
+    this.checkpoint.sentries = this.sentries.snapshot();
     this.npc = new NPC(this.events, this.world, this.texLib.get('npcPeaceful'));
     this.renderer.scene.add(this.npc.mesh);
     // Friendlies zombies may fall back to hunting, and the roster the NPCs
     // sense threats from — one list, so new NPC archetypes just slot in.
+    //
+    // The shopkeeper is deliberately NOT on it. This roster is exactly what
+    // makes something huntable: a zombie with no player to chase looks for the
+    // nearest thing on here, and an Exploder's blast is dealt to the player,
+    // the horde and this list. Leaving the vendor off it is what makes the
+    // horde ignore it entirely — not toughness, invisibility.
     this.friendlies = [this.npc];
+    // The vendor, at the counter of the trading post out on the Eastgate knoll.
+    const post = this.world.tradingPost.counterSpot();
+    this.shopkeeper = new ShopKeeper(this.events, this.world, this.texLib, post);
+    this.renderer.scene.add(this.shopkeeper.mesh);
     // The AI-test cockroach: wanders, hides indoors by day, roams out at
     // night, and skitters away from the player.
     this.cockroach = new Cockroach(this.events, this.world);
@@ -161,6 +187,30 @@ export class Game {
       if (this.state.is('playing') && !this.inventory.open) this.arcade.play(id);
     });
 
+    /**
+     * The vendor's counter. It freezes the world exactly the way the satchel
+     * and the arcade do — the mouse is on the UI, so nothing in the street may
+     * reach the player while they are shopping — and Escape (handled inside
+     * ShopUI, in the capture phase) puts them straight back in the street with
+     * the pointer, never in front of the pause menu.
+     */
+    this.shop = new ShopUI(this.hudRoot, this.texLib, {
+      canOpen: () => this.state.is('playing') && !this.devConsole.open && !this.inventory.open,
+      onOpen: () => {
+        this.input.setSuppressed(true);
+        if (!this.testMode) this.input.releasePointerLock();
+        this.events.emit('shop:opened', {});
+      },
+      onClose: () => {
+        this.input.setSuppressed(false);
+        this._reclaimPointer();
+        this.events.emit('shop:closed', {});
+      },
+      tokens: () => this.tokens.tokens,
+      onBuy: (entry) => this._buy(entry),
+    });
+    this.events.on('shop:open', () => this.shop.openShop());
+
     this._wire();
     this._startAutosave();
     // Push the loaded settings (sliders + key bindings) live now that every
@@ -192,7 +242,7 @@ export class Game {
     this._overlayClosedAt = performance.now();
     if (this.testMode || !this.state.is('playing')) return;
     requestAnimationFrame(() => {
-      if (this.state.is('playing') && !this.inventory.open && !this.arcade.open) {
+      if (this.state.is('playing') && !this.inventory.open && !this.arcade.open && !this.shop.open) {
         // Urgent: the browser may refuse for the first second or so after an
         // Escape, and the player is standing in the street the whole time.
         this.input.requestPointerLock({ urgent: true });
@@ -200,11 +250,38 @@ export class Game {
     });
   }
 
+  /**
+   * Take the vendor's price and hand over the goods.
+   *
+   * The purchase is one transaction in one place, and EVERY rule about it is
+   * enforced here rather than in the button that usually starts it: the bay
+   * must be sellable, the machine must still have one, and the purse must
+   * cover it — checked in that order, and the goods issued only if all three
+   * held. A rule that lives in the UI instead is a rule any other caller walks
+   * straight past, which is exactly how a two-of-a-kind item ends up in the
+   * satchel four times.
+   *
+   * What the goods ARE is the entry's own business (see SHOP_STOCK): it emits
+   * an ordinary 'pickup', which is how ammunition reaches the guns and how the
+   * sentry reaches the satchel, so nothing here needs to know which is which.
+   * Returns true if the sale happened.
+   */
+  _buy(entry) {
+    if (!entry || entry.locked) return false;
+    if (this.shop.remaining(entry) <= 0) return false;
+    if (!this.tokens.spend(entry.price)) return false;
+    entry.buy?.(this.events);
+    this.shop.noteSold(entry);
+    this.events.emit('shop:bought', { id: entry.id, price: entry.price });
+    this.shop.pokeVendor('sale');
+    return true;
+  }
+
   _wire() {
     // Losing pointer lock while playing = pause (unless the satchel took it).
     this.input.onPointerLockChange = (locked) => {
       if (locked || !this.state.is('playing') || this.testMode) return;
-      if (this.inventory.open || this.arcade.open) return;
+      if (this.inventory.open || this.arcade.open || this.shop.open) return;
       // An unlock that arrives while we are still ASKING for the pointer is
       // not the player leaving — it is the tail of an exit we requested
       // ourselves before they resumed (exitPointerLock reports back a frame or
@@ -250,8 +327,9 @@ export class Game {
      */
     document.addEventListener('keydown', (e) => {
       if (e.code !== 'Escape' || this.devConsole.open || this.inventory.open) return;
-      // Arcade already swallowed it in the capture phase; belt and braces.
-      if (this.arcade.open) return;
+      // The arcade and the shop already swallowed it in the capture phase;
+      // belt and braces, so leaving either can never reach the pause screen.
+      if (this.arcade.open || this.shop.open) return;
       // The pause settings overlay eats Escape first (HUD._wire) to close
       // itself; if it is open, this must not also fire.
       if (this.hud.pauseSettingsEl && !this.hud.pauseSettingsEl.hidden) return;
@@ -264,7 +342,10 @@ export class Game {
     // back the magazines/reserves they held at the checkpoint (not a dry gun).
     this.events.on('wave:start', ({ wave }) => {
       if (wave % 10 === 0) {
-        this.checkpoint = { wave, score: this.score.snapshot(), weapons: this.weapons.snapshotAmmo() };
+        this.checkpoint = {
+          wave, score: this.score.snapshot(), weapons: this.weapons.snapshotAmmo(),
+          tokens: this.tokens.snapshot(), sentries: this.sentries.snapshot(),
+        };
       }
     });
 
@@ -279,6 +360,11 @@ export class Game {
       this.input.releasePointerLock();
     });
     this.events.on('supplies:drop', () => this._dropSupplies());
+
+    // Taking a sentry out of the satchel puts it in the player's hands, so
+    // the satchel gets out of the way — the placement preview is in the
+    // WORLD, and you cannot aim it through an open inventory panel.
+    this.events.on('sentry:hold', ({ on }) => { if (on) this.inventory.close(); });
 
     // Clicking the Companion Cube in the satchel sets it back down on the
     // ground just ahead of the player (see CompanionCube.dropAt).
@@ -325,7 +411,15 @@ export class Game {
     this.waves.restartAtWave(1);
     // Refill the guns to the starting loadout and bank it as the new checkpoint.
     this.weapons.restoreAmmo(this._pristineAmmo);
-    this.checkpoint = { wave: 0, score: this.score.snapshot(), weapons: this.weapons.snapshotAmmo() };
+    // An empty purse, no hardware in the field, and the vendor's shelves full
+    // again — a new run starts where the first one did.
+    this.tokens.restore({ tokens: 0, earned: 0, spent: 0 });
+    this.sentries.reset();
+    this.shop.resetStock();
+    this.checkpoint = {
+      wave: 0, score: this.score.snapshot(), weapons: this.weapons.snapshotAmmo(),
+      tokens: this.tokens.snapshot(), sentries: this.sentries.snapshot(),
+    };
     this.player.respawn();
     this.startPlaying();
   }
@@ -343,10 +437,17 @@ export class Game {
         shotsHit: s.shotsHit | 0,
       });
       this.score.timePlayed = s.timePlayed || 0;
+      // The purse comes back with the run. Coins are a resource the player
+      // earned and did not spend, so a resumed session that forgot them would
+      // be quietly taking money off the table.
+      this.tokens.restore(s.tokens ?? { tokens: 0, earned: 0, spent: 0 });
       const wave = Math.max(1, s.wave | 0);
       this.world.zones.syncTo(this.score.kills);
       this.waves.restartAtWave(wave);
-      this.checkpoint = { wave, score: this.score.snapshot(), weapons: this.weapons.snapshotAmmo() };
+      this.checkpoint = {
+        wave, score: this.score.snapshot(), weapons: this.weapons.snapshotAmmo(),
+        tokens: this.tokens.snapshot(), sentries: this.sentries.snapshot(),
+      };
     }
     this.startPlaying();
   }
@@ -362,6 +463,9 @@ export class Game {
       kills: st.kills, points: st.points, byType: st.byType,
       shotsFired: st.shotsFired, shotsHit: st.shotsHit, accuracy: st.accuracy,
       timePlayed: st.timePlayed,
+      // The purse rides along with the run, so a saved session comes back with
+      // what it had banked (see TokenSystem.snapshot / resumeSession).
+      tokens: this.tokens.snapshot(),
       wave,
       secretsFound: this.world.secrets.found.size,
       secretsTotal: this.world.secrets.total,
@@ -467,6 +571,10 @@ export class Game {
     // Reapply the ammo the player held at the checkpoint — dying no longer means
     // crawling back out with the empty magazines you died on.
     this.weapons.restoreAmmo(cp.weapons);
+    // ...and the purse and the hardware with it: the tokens they had banked,
+    // and their sentries standing back where the checkpoint left them.
+    this.tokens.restore(cp.tokens);
+    this.sentries.restore(cp.sentries);
     // Re-seal the districts that the rolled-back kill count no longer clears, so
     // the section walls stand again (and reopen as the player re-earns them).
     this.world.zones.syncTo(cp.score.kills);
@@ -500,15 +608,18 @@ export class Game {
   }
 
   frame(dt) {
-    // The satchel freezes the world while it's open (mouse is on the UI).
+    // The satchel, the arcade and the vendor's counter all freeze the world
+    // while they are open (the mouse is on the UI).
     if (this.state.is('menu')) {
       this._menuCinematic(dt);
-    } else if (this.state.is('playing') && !this.inventory.open && !this.arcade.open) {
+    } else if (this.state.is('playing') && !this.inventory.open && !this.arcade.open && !this.shop.open) {
       this.time += dt;
       this.update(dt);
     }
-    // The machine runs on its own clock while the town holds its breath.
+    // The machine and the vendor run on their own clocks while the town holds
+    // its breath — a shop whose proprietor stood still would be a photograph.
     this.arcade.update(dt);
+    this.shop.update(dt);
     // No first-person weapon floating over the title cinematic.
     this.renderer.overlayEnabled = !this.state.is('menu');
     this.renderer.render();
@@ -543,13 +654,17 @@ export class Game {
 
     if (this.player.alive) {
       this.player.update(dt);
-      this.weapons.update(dt, this.input);
+      // A sentry in the hands stows the gun: the click that places it must
+      // never also be a trigger pull (see SentrySystem / WeaponView).
+      if (!this.sentries.holding) this.weapons.update(dt, this.input);
     }
 
     // interaction
     const it = this.world.nearestInteractable(this.player.position.x, this.player.position.y, this.player.position.z);
-    this._prompt = it ? it.prompt : null;
-    if (it && this.input.wasActionPressed('interact')) it.onInteract();
+    this._prompt = this.sentries.holding
+      ? 'Click to place the sentry · right-click to put it away'
+      : it ? it.prompt : null;
+    if (it && !this.sentries.holding && this.input.wasActionPressed('interact')) it.onInteract();
 
     // AI + simulation. One shared sensory context: the player, the zombie
     // horde and the friendly roster, so every agent perceives the same world.
@@ -570,6 +685,10 @@ export class Game {
     this.npc.update(dt, ctx);
     this.cockroach.update(dt, ctx);
     this.citizens.update(dt, ctx);
+    this.shopkeeper.update(dt, ctx);
+    // The sentries shoot from the same zombie list the horde is stepped with,
+    // and the held one reads the mouse for its placement click.
+    this.sentries.update(dt, ctx, this.input);
 
     // x-ray cheat: run this AFTER the spawner (so any zombies streamed in this
     // frame already exist and get caught) and after the NPCs move.
@@ -594,6 +713,7 @@ export class Game {
       weapons: this.weapons.hudState(),
       kills: this.score.kills,
       points: this.score.points,
+      tokens: this.tokens.tokens,
       accuracy: this.score.accuracy,
       wave: {
         n: this.waves.wave, state: this.waves.state, respiteLeft: this.waves.respiteLeft,
@@ -613,6 +733,7 @@ export class Game {
     if (this.npc?.mesh) yield this.npc.mesh;
     if (this.cockroach?.mesh) yield this.cockroach.mesh;
     if (this.citizens?.citizen?.mesh) yield this.citizens.citizen.mesh;
+    if (this.shopkeeper?.mesh) yield this.shopkeeper.mesh;
   }
 
   /**

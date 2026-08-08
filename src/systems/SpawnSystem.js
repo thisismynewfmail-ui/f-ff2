@@ -3,6 +3,7 @@ import { Exploder } from '../entities/Exploder.js';
 import { Spitter } from '../entities/Spitter.js';
 import { ZOMBIE_TYPES } from '../entities/ZombieTypes.js';
 import { makeSpriteMaterial } from '../rendering/Billboard.js';
+import { rollCoin } from './TokenDrops.js';
 
 /**
  * Spawn director. Streams the current wave's budget into the world while
@@ -46,7 +47,10 @@ export class SpawnSystem {
     events.on('noise', ({ pos, radius }) => {
       for (const z of this.zombies) z.onNoise(pos, radius);
     });
-    events.on('zombie:death', ({ pos, loot }) => this._maybeDrop(pos, loot));
+    events.on('zombie:death', ({ pos, type, loot }) => {
+      this._maybeDrop(pos, loot);
+      this._maybeCoin(pos, type);
+    });
   }
 
   activeSlots() {
@@ -204,6 +208,25 @@ export class SpawnSystem {
     } else if (r < 0.048) {
       this.events.emit('loot:spawn', { x: pos.x, z: pos.z, type: 'health', amount: 25 });
     }
+  }
+
+  /**
+   * The token drop, rolled independently of the supply drop above.
+   *
+   * Deliberately its own roll on its own event, not an `else` on the loot
+   * ladder: a kill that paid out ammunition should still be able to pay out a
+   * coin, and — the case that matters — an Exploder that took itself out drops
+   * NO ammunition by design but must still be able to drop its silver. The
+   * coin lands a little off the body so it never sits inside whatever else
+   * fell there.
+   */
+  _maybeCoin(pos, type) {
+    const coin = rollCoin(type?.name);
+    if (!coin) return;
+    const a = Math.random() * Math.PI * 2, r = 0.35 + Math.random() * 0.5;
+    this.events.emit('loot:spawn', {
+      x: pos.x + Math.cos(a) * r, z: pos.z + Math.sin(a) * r, type: coin, amount: 1,
+    });
   }
 
   /** Ambient zombie pressure near the player (drives moan intensity). */
