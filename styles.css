@@ -1984,3 +1984,99 @@ body.in-play, body.in-play * { cursor: none !important; }
   .shop-stage { width: 100%; }
   .shop-vendor { width: 100%; height: 220px; }
 }
+
+/* ===================================================================
+   THE ORDER DIAL — the escort's radial command menu
+   ------------------------------------------------------------------
+   Cut from the same plate as the rest of the interface: scratched
+   gunmetal ground, amber stencil, and a green CRT hub. The two halves
+   of the ring MEAN different things — posture on the right, rules on
+   the left — and they are tinted accordingly, which is what lets you
+   read your own orders back off it at a glance.
+   =================================================================== */
+#radial {
+  position: absolute; inset: 0; z-index: 58;
+  display: none; align-items: center; justify-content: center;
+  background: radial-gradient(ellipse at center, rgba(4,8,6,0.55), rgba(3,5,4,0.88) 70%);
+  pointer-events: auto;
+}
+.rad-dial {
+  position: relative;
+  width: min(460px, 78vmin); height: min(460px, 78vmin);
+  display: flex; align-items: center; justify-content: center;
+}
+/* it spins up rather than appearing */
+.rad-dial.armed .rad-svg { animation: radIn 0.24s cubic-bezier(0.2, 1.3, 0.4, 1) both; }
+.rad-dial.armed .rad-hub { animation: radHub 0.3s ease-out 0.08s both; }
+@keyframes radIn {
+  0% { opacity: 0; transform: scale(0.82) rotate(-14deg); }
+  100% { opacity: 1; transform: none; }
+}
+@keyframes radHub { 0% { opacity: 0; transform: scale(0.7); } 100% { opacity: 1; transform: none; } }
+
+.rad-svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.rad-plate {
+  fill: var(--fo-steel-deep);
+  stroke: var(--fo-steel-lo); stroke-width: 2;
+  filter: drop-shadow(0 8px 22px rgba(0,0,0,0.7));
+}
+.rad-hub-ring { fill: var(--fo-recess); stroke: var(--fo-steel-lo); stroke-width: 2; }
+
+.rad-wedge {
+  fill: #2c3128; stroke: #11140f; stroke-width: 1.5;
+  cursor: pointer; transition: fill 0.1s, stroke 0.1s;
+}
+/* posture on the right of the dial, rules on the left, the exit at the foot */
+.rad-wedge.rad-posture { fill: #2f3428; }
+.rad-wedge.rad-rules { fill: #2a3030; }
+.rad-wedge.rad-exit { fill: #34291f; }
+.rad-wedge.on { fill: #4a5a34; stroke: var(--fo-green); }
+.rad-wedge.rad-rules.on { fill: #2f5045; stroke: var(--fo-green); }
+.rad-wedge.hot { fill: #6d5a1e; stroke: var(--fo-amber); }
+.rad-wedge.rad-exit.hot { fill: #6b3a24; stroke: #e08a5a; }
+
+.rad-label {
+  font-family: 'Courier New', monospace; font-size: 11px; font-weight: bold;
+  letter-spacing: 1.5px; fill: var(--fo-tan); text-anchor: middle;
+  pointer-events: none; paint-order: stroke;
+  stroke: rgba(0,0,0,0.85); stroke-width: 3px;
+}
+.rad-label.on { fill: #d8ffd8; }
+.rad-label.hot { fill: #ffe7a0; }
+
+.rad-hub {
+  position: relative; z-index: 2; width: 32%; height: 32%;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 4px; text-align: center; pointer-events: none;
+  border-radius: 50%;
+  background:
+    radial-gradient(ellipse at 50% 38%, rgba(40,90,50,0.4), transparent 66%),
+    var(--fo-recess);
+  box-shadow: var(--bev-in), inset 0 0 18px rgba(0,0,0,0.7);
+}
+.rad-hub-title {
+  font-size: 10px; letter-spacing: 3px; color: var(--fo-amber);
+  text-shadow: 0 0 7px rgba(240,160,32,0.4);
+}
+.rad-hub-state {
+  font-size: 8px; letter-spacing: 1.5px; color: var(--fo-green);
+  text-shadow: 0 0 7px rgba(64,240,64,0.35);
+  padding: 0 8px; line-height: 1.4;
+}
+/* The hovered order's meaning sits under the dial, and the standing
+   instruction above it — one either side, so neither ends up behind the
+   instrument dock on a short window. */
+.rad-tip {
+  position: absolute; left: 50%; bottom: -24px; transform: translateX(-50%);
+  font-family: 'Courier New', monospace;
+  font-size: 10px; letter-spacing: 2px; color: var(--fo-amber);
+  text-shadow: 0 1px 0 rgba(0,0,0,0.9);
+  white-space: nowrap; pointer-events: none;
+}
+.rad-foot {
+  position: absolute; left: 50%; top: -30px; transform: translateX(-50%);
+  font-family: 'Courier New', monospace;
+  font-size: 8px; letter-spacing: 3px; color: var(--fo-tan-dim);
+  text-shadow: 0 1px 0 rgba(0,0,0,0.9);
+  white-space: nowrap; pointer-events: none;
+}

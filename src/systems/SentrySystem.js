@@ -30,6 +30,21 @@ const PLACE_DIST = 2.2;       // how far ahead of the player the ghost sits
 const WALL_H = 0.9;           // how tall the bubble's boundary curtain stands
 const GROUND_STEP = 0.4;      // max height change from the player's feet
 const REPLACE_CLEARANCE = 1.1; // no two sentries closer together than this
+/**
+ * How far [R] swings the arc, per press.
+ *
+ * The arc a sentry covers is normally the way you were facing when you set it
+ * down, which is right when you are placing it across a doorway you are
+ * standing in and useless when you want it covering the street you just came
+ * up. So the reload key trims it: a fixed 25° a press, deliberately not a
+ * smooth drag, because a detent you can count is what lets you set two of
+ * them at a known angle to each other without a protractor. Fourteen presses
+ * and change come back round to where you started.
+ */
+const ROTATE_STEP = 25 * Math.PI / 180;
+// Three placements inside this many seconds and the next one deploys in a mood.
+const GRUMBLE_WINDOW = 20;
+const GRUMBLE_COUNT = 3;
 
 export class SentrySystem {
   constructor(events, world, texLib, scene, player) {
@@ -43,6 +58,8 @@ export class SentrySystem {
     this.holding = false;     // one is in the player's hands right now
     this.deployed = [];
     this.spot = null;         // where the held one would land: {x, z, y, yaw, ok}
+    this.trim = 0;            // [R] while holding: extra yaw on the arc, in steps
+    this._placeTimes = [];    // when the last few were set down (see GRUMBLE_*)
 
     this._buildPreview();
 
@@ -172,7 +189,18 @@ export class SentrySystem {
       o.material.depthWrite = false;
       this.ghostMats.push(o.material);
     });
-    for (const leg of this.ghost.parts.legs) leg.group.rotation.x = leg.rest;
+    // Stand the ghost up in its deployed pose: legs out, knees folded, pads
+    // flat, mast up. It is a still frame of the machine, so every joint the
+    // real one animates has to be posed here or the preview is a different
+    // shape from the thing it is previewing.
+    for (const leg of this.ghost.parts.legs) {
+      leg.hip.rotation.x = leg.splay;
+      leg.knee.rotation.x = leg.fold;
+      leg.pad.rotation.x = -(leg.splay + leg.fold);
+      leg.ram.position.y = -0.175;
+      leg.ram.scale.y = 1.35;
+    }
+    this.ghost.parts.mastStage.position.y = 0.145;
     this.ghost.parts.body.position.y = 0.26;
     this.preview.add(this.ghost.group);
     this.scene.add(this.preview);
@@ -231,8 +259,20 @@ export class SentrySystem {
     this.stored--;
     this._syncSatchel();
     this.holding = true;
+    this.trim = 0;
     this.events.emit('sentry:hold', { on: true });
-    this.events.emit('subtitle', { text: 'Sentry in hand. Click to set it down; it will cover the way you are facing.' });
+    this.events.emit('subtitle', {
+      text: 'Sentry in hand. Click to set it down; [R] swings its arc 25° a press.',
+    });
+    return true;
+  }
+
+  /** Swing the arc of the held one, one detent per press. */
+  rotate(dir = 1) {
+    if (!this.holding) return false;
+    this.trim = (this.trim + dir * ROTATE_STEP) % (Math.PI * 2);
+    const deg = Math.round((this.trim * 180 / Math.PI + 360) % 360);
+    this.events.emit('sentry:rotate', { trim: this.trim, degrees: deg });
     return true;
   }
 
@@ -282,9 +322,13 @@ export class SentrySystem {
     // faces (+sin yaw, +cos yaw). Handing the player's yaw straight to a
     // sentry therefore builds a turret, and a preview wedge, aimed at exactly
     // what is BEHIND you. So the placed facing is the player's, turned round.
-    const yaw = p.yaw + Math.PI;
-    const x = p.position.x + Math.sin(yaw) * PLACE_DIST;
-    const z = p.position.z + Math.cos(yaw) * PLACE_DIST;
+    // The SPOT is always straight ahead; only the ARC is trimmed by [R], so
+    // turning the cover round never moves the machine out from under the
+    // ghost you were lining up.
+    const facing = p.yaw + Math.PI;
+    const yaw = facing + this.trim;
+    const x = p.position.x + Math.sin(facing) * PLACE_DIST;
+    const z = p.position.z + Math.cos(facing) * PLACE_DIST;
     const y = this.world.groundHeightFor(x, z, p.position.y + 1.0);
     let ok = Math.abs(y - p.position.y) <= GROUND_STEP;
     if (ok) {
@@ -308,13 +352,49 @@ export class SentrySystem {
       return null;
     }
     const { x, z, yaw } = this.spot;
-    const s = new Sentry(this.events, this.world, this.texLib, { x, z, yaw });
-    this.scene.add(s.mesh);
-    this.deployed.push(s);
+    const s = this._stand(x, z, yaw);
     this.holding = false;
+    this.trim = 0;
     this.preview.visible = false;
     this.events.emit('sentry:hold', { on: false });
     return s;
+  }
+
+  /**
+   * Stand one up at a point, and note that it happened.
+   *
+   * The note is the easter egg: three of these inside twenty seconds and the
+   * next machine comes up in a mood about it (see Sentry's `grumble`). Being
+   * picked up and put down repeatedly is exactly the sort of thing a player
+   * does while fiddling with cover, so it is a thing they will find.
+   */
+  _stand(x, z, yaw) {
+    const now = performance.now() / 1000;
+    this._placeTimes = this._placeTimes.filter((t) => now - t < GRUMBLE_WINDOW);
+    this._placeTimes.push(now);
+    const grumpy = this._placeTimes.length >= GRUMBLE_COUNT;
+    if (grumpy) this._placeTimes.length = 0;
+    const s = new Sentry(this.events, this.world, this.texLib, { x, z, yaw, grumpy });
+    this.scene.add(s.mesh);
+    this.deployed.push(s);
+    return s;
+  }
+
+  /**
+   * Put one on the ground in front of somebody, ready to be picked up.
+   *
+   * This is what the console's `spawn sentry` uses. It is the ORDINARY sentry
+   * — the same class, deployed the same way, carrying the same [E] prompt — so
+   * a spawned one packs into the satchel and redeploys exactly like a bought
+   * one. A foot in front of the player is deliberately close enough that it
+   * lands inside the interact radius: you spawn it and it is already yours to
+   * pick up.
+   */
+  spawnAhead(player, dist = 0.3048) {
+    const yaw = player.yaw + Math.PI;          // players face -sin/-cos; entities +
+    const x = player.position.x + Math.sin(yaw) * dist;
+    const z = player.position.z + Math.cos(yaw) * dist;
+    return this._stand(x, z, yaw);
   }
 
   /* ---------------- frame ---------------- */
@@ -351,6 +431,11 @@ export class SentrySystem {
     this.domeMat.opacity = 0.22 * b;
 
     if (blocked || !input) return;
+    // [R] trims the arc. It is read through the ACTION rather than the raw key
+    // so a player who rebound reload gets it on whatever they rebound it to —
+    // and the weapon manager is told to stand down while a sentry is in hand,
+    // so the same press cannot also try to reload a gun that is not out.
+    if (input.wasActionPressed('reload')) this.rotate(1);
     if (input.wasClicked(0)) this.place();
     else if (input.wasClicked(2)) this.stow();   // right-click: put it away again
   }

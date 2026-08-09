@@ -289,13 +289,26 @@ const shop = await page.evaluate(async () => {
   out.frozen = g.time === before;
 
   const sentry = SHOP_STOCK.find((s) => s.id === 'sentry');
+  out.sentryStock = sentry.stock;
   out.brokeRefused = g._buy(sentry) === false;     // nothing in the purse yet
-  g.tokens.add(1000);
-  out.first = g._buy(sentry);
-  out.second = g._buy(sentry);
+  g.tokens.add(4000);
+  // Buy the machine out, then keep clicking: the stock limit lives in the
+  // TILL, not in the button, so going past it through the UI must not work
+  // either.
+  let bought = 0;
+  for (let i = 0; i < sentry.stock; i++) if (g._buy(sentry)) bought++;
+  out.boughtAll = bought === sentry.stock;
   g.shop._tryBuy('sentry'); g.shop._tryBuy('sentry');   // through the UI, past the stock
   out.stocked = g.shop.remaining(sentry);
   out.carrying = g.sentries.stored;
+
+  // The escort: one only, five hundred, and she lands in the satchel folded.
+  const escort = SHOP_STOCK.find((s) => s.id === 'companion');
+  out.escortPrice = escort.price;
+  out.escortStock = escort.stock;
+  out.escortBought = g._buy(escort);
+  out.escortSecond = g._buy(escort) === false;      // there is only ever one
+  out.escortStored = g.companions.stored;
 
   const rifle = SHOP_STOCK.find((s) => s.id === 'ammo_rifle');
   const w = g.weapons.weapons.find((x) => x.config.id === 'rifle');
@@ -353,8 +366,12 @@ const shop = await page.evaluate(async () => {
   return out;
 });
 const stockOf = (id) => shop.lines.find((l) => l.id === id);
-check('the counter lists the sentry at 100 with two in stock',
-  stockOf('sentry').price === 100 && stockOf('sentry').stock === 2);
+check('the counter lists the sentry at 100 with six in stock',
+  stockOf('sentry').price === 100 && stockOf('sentry').stock === 6,
+  `${stockOf('sentry').price} tokens, ${stockOf('sentry').stock} on the shelf`);
+check('...and the escort at 500, one only',
+  stockOf('companion').price === 500 && stockOf('companion').stock === 1,
+  `${stockOf('companion')?.price} tokens, ${stockOf('companion')?.stock} on the shelf`);
 check('every ammunition type is listed separately at 10',
   ['ammo_pistol', 'ammo_shotgun', 'ammo_rifle', 'ammo_sniper'].every((id) => stockOf(id)?.price === 10),
   shop.lines.filter((l) => l.id.startsWith('ammo_')).map((l) => `${l.id}:${l.price}`).join(' '));
@@ -362,9 +379,13 @@ check('and the bottom line is an unbuyable placeholder',
   stockOf('comingSoon').locked && shop.lockedRefused && shop.lockedFree);
 check('[E] opens the counter and freezes the street', shop.opened && shop.frozen);
 check('an empty purse buys nothing', shop.brokeRefused);
-check('exactly two sentries can be bought, and they land in the satchel',
-  shop.first && shop.second && shop.stocked === 0 && shop.carrying === 2,
-  `${shop.carrying} carried, ${shop.stocked} left`);
+check('the whole shelf of sentries can be bought, and no more than that',
+  shop.boughtAll && shop.stocked === 0 && shop.carrying === shop.sentryStock,
+  `${shop.carrying} carried, ${shop.stocked} left of ${shop.sentryStock}`);
+check('and the escort is sold once, at five hundred',
+  shop.escortBought && shop.escortSecond && shop.escortStored === 1,
+  `bought ${shop.escortBought}, refused a second ${shop.escortSecond},`
+  + ` stored ${shop.escortStored}`);
 check('ammunition costs 10 and reaches the gun',
   shop.ammoBought && shop.ammoCost === 10 && shop.ammoGained === 30,
   `${shop.ammoGained} rounds for ${shop.ammoCost}`);
@@ -471,6 +492,176 @@ check('and the satchel always shows what you actually own',
   && sentry.slotRolledBack === 2 && sentry.slotAfterReset === 0,
   `stowed ${sentry.slotStored}, in hand ${sentry.slotInHand}, placed ${sentry.slotPlaced}, `
   + `rolled back ${sentry.slotRolledBack}, reset ${sentry.slotAfterReset}`);
+
+/* ------------------------------------------------------------------ */
+/* 6. the sentry's new tricks                                          */
+/* ------------------------------------------------------------------ */
+// Three things the machine gained: it can be spawned from the console as an
+// ORDINARY sentry (not a special one), its arc can be trimmed in hand, and it
+// has an inner life when nothing is happening.
+const tricks = await page.evaluate(async () => {
+  const g = window.__game;
+  const { SENTRY_ARC } = await import('/src/entities/Sentry.js');
+  const out = {};
+  g.sentries.reset();
+
+  // spawn: a foot in front, deployed, and inside its own interact radius
+  const before = g.world.interactables.length;
+  const s = g.sentries.spawnAhead(g.player);
+  out.spawnedDeployed = g.sentries.deployed.length === 1 && s.state === 'deploy';
+  out.spawnDist = Math.hypot(s.position.x - g.player.position.x, s.position.z - g.player.position.z);
+  out.spawnClose = out.spawnDist < 0.6;                       // ~a foot
+  out.spawnPrompt = g.world.interactables.length === before + 1;
+  // it is the ordinary machine: [E] packs it into the satchel like a bought one
+  g.events.emit('sentry:retrieve', { sentry: s });
+  out.packable = g.sentries.deployed.length === 0 && g.sentries.stored === 1;
+
+  // [R] trims the arc 25 degrees a press, and only the ARC — not the spot
+  g.sentries.takeToHand();
+  const spot0 = g.sentries._resolveSpot();
+  g.sentries.rotate(1);
+  const spot1 = g.sentries._resolveSpot();
+  out.stepDeg = Math.round((spot1.yaw - spot0.yaw) * 180 / Math.PI);
+  out.spotHeld = Math.hypot(spot1.x - spot0.x, spot1.z - spot0.z) < 1e-6;
+  // ...and it is the arc that actually lands on the machine. place() commits
+  // the spot the last frame resolved, so resolve one first — which is what
+  // update() does every frame while the thing is in your hands.
+  for (let i = 0; i < 3; i++) g.sentries.rotate(1);
+  g.sentries.spot = g.sentries._resolveSpot();
+  const placed = g.sentries.place();
+  out.placedYaw = placed ? Math.round(((placed.yaw - spot0.yaw) * 180 / Math.PI + 720) % 360) : -1;
+  out.arc = SENTRY_ARC;
+
+  // the idle life: left alone with nothing to shoot it starts doing things
+  const t = g.sentries.deployed[0];
+  const ctx = { zombies: [], player: { alive: false, position: { x: 1e6, y: 0, z: 1e6 } } };
+  const seen = new Set();
+  for (let i = 0; i < 60 * 130; i++) {
+    t.update(1 / 60, ctx);
+    if (t.routine) seen.add(t.routine);
+  }
+  out.routines = [...seen];
+  // and the player standing in front of it gets noticed
+  t.quiet = 20; t.saluteReady = 0; t.routine = null; t.sawPlayer = 0;
+  const px = t.position.x + Math.sin(t.yaw) * 3, pz = t.position.z + Math.cos(t.yaw) * 3;
+  const near = { zombies: [], player: { alive: true, position: { x: px, y: t.position.y, z: pz } } };
+  let saluted = false;
+  for (let i = 0; i < 60 * 6 && !saluted; i++) {
+    t.update(1 / 60, near);
+    if (t.routine === 'salute') saluted = true;
+  }
+  out.salutes = saluted;
+  g.sentries.reset();
+  return out;
+});
+check('spawn puts an ORDINARY sentry a foot in front of you',
+  tricks.spawnedDeployed && tricks.spawnClose && tricks.spawnPrompt && tricks.packable,
+  `${tricks.spawnDist.toFixed(2)}m out, prompt ${tricks.spawnPrompt}, packs up ${tricks.packable}`);
+check('[R] swings the arc 25° a press and leaves the spot alone',
+  tricks.stepDeg === 25 && tricks.spotHeld && tricks.placedYaw === 100,
+  `${tricks.stepDeg}° a press, spot held ${tricks.spotHeld}, placed at ${tricks.placedYaw}°`);
+check('and left alone it finds things to do with itself',
+  tricks.routines.length >= 2 && tricks.routines.includes('doze'),
+  tricks.routines.join(' ') || 'none');
+check('...including noticing you standing in front of it',
+  tricks.salutes, `saluted ${tricks.salutes}`);
+
+/* ------------------------------------------------------------------ */
+/* 7. the escort                                                       */
+/* ------------------------------------------------------------------ */
+const escort = await page.evaluate(async () => {
+  const { ANDROID_HEIGHT } = await import('/src/rendering/AndroidModel.js');
+  const { ORDERS } = await import('/src/rendering/RadialMenu.js');
+  const g = window.__game;
+  const out = { declared: ANDROID_HEIGHT, playerHeight: g.player.height };
+  g.companions.reset();
+  g.events.emit('pickup', { type: 'companion', amount: 1, label: 'Escort Unit' });
+  out.stored = g.companions.stored;
+
+  const THREE = await import('/lib/three.module.js');
+  const c = g.companions.deploy();
+  out.deployed = !!c && g.companions.stored === 0;
+
+  // Let her finish standing up before measuring: she arrives folded into a
+  // ball and unfolds over a couple of seconds, so a height taken mid-unfold
+  // is the height of the ball.
+  const ctx = { zombies: [], player: g.player, camPos: g.renderer.camera.position };
+  for (let i = 0; i < 260; i++) c.update(1 / 60, ctx);
+  out.stoodUp = c.state !== 'unfold';
+  c.mesh.updateWorldMatrix(true, true);
+  const box = new THREE.Box3().setFromObject(c.mesh);
+  out.measured = box.max.y - box.min.y;
+  out.shorter = out.measured < g.player.height - 0.15;
+
+  // she carries no gun anywhere in her rig — the rule, checked
+  let guns = 0;
+  c.mesh.traverse((o) => { if (/barrel|muzzle|magazine|gun/i.test(o.name)) guns++; });
+  out.gunParts = guns;
+
+  // ORDERS: every wedge on the dial is a command she answers to
+  out.wedges = ORDERS.length;
+  out.everyOrderTakes = ORDERS.filter((o) => o.cmd !== 'pickup')
+    .every((o) => c.order(o.cmd) === true);
+  c.order('stay'); c.order('ranged');
+  out.describes = c.describe();
+  out.postAtStay = Math.hypot(c.post.x - c.position.x, c.post.z - c.position.z) < 0.01;
+
+  // she walks: told to follow a player who has moved, she covers ground
+  c.order('follow'); c.order('passive');
+  const start = { x: c.position.x, z: c.position.z };
+  const far = { alive: true, height: 1.75, yaw: 0, position: { x: c.position.x + 12, y: c.position.y, z: c.position.z } };
+  const walkCtx = { zombies: [], player: far, camPos: g.renderer.camera.position };
+  const gaits = new Set();
+  for (let i = 0; i < 60 * 6; i++) { c.update(1 / 60, walkCtx); gaits.add(c.state); }
+  out.walked = Math.hypot(c.position.x - start.x, c.position.z - start.z);
+  out.gaits = [...gaits];
+
+  // ...and her hardware comes out only when she is allowed to fight
+  const z = { state: 'idle', height: 1.8, position: { x: c.position.x + 1.2, y: c.position.y, z: c.position.z },
+    takeDamage() { this.hit = (this.hit || 0) + 1; } };
+  c.order('melee');
+  const fightCtx = { zombies: [z], player: far, camPos: g.renderer.camera.position };
+  for (let i = 0; i < 90; i++) c.update(1 / 60, fightCtx);
+  out.bladesOut = c.anim.bladeOut > 0.5;
+  out.hitIt = (z.hit || 0) > 0;
+  c.order('ranged');
+  z.position.x = c.position.x + 8;
+  for (let i = 0; i < 150; i++) c.update(1 / 60, fightCtx);
+  out.podsOut = c.anim.podOut > 0.5;
+  c.order('passive');
+  for (let i = 0; i < 200; i++) c.update(1 / 60, fightCtx);
+  out.standsDown = c.anim.bladeOut < 0.05 && c.anim.podOut < 0.05 && c.target === null;
+
+  // the horde must not know she is there
+  out.onFriendlyRoster = g.friendlies.includes(c);
+  out.tagged = [...c.tags];
+
+  // pack up, and she is back in the satchel
+  out.packed = g.companions.command('pickup') === false
+    && g.companions.unit === null && g.companions.stored === 1;
+  g.companions.reset();
+  return out;
+});
+check('the escort stands shorter than the player',
+  escort.shorter && Math.abs(escort.measured - escort.declared) < 0.06,
+  `${escort.measured.toFixed(2)}m vs player ${escort.playerHeight}m (declared ${escort.declared})`);
+check('she unfolds out of the satchel and stands up',
+  escort.stored === 1 && escort.deployed && escort.stoodUp, `state after unfolding: ${escort.stoodUp}`);
+check('every order on the dial is one she answers to',
+  escort.wedges === 8 && escort.everyOrderTakes && escort.describes === 'HOLDING · ARC',
+  `${escort.wedges} orders, "${escort.describes}"`);
+check('STAY pins her post to where she is standing', escort.postAtStay);
+check('told to follow, she walks — and runs when she is behind',
+  escort.walked > 6 && escort.gaits.includes('walk') && escort.gaits.includes('run'),
+  `${escort.walked.toFixed(1)}m covered, gaits ${escort.gaits.join('/')}`);
+check('her weapons are built in, and come out only when they are allowed',
+  escort.gunParts === 0 && escort.bladesOut && escort.hitIt && escort.podsOut && escort.standsDown,
+  `gun parts ${escort.gunParts}, blades ${escort.bladesOut}, hit ${escort.hitIt},`
+  + ` pods ${escort.podsOut}, stood down ${escort.standsDown}`);
+check('and the horde has no idea she exists',
+  !escort.onFriendlyRoster && !escort.tagged.includes('friendly'), escort.tagged.join('/'));
+check('PACK UP folds her back into the satchel', escort.packed);
+
 
 check('no console errors across the run', errors.length === 0, errors.slice(0, 3).join(' | '));
 

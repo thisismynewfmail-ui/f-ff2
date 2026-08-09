@@ -850,8 +850,13 @@ export class HUD {
     on('player:heal', () => { this._heal = 0.5; });
     on('pickup', ({ label, amount, type }) => {
       if (type?.startsWith('coin_')) { this.logMsg(`${label} — into the purse.`, 'gold'); return; }
-      this.logMsg(type === 'key' || type === 'sentry' ? `You pick up the ${label}.`
-        : `You gather ${amount} ${label}.`, 'good');
+      // Single things are picked UP, quantities are gathered — and anything
+      // that arrives without a count or a name (a console spawn, a system
+      // handing something back) still gets a sentence rather than the word
+      // "undefined" twice.
+      const name = label || type || 'something';
+      const one = !(amount > 1);
+      this.logMsg(one ? `You pick up the ${name}.` : `You gather ${amount} ${name}.`, 'good');
     });
     // The till: the counter blips whenever the balance moves, and the coin
     // beside it flashes gold on the way up, red when a price was refused.

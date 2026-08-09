@@ -39,15 +39,20 @@ const AMMO_LINES = [
 ];
 
 /**
- * The stock list. `stock` is what the machine physically has: the sentry is
- * limited to two, the ammunition is not limited at all (Infinity), and the
- * placeholder cannot be bought at any price.
+ * The stock list. `stock` is what the machine physically has: six sentries,
+ * one android (there is only ever one of her), ammunition without limit
+ * (Infinity), and a placeholder that cannot be bought at any price.
  */
 export const SHOP_STOCK = [
   {
-    id: 'sentry', name: 'PORTABLE SENTRY', price: 100, stock: 2, bay: 'hardware',
+    id: 'sentry', name: 'PORTABLE SENTRY', price: 100, stock: 6, bay: 'hardware',
     blurb: 'Tripod auto-pistol. Covers a 180° arc, sixty feet out. Folds into the satchel.',
     buy: (events) => events.emit('pickup', { type: 'sentry', amount: 1, label: 'Portable Sentry' }),
+  },
+  {
+    id: 'companion', name: 'ESCORT UNIT "NEKO"', price: 500, stock: 1, bay: 'hardware',
+    blurb: 'Refurbished companion android. Walks, follows, and has opinions about doorways.',
+    buy: (events) => events.emit('pickup', { type: 'companion', amount: 1, label: 'Escort Unit' }),
   },
   ...AMMO_LINES.map((a) => ({
     id: a.id, name: a.name, price: AMMO_PRICE, stock: Infinity, bay: 'ammo',
@@ -115,7 +120,7 @@ export class ShopUI {
     // Three bubbled bays, in the order a customer reads them.
     this.bays = {};
     for (const [key, title, note] of [
-      ['hardware', 'HARDWARE', 'THE ONLY THING WORTH THE WALK'],
+      ['hardware', 'HARDWARE', 'WHAT IS WORTH THE WALK'],
       ['ammo', 'AMMUNITION', 'PER CRATE — ALL TYPES STOCKED'],
       ['soon', 'RESERVED', 'NOT FOR SALE'],
     ]) {

@@ -43,6 +43,14 @@ export class AudioManager {
     on('spitter:fire', ({ pos }) => this.spitterShot(pos));
     on('sentry:fire', ({ pos }) => this.sentryShot(pos));
     on('sentry:deployed', ({ pos }) => this.sentryDeploy(pos));
+    on('sentry:salute', ({ pos }) => this.sentrySalute(pos));
+    on('sentry:wake', ({ pos }) => this.sentryWake(pos));
+    // The escort's voice. Everything she says goes through one door.
+    on('companion:deployed', ({ pos }) => this.companionVoice('wake', pos));
+    on('companion:ack', ({ cmd, pos }) => this.companionVoice(cmd === 'passive' ? 'no' : 'ack', pos));
+    on('companion:blade', ({ pos }) => this.companionVoice('blade', pos));
+    on('companion:arc', ({ from }) => this.companionVoice('arc', from));
+    on('companion:recalled', () => this.companionVoice('fold', null));
     on('vendor:greet', ({ pos }) => this.vendorWake(pos));
     on('shop:bought', () => this.tillChime());
     on('tokens:refused', () => this.tillRefuse());
@@ -715,6 +723,83 @@ export class AudioManager {
       this._tone('triangle', n / 2, 0.22, 0.1, i * 0.16);
     });
     this._tone('triangle', 2093, 1.2, 0.12, seq.length * 0.16);
+  }
+
+  /* ---------------- the sentry and the escort ---------------- */
+
+  /**
+   * The sentry noticing you and putting its barrel up.
+   *
+   * A servo running up and stopping, then two soft courtesy beeps. It is
+   * pointedly NOT a fanfare: this thing is a gun on a stand acknowledging a
+   * person, and the joke only lands if it stays deadpan about it.
+   */
+  sentrySalute(pos) {
+    const s = this._spatial(pos, 26);
+    if (!s) return;
+    this._tone('sawtooth', 90, 0.34, 0.05 * s.vol, 0, s.pan, 260);     // the elevation servo
+    this._noise(0.04, 'bandpass', 1800, 3, 0.05 * s.vol, 0.3, s.pan);  // it hitting the stop
+    this._tone('square', 880, 0.05, 0.05 * s.vol, 0.40, s.pan);
+    this._tone('square', 1320, 0.07, 0.05 * s.vol, 0.50, s.pan);
+  }
+
+  /** ...and waking back up out of a doze, which is the same servo, hurried. */
+  sentryWake(pos) {
+    const s = this._spatial(pos, 26);
+    if (!s) return;
+    this._tone('sawtooth', 300, 0.16, 0.06 * s.vol, 0, s.pan, 90);
+    this._noise(0.05, 'highpass', 2400, 1, 0.06 * s.vol, 0.02, s.pan);
+  }
+
+  /**
+   * THE ESCORT'S VOICE.
+   *
+   * She does not speak — she was refurbished out of a machine that never
+   * could — so everything she says is a two- or three-note synth phrase off
+   * the same square-wave voice. The vocabulary is deliberately tiny and
+   * consistent, so a player learns it without being taught: rising means yes,
+   * falling means no, the fast triple is her acknowledging an order, and the
+   * low warble is the one thing she does that is not an answer to anything.
+   */
+  companionVoice(kind, pos) {
+    const s = pos ? this._spatial(pos, 30) : { vol: 1, pan: 0 };
+    if (!s) return;
+    const v = 0.085 * s.vol, pan = s.pan;
+    const say = (f, w, d = 0.06, type = 'square') => this._tone(type, f, d, v, w, pan);
+    switch (kind) {
+      case 'wake':        // unfolding: a power rail coming up, then hello
+        this._tone('sawtooth', 70, 0.55, 0.05 * s.vol, 0, pan, 320);
+        this._noise(0.08, 'bandpass', 900, 2, 0.05 * s.vol, 0.3, pan);
+        say(523, 0.5); say(659, 0.58); say(880, 0.66, 0.12);
+        break;
+      case 'ack':         // an order landing: three quick rising blips
+        say(784, 0); say(988, 0.06); say(1175, 0.12, 0.08);
+        break;
+      case 'no':          // told to stand down: two falling
+        say(587, 0); say(440, 0.07, 0.10);
+        break;
+      case 'alert':       // she has seen something
+        say(1175, 0, 0.04); say(1175, 0.07, 0.04); say(1568, 0.15, 0.07);
+        break;
+      case 'blade':       // the forearm blades locking out
+        this._noise(0.05, 'bandpass', 3200, 4, 0.10 * s.vol, 0, pan);
+        this._tone('triangle', 2400, 0.10, 0.06 * s.vol, 0.02, pan, 1600);
+        break;
+      case 'arc':         // the pods discharging
+        this._noise(0.13, 'highpass', 2600, 0.8, 0.13 * s.vol, 0, pan);
+        this._tone('sawtooth', 1400, 0.11, 0.07 * s.vol, 0, pan, 220);
+        this._tone('sine', 90, 0.20, 0.08 * s.vol, 0.02, pan, 50);
+        break;
+      case 'purr':        // the low warble. She does this when she is content.
+        for (let i = 0; i < 5; i++) {
+          this._tone('triangle', 108 + Math.sin(i) * 8, 0.13, 0.045 * s.vol, i * 0.11, pan);
+        }
+        break;
+      case 'fold':        // packing back up: the rail going down
+        say(880, 0); say(659, 0.07); say(440, 0.14, 0.12);
+        this._tone('sawtooth', 300, 0.4, 0.045 * s.vol, 0.16, pan, 60);
+        break;
+    }
   }
 
   /* ---------------- ambient loop ---------------- */
