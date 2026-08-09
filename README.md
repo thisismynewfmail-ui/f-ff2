@@ -383,14 +383,13 @@ There is deliberately no command that touches the kill counter — the
   re-charging across a reload); on the right, XMIT (blips hot on every shot)
   and WAVE (a smoked trefoil-decal tube that rages during a wave and blinks
   through a respite) — plus a green CRT message log with a phosphor refresh
-  sweep, a mechanical HP odometer, **two separate ammo odometers — LOADED (in
-  the gun) and RESERVE (carried)** whose wheels tick as they roll, a **TOKENS
-  counter** on the same wheels beside them (the purse belongs with the
-  ammunition, not with the score: it is a consumable you are carrying, and the
-  coin under it lifts and lights gold as it fills, knocks red when the vendor
-  refuses a price), a damage
-  alarm lamp (a domed glass cabochon, the one warm mass on the whole
-  chassis), a centre **player portrait** on a green CRT
+  sweep, a **counter bank** — every mechanical odometer bolted into one housed
+  steel instrument rather than left as loose tiles: **HP** and **TOKENS**
+  paired on its top line, **LOADED (in the gun)** and **RESERVE (carried)** on
+  a scored line beneath, all of them ticking their wheels as they roll (the
+  purse belongs with the ammunition, not with the score — it is a consumable
+  you are carrying, and the coin beside it lifts and lights gold as it fills,
+  knocks red when the vendor refuses a price) — a centre **player portrait** on a green CRT
   monitor, an AIM ON/OFF indicator (lit while scoped), a WEAPON panel (an
   illustrated two-tone profile of the live weapon over a scanning screen with
   a reload charge line), and a six-slot ARMS armoury grid with per-weapon
@@ -517,6 +516,21 @@ There is deliberately no command that touches the kill counter — the
   properly instead of first learning what one is by standing next to it. It is
   the only wave that overrides the mix; wave 4 picks the ordinary progression
   back up exactly where it left off.
+- **Loot has a clock on it.** Anything that DROPS during play — shells, medkits,
+  supply crates, arcade payouts, the horde's coins — lies on the street for
+  **45 seconds**, and spends its **last ten blinking** at an accelerating rate so
+  a token you meant to come back for tells you it is going. The ageing runs
+  whether or not you are near it, so walking away does not preserve a pile, and
+  it clears the road between waves instead of letting a hundred kills' payout
+  carpet the district. Two
+  things are deliberately exempt: the loot the **world is built with** — every
+  drawer, locker and cabinet is filled at load, long before you could reach any
+  of it, so on this clock the town would be stripped bare inside a minute — and
+  the **quest key**, the one pickup in the game there is no second copy of. The
+  pickup cap respects the same line: the town seeds right up to it, so a full
+  list now evicts the oldest thing already on the clock rather than the first
+  item in the array, which for a run's worth of drops was a drawer's worth of
+  ammunition nobody had opened yet.
 - **Checkpoints & death:** the run is checkpointed every **tenth wave**. When
   you die, every zombie on the map is cleared and the run rolls back to the last
   checkpoint — kills, score and wave all restored — then that wave respawns from
@@ -867,8 +881,13 @@ There is deliberately no command that touches the kill counter — the
   **blade in each forearm** that drives down past the fist and locks over
   square, and **two arc emitters** that hinge up off her shoulder blades and
   split open. Her chest core spins up and lights before either fires, so there
-  is always a tell. Melee hits harder and needs her to close; the arc reaches
-  but costs a charge cycle. On ATTACK she picks whichever the range asks for.
+  is always a tell. Melee hits harder and needs her to close; the arc **reaches
+  22 m — further than the sentry's sixty feet**, which is the division of labour
+  between them: the sentry holds a doorway, she covers the street you are
+  crossing. It costs a charge cycle for the range. On ATTACK she picks whichever
+  the distance asks for, preferring the blades inside six metres. On GUARD the
+  leash governs how far she will WALK off her post, not how far she can shoot
+  from standing on it — she engages anything inside arc range and stays put.
 
   **She is shorter than you** (1.42 m against your 1.75 — measured off the
   assembled rig and checked in the suite), and she is built as a machine shaped

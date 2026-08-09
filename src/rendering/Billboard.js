@@ -180,6 +180,19 @@ export class ItemBillboard {
     m.rotation.y = Math.atan2(camPos.x - m.position.x, camPos.z - m.position.z);
   }
 
+  /**
+   * Blink out the last seconds of a dropped item's life. `t` runs 0..1 across
+   * the warning window and drives the rate, so the sprite starts on a slow
+   * pulse and finishes on a stutter — the same language every shooter uses for
+   * "grab this now". The material carries an alphaTest, so dropping opacity
+   * under it cuts the sprite cleanly rather than ghosting it: a half-there box
+   * of shells reads as a rendering fault, a blinking one reads as a warning.
+   */
+  blink(t, time) {
+    const on = Math.sin(time * (3 + t * 13)) > -0.25;
+    this.mesh.material.opacity = on ? 1 : 0.15;
+  }
+
   dispose() {
     this.mesh.geometry.dispose();
     this.mesh.material.dispose();
