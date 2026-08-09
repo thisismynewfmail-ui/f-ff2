@@ -111,9 +111,29 @@ anything about it, since Escape only ever paused by dropping a lock there was
 no longer any of. The request is a standing intent now: `src/engine/Input.js`
 keeps asking a few times a second until it lands, and retries on the spot
 whenever the player presses or clicks anything. Escape closes the pause screen
-as well as opening it, pausing cancels any outstanding request (so the retry
-cannot reach around the menu and take the pointer back under it), and while a
-request is outstanding the game says so on screen rather than looking hung.
+as well as opening it, and pausing cancels any outstanding request (so the
+retry cannot reach around the menu and take the pointer back under it).
+
+**Leaving a menu on Escape is silent, and so is the moment after it.** There is
+no "click to take the mouse back" plate any more. It existed because the
+recapture genuinely can fail, and the reason it can is worth stating exactly:
+**a browser only grants pointer lock to a page holding transient user
+activation, and the HTML spec forbids Escape from granting any** — deliberately,
+so a page cannot trap you by re-locking on the very key you press to escape it.
+Every overlay in this game closes on Escape. So the request made inside that
+keypress has nothing behind it, and whether it lands is the browser's call.
+(This is why the same menus close *instantly and perfectly* on their button, on
+a click off the case, and on [E] — every one of those carries activation.)
+
+What the game does about it: it stops asking the player to fix it. The prompt
+is gone; the **system cursor is hidden for the whole time the game is being
+played**, granted or not, so the transition has nothing to show; the standing
+request rides on **every event that does carry activation** — pointerdown,
+keyup, any keydown but Escape — unthrottled, so the pointer comes back on the
+first thing the player does; and the click or keypress that buys it back is
+**swallowed**, so returning from a menu never costs an accidental shot. Every
+way out of play — pause, death, the title, an overlay, the dev console — puts
+the cursor back, so it can never be lost.
 
 **Mouse look filters the pointer-lock plumbing out of your aim.** A locked
 mousemove does not always carry your hand: the browser reports the cursor's
@@ -754,14 +774,14 @@ There is deliberately no command that touches the kill counter — the
   you can see the prices, and you came here on purpose. What the till has to
   say (short, out, locked, sold) now says it on the FOOTER, beside the money,
   in the same stencil as everything else on the plate. It freezes the street
-  the way the satchel and the arcade do, and it
-  **always hands the mouse straight back** on the way out — never the pause
-  menu, and never a "click to take the mouse back" prompt. That last part is
-  why there are three ways out: the STEP BACK button, a click anywhere off the
-  case, and the keys (Escape, or the same [E] you arrived with). A browser
-  only grants pointer lock to a page holding **user activation**, and Escape
-  grants none — so the game asks for the pointer both immediately, inside
-  whatever gesture closed the counter, and again on the next frame. It sells a
+  the way the satchel and the arcade do, and it hands the mouse back on the way
+  out — never the pause menu, and never a "click to take the mouse back"
+  prompt. There are four ways out and three of them carry **user activation**,
+  which is what a browser wants before it will grant pointer lock: the STEP
+  BACK button, a click anywhere off the case, and the same [E] you arrived
+  with. The fourth is Escape, which by specification grants none — so that one
+  exit leans on the silent recapture described under Controls rather than on a
+  plate telling the player to go and click something. It sells a
   **Portable Sentry at 100 tokens, two only**; **every ammunition type
   separately at 10** a crate; and carries one dead bay at the bottom for
   whatever has not arrived yet.

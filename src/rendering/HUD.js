@@ -93,11 +93,11 @@ export class HUD {
     this._el('div', 'vignette');
     this._el('div', 'healflash');
     this._el('div', 'crosshair').innerHTML = '<span></span>';
-    // Shown only while the game is running and the browser has not handed the
-    // pointer back yet — which is a real state (see Input.requestPointerLock)
-    // and used to be a silent one the player could only read as a broken game.
-    this.lockHint = this._el('div', 'lock-hint');
-    this.lockHint.innerHTML = '<b>CLICK</b> TO TAKE THE MOUSE BACK';
+    // There is deliberately NO "click to take the mouse back" prompt here.
+    // See Input.requestPointerLock: getting the pointer back is the game's job
+    // and it does it on the player's next movement or keypress, silently. A
+    // plate in the middle of the screen asking the player to fix it was an
+    // admission of a bug wearing the costume of a feature.
 
     // Bottom instrument dock: the two status meters ride at the BOTTOM as
     // side HUDs flanking the main console — WAVE on the left, CONFIRMED KILLS
@@ -887,12 +887,28 @@ export class HUD {
     on('weapon:reload:start', () => this.hideWeaponMenu());
   }
 
-  /** Toggle the "click to take the mouse back" prompt. Called every frame, so
-   *  it does nothing at all unless the state actually changed. */
-  setLockHint(on) {
-    if (this._lockHintOn === on) return;
-    this._lockHintOn = on;
-    this.lockHint.classList.toggle('on', on);
+  /**
+   * Hide the system cursor while the game is being PLAYED.
+   *
+   * The pointer belongs to the game during play whether or not the browser has
+   * got round to granting the lock, and this is the other half of getting rid
+   * of the "click to take the mouse back" plate. Closing an overlay on Escape
+   * leaves a window — usually a few milliseconds, until the player's next
+   * keypress or click redeems it (see Input) — where the request is out and
+   * unanswered. Left alone that window shows an arrow sitting in the middle of
+   * the screen, which is exactly the thing the plate was apologising for.
+   * Hiding it makes the transition read as instant, because as far as the
+   * player can see it is.
+   *
+   * It is on the BODY, not the HUD: the cursor spends its time over the canvas
+   * and the canvas is not inside the HUD. Every way out of play — pause, dead,
+   * the title, an overlay, the dev console — clears it, so nobody is ever left
+   * hunting for a cursor they cannot see.
+   */
+  setPlayCursor(on) {
+    if (this._playCursor === on) return;
+    this._playCursor = on;
+    document.body.classList.toggle('in-play', on);
   }
 
   showWeaponMenu() {

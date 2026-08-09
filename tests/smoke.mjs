@@ -1443,12 +1443,14 @@ const lockFix = await page.evaluate(async () => {
   const askedAtResume = asked;
 
   // ...and the refused request must not be the end of it: the pump keeps
-  // asking, and while it is asking the player is told why the mouse has not
-  // come back yet rather than being left to guess the game has hung.
+  // asking, SILENTLY. There is no prompt any more — the cursor is simply not
+  // on screen while the game is being played, granted or not, and the request
+  // is redeemed by the player's next keypress or click.
   refuse = 999;
   for (let i = 0; i < 6; i++) { await frame(); await new Promise((r) => setTimeout(r, 300)); }
   out.retried = asked - askedAtResume;
-  out.hinted = document.getElementById('lock-hint').classList.contains('on');
+  out.noPrompt = !document.getElementById('lock-hint');
+  out.cursorHidden = document.body.classList.contains('in-play');
   out.lockedWhileRefused = document.pointerLockElement === canvas;
   // Let it through. Whether a headless browser actually grants the pointer is
   // its business, so assert the outcome either way: if it lands the request is
@@ -1459,7 +1461,7 @@ const lockFix = await page.evaluate(async () => {
   for (let i = 0; i < 4; i++) { await frame(); await new Promise((r) => setTimeout(r, 300)); }
   out.locked = document.pointerLockElement === canvas;
   out.settled = out.locked
-    ? g.input.lockWanted === false && !document.getElementById('lock-hint').classList.contains('on')
+    ? g.input.lockWanted === false
     : asked > askedBeforeGrant && g.input.lockWanted === true;
 
   // Pausing again has to CANCEL the outstanding request. Otherwise the pump
@@ -1470,7 +1472,10 @@ const lockFix = await page.evaluate(async () => {
   const askedAtPause = asked;
   for (let i = 0; i < 4; i++) { await frame(); await new Promise((r) => setTimeout(r, 300)); }
   out.askedWhilePaused = asked - askedAtPause;
-  out.hintGoneWhilePaused = !document.getElementById('lock-hint').classList.contains('on');
+  // ...and the cursor comes BACK the moment the game is not being played, so
+  // a player who cannot see it can always reach the menu and find it again.
+  await frame(); await frame();
+  out.cursorBackWhilePaused = !document.body.classList.contains('in-play');
 
   // ...and a grant that arrives AFTER the pause has to be handed straight
   // back. releasePointerLock can only exit a lock that already exists, so a
@@ -1536,7 +1541,6 @@ const lockFix = await page.evaluate(async () => {
   g.testMode = wasTest;
   g.hud.showScreen(null);
   g.state.state = 'playing';
-  g.hud.setLockHint(false);
   return out;
 });
 check('Escape closes the pause screen', lockFix.escResumed === 'playing' && lockFix.escResumed2 === 'playing',
@@ -1544,15 +1548,17 @@ check('Escape closes the pause screen', lockFix.escResumed === 'playing' && lock
 check('resuming asks for the pointer, and keeps asking when refused',
   lockFix.wantsPointer && lockFix.retried >= 2,
   `wanted ${lockFix.wantsPointer}, ${lockFix.retried} retries after the refusal`);
-check('the player is told while the mouse has not come back yet',
-  lockFix.hinted && !lockFix.lockedWhileRefused,
-  `hint shown ${lockFix.hinted} while refused (locked ${lockFix.lockedWhileRefused})`);
+check('a refused request is silent — no prompt, and no cursor on screen',
+  lockFix.noPrompt && lockFix.cursorHidden && !lockFix.lockedWhileRefused,
+  `prompt gone ${lockFix.noPrompt}, cursor hidden ${lockFix.cursorHidden}`
+  + ` (locked ${lockFix.lockedWhileRefused})`);
 check('a granted lock settles the request; a denied one keeps it alive',
   lockFix.settled,
   lockFix.locked ? 'pointer granted, request cleared' : 'pointer denied, still asking');
-check('pausing cancels an outstanding pointer request',
-  lockFix.requestDropped && lockFix.askedWhilePaused === 0 && lockFix.hintGoneWhilePaused,
-  `dropped ${lockFix.requestDropped}, ${lockFix.askedWhilePaused} asks while paused`);
+check('pausing cancels an outstanding pointer request, and gives the cursor back',
+  lockFix.requestDropped && lockFix.askedWhilePaused === 0 && lockFix.cursorBackWhilePaused,
+  `dropped ${lockFix.requestDropped}, ${lockFix.askedWhilePaused} asks while paused,`
+  + ` cursor back ${lockFix.cursorBackWhilePaused}`);
 check('and pausing while unlocked still works', lockFix.paused1 === 'paused' && lockFix.paused2 === 'paused',
   `${lockFix.paused1} / ${lockFix.paused2}`);
 check('a lock that lands after the pause is handed straight back',
@@ -1792,7 +1798,7 @@ const arcEsc = await page.evaluate(async () => {
   Object.defineProperty(document, 'pointerLockElement', realGet);
   canvas.requestPointerLock = realReq; document.exitPointerLock = realExit;
   g.testMode = wasTest;
-  g.hud.showScreen(null); g.state.state = 'playing'; g.hud.setLockHint(false);
+  g.hud.showScreen(null); g.state.state = 'playing';
   g.input.releasePointerLock();
   return out;
 });

@@ -840,18 +840,14 @@ html, body {
 /* "click to take the mouse back": the pointer-lock prompt. Delayed in, instant
    out — an ordinary resume gets the pointer within a frame or two and must not
    flash this at the player on the way past. */
-#lock-hint {
-  position: absolute; left: 50%; top: 62%; transform: translateX(-50%);
-  z-index: 45; pointer-events: none; opacity: 0;
-  font-size: 13px; letter-spacing: 3px; color: var(--fo-tan);
-  background-color: var(--fo-steel); background-image: var(--tex-steel);
-  border: 1px solid var(--fo-steel-lo); border-radius: var(--rad-bay);
-  padding: 8px 18px; white-space: nowrap;
-  box-shadow: var(--bev-out);
-  transition: opacity 0.15s;
-}
-#lock-hint b { color: var(--fo-amber); }
-#lock-hint.on { opacity: 1; transition: opacity 0.25s ease 0.7s; }
+/* There is no #lock-hint. Recapturing the pointer after an overlay closes is
+   the game's job (src/engine/Input.js), and a plate reading "CLICK TO TAKE THE
+   MOUSE BACK" parked in the middle of the screen was a bug asking the player
+   to work around it. Instead the cursor simply is not there during play —
+   whether or not the browser has granted the lock yet — so leaving an overlay
+   reads as instant. Every way OUT of play clears the class, so the cursor can
+   never be lost. See HUD.setPlayCursor. */
+body.in-play, body.in-play * { cursor: none !important; }
 
 /* full screens */
 .screen {

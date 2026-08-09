@@ -666,9 +666,13 @@ export class Game {
     this.renderer.overlayEnabled = !this.state.is('menu');
     this.renderer.render();
     // Keep asking for the pointer if a resume did not get it first time (see
-    // Input.requestPointerLock), and tell the player while it has not landed.
+    // Input.requestPointerLock). Silently: the player is not told to go and
+    // click something, because getting the pointer back is not their job.
     this.input.pump();
-    this.hud.setLockHint(this.state.is('playing') && this.input.lockPending);
+    // ...and while the game is being played the pointer is the game's, granted
+    // or not, so the system cursor stays out of sight (see HUD.setPlayCursor).
+    this.hud.setPlayCursor(this.state.is('playing')
+      && !this.inventory.open && !this.arcade.open && !this.shop.open && !this.devConsole.open);
     this.input.endFrame();
   }
 

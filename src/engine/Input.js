@@ -54,7 +54,11 @@ const LOCK_RETRY_MS = 260;
 // of its own), so the only thing that helps is asking again the instant it is
 // allowed rather than four times a second.
 const LOCK_URGENT_RETRY_MS = 100;
-const LOCK_URGENT_MS = 2500;   // how long that faster cadence lasts
+// How long the faster cadence lasts. Generous, because the window it covers is
+// a player standing in the street with no mouse look: every overlay in this
+// game closes on Escape, Escape grants no user activation, and a browser that
+// has decided to wait for one will wait as long as it likes.
+const LOCK_URGENT_MS = 8000;
 // How long a lock must survive before it counts as the player being back at
 // the controls rather than the browser handing one over mid-refusal.
 const LOCK_SETTLED_MS = 1000;
@@ -116,9 +120,33 @@ export class Input {
       if (e.code === 'Escape') this.escapeGrab = true;
     }, true);
 
+    /**
+     * The one-shot grab, hung on every event that carries USER ACTIVATION.
+     *
+     * This is the whole recapture story, so it is worth being exact about why
+     * it exists. A browser only grants pointer lock to a document holding
+     * transient activation, and the HTML spec excludes Escape from the keys
+     * that grant it — deliberately, so a page cannot trap you by re-locking on
+     * the very key you press to get out. Every overlay in this game closes on
+     * Escape. So the request made inside that keypress, and every one the pump
+     * makes afterwards from a timer, has nothing behind it and is refused.
+     *
+     * There is no way around that and there should not be. What there is: the
+     * player's NEXT gesture — the first step they take, the first shot they
+     * fire, the first click anywhere — and that one does carry activation. So
+     * the grab rides on all of them, unthrottled, and the pointer comes back
+     * on the first thing the player does rather than on a plate asking them to
+     * do something specific.
+     */
+    const grab = () => { if (this.lockPending) this._tryLock(true); };
+    // pointerdown fires ahead of mousedown and is the earliest of the lot
+    document.addEventListener('pointerdown', grab, true);
+    document.addEventListener('keyup', grab, true);
+
     document.addEventListener('keydown', (e) => {
-      // Any gesture is a chance to get an outstanding lock back.
-      if (!e.repeat) this._tryLock();
+      // Any gesture is a chance to get an outstanding lock back — except
+      // Escape, which grants no activation and would only burn a retry.
+      if (!e.repeat && e.code !== 'Escape') grab();
       if (e.repeat || this.suppressed) return;
       this.keys.add(e.code);
       this.pressed.add(e.code);
@@ -128,9 +156,11 @@ export class Input {
     window.addEventListener('blur', () => this.keys.clear());
 
     document.addEventListener('mousemove', (e) => {
-      // A player who has just been handed a loose cursor moves it before they
-      // do anything else, so this is the earliest gesture there is to hang a
-      // retry on — and a gesture is exactly what a refusing browser wants.
+      // Movement is not activation, so this one stays THROTTLED: it cannot
+      // redeem an outstanding request on its own, and asking sixty times a
+      // second turns one refusal into a console full of them. It is here
+      // because a browser that was only waiting out its own cooldown will
+      // take this one, and a player with a loose cursor moves it first.
       if (this.lockPending) this._tryLock();
       if (!this.pointerLocked || this.suppressed) return;
       const dx = e.movementX || 0, dy = e.movementY || 0;
@@ -140,9 +170,14 @@ export class Input {
     });
     document.addEventListener('mousedown', (e) => {
       // A click is the strongest gesture there is; never throttle this one.
+      const redeeming = this.lockPending;
       this._tryLock(true);
       if (this.suppressed) return;
       if (e.button >= 3) e.preventDefault(); // stop thumb-button back/forward nav
+      // ...and if that click was what BOUGHT the pointer back, it is spent.
+      // Passing it through as well means the player's first act on returning
+      // from a menu is an accidental shot, which is a real cost in a wave.
+      if (redeeming) return;
       if (e.button < this.mouseDown.length) {
         this.mouseDown[e.button] = true;
         this.mousePressed[e.button] = true;
