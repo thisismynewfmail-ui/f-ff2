@@ -29,11 +29,16 @@ const SLOTS = 20;
 // (see below), because that system also has to answer for the one in your
 // hands and the ones standing in the street.
 const STORABLE = new Set(['key', 'companionCube']);
-const DROPPABLE = new Set(['companionCube', 'sentry']);       // click to take it back out
-const ACTION_LABEL = { companionCube: 'DROP', sentry: 'DEPLOY' };
+// Click to take it back out. The escort is here for the same reason the sentry
+// is and is owned the same way — CompanionSystem answers for whether she is
+// folded up or standing in the street, and states the count through
+// 'inventory:sync'.
+const DROPPABLE = new Set(['companionCube', 'sentry', 'companion']);
+const ACTION_LABEL = { companionCube: 'DROP', sentry: 'DEPLOY', companion: 'UNFOLD' };
 const ACTION_HINT = {
   companionCube: 'Click to set it down',
   sentry: 'Click to take it in hand',
+  companion: 'Click to stand her up',
 };
 
 export class Inventory {
@@ -218,6 +223,27 @@ export class Inventory {
       ctx.fillRect(24, 8, 12, 3);       // the barrel, pointing off to the right
       ctx.fillStyle = '#e0b840';
       ctx.fillRect(16, 3, 3, 3);        // the status lamp
+    } else if (type === 'companion') {
+      // her, folded: knees up, tail round, two ears over the top of it all
+      ctx.fillStyle = '#3c3a46';
+      ctx.beginPath();                       // the tail, curled round the ball
+      ctx.arc(20, 24, 12, 0.2, Math.PI * 1.5);
+      ctx.lineWidth = 3.5; ctx.strokeStyle = '#3c3a46'; ctx.stroke();
+      ctx.fillStyle = '#dcd6c8';
+      ctx.beginPath(); ctx.arc(20, 24, 9, 0, Math.PI * 2); ctx.fill();   // the body
+      ctx.fillStyle = '#7a3f5a';
+      ctx.fillRect(13, 26, 14, 3);           // the plum panel across it
+      ctx.fillStyle = '#dcd6c8';
+      ctx.beginPath(); ctx.arc(20, 14, 6.5, 0, Math.PI * 2); ctx.fill(); // the head
+      ctx.fillStyle = '#1b2028';
+      ctx.fillRect(15, 12.5, 10, 3);         // the visor
+      ctx.fillStyle = '#7ce8d0';
+      ctx.fillRect(16, 13, 3, 2); ctx.fillRect(21, 13, 3, 2);
+      ctx.fillStyle = '#3c3a46';             // the ears
+      ctx.beginPath(); ctx.moveTo(14, 10); ctx.lineTo(16, 3); ctx.lineTo(19, 9); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(26, 10); ctx.lineTo(24, 3); ctx.lineTo(21, 9); ctx.fill();
+      ctx.fillStyle = '#0d5f52';             // her core, still lit
+      ctx.beginPath(); ctx.arc(20, 23, 2.5, 0, Math.PI * 2); ctx.fill();
     } else {
       ctx.strokeRect(9, 9, 22, 22);
     }

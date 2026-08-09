@@ -21,10 +21,12 @@ import { SaveSystem } from '../systems/SaveSystem.js';
 import { SettingsStore } from '../systems/SettingsStore.js';
 import { TokenSystem } from '../systems/TokenSystem.js';
 import { SentrySystem } from '../systems/SentrySystem.js';
+import { CompanionSystem } from '../systems/CompanionSystem.js';
 import { Effects } from '../rendering/Effects.js';
 import { WeaponView } from '../rendering/WeaponView.js';
 import { HUD } from '../rendering/HUD.js';
 import { ShopUI } from '../rendering/ShopUI.js';
+import { RadialMenu } from '../rendering/RadialMenu.js';
 import { AudioManager } from '../audio/AudioManager.js';
 import { Shell } from './Shell.js';
 import { Arcade, MACHINE_IDS } from '../rendering/Arcade.js';
@@ -99,6 +101,11 @@ export class Game {
     this.sentries = new SentrySystem(
       this.events, this.world, this.texLib, this.renderer.scene, this.player);
     this.checkpoint.sentries = this.sentries.snapshot();
+    // The escort: folded in the satchel, or standing in the street taking
+    // orders. Owned the same way the sentries are, for the same reasons.
+    this.companions = new CompanionSystem(
+      this.events, this.world, this.texLib, this.renderer.scene, this.player);
+    this.checkpoint.companion = this.companions.snapshot();
     this.npc = new NPC(this.events, this.world, this.texLib.get('npcPeaceful'));
     this.renderer.scene.add(this.npc.mesh);
     // Friendlies zombies may fall back to hunting, and the roster the NPCs
@@ -157,7 +164,8 @@ export class Game {
     this.inventory = new Inventory(this.events, this.hudRoot, {
       // ...but not over the vendor's counter: Tab there would put a second
       // overlay on top of the first, and only one of them can own the mouse.
-      canOpen: () => this.state.is('playing') && !this.devConsole.open && !this.shop?.open,
+      canOpen: () => this.state.is('playing') && !this.devConsole.open
+        && !this.shop?.open && !this.radial?.open,
       onOpen: () => {
         this.input.setSuppressed(true);
         if (!this.testMode) this.input.releasePointerLock();
@@ -200,7 +208,8 @@ export class Game {
      * the pointer, never in front of the pause menu.
      */
     this.shop = new ShopUI(this.hudRoot, this.texLib, {
-      canOpen: () => this.state.is('playing') && !this.devConsole.open && !this.inventory.open,
+      canOpen: () => this.state.is('playing') && !this.devConsole.open
+        && !this.inventory.open && !this.radial?.open,
       onOpen: () => {
         this.input.setSuppressed(true);
         if (!this.testMode) this.input.releasePointerLock();
@@ -220,6 +229,27 @@ export class Game {
       interactCodes: () => this.input.codesFor('interact'),
     });
     this.events.on('shop:open', () => this.shop.openShop());
+
+    /**
+     * The escort's order dial. Same contract as the counter and the cabinets:
+     * it freezes the street while it is up, and Escape or [E] puts the player
+     * straight back with the pointer rather than in front of the pause menu.
+     */
+    this.radial = new RadialMenu(this.hudRoot, {
+      canOpen: () => this.state.is('playing') && !this.devConsole.open
+        && !this.inventory.open && !this.shop.open && !this.arcade.open,
+      onOpen: () => {
+        this.input.setSuppressed(true);
+        if (!this.testMode) this.input.releasePointerLock();
+      },
+      onClose: () => {
+        this.input.setSuppressed(false);
+        this._reclaimPointer();
+      },
+      onCommand: (cmd) => this.companions.command(cmd),
+      interactCodes: () => this.input.codesFor('interact'),
+    });
+    this.events.on('companion:orders', ({ companion }) => this.radial.openOn(companion));
 
     this._wire();
     this._startAutosave();
@@ -268,7 +298,8 @@ export class Game {
     this._overlayClosedAt = performance.now();
     if (this.testMode || !this.state.is('playing')) return;
     const ask = () => {
-      if (this.state.is('playing') && !this.inventory.open && !this.arcade.open && !this.shop.open) {
+      if (this.state.is('playing') && !this.inventory.open && !this.arcade.open
+        && !this.shop.open && !this.radial.open) {
         // Urgent: the browser may refuse for the first second or so after an
         // Escape, and the player is standing in the street the whole time.
         this.input.requestPointerLock({ urgent: true });
@@ -309,7 +340,7 @@ export class Game {
     // Losing pointer lock while playing = pause (unless the satchel took it).
     this.input.onPointerLockChange = (locked) => {
       if (locked || !this.state.is('playing') || this.testMode) return;
-      if (this.inventory.open || this.arcade.open || this.shop.open) return;
+      if (this.inventory.open || this.arcade.open || this.shop.open || this.radial.open) return;
       // An unlock that arrives while we are still ASKING for the pointer is
       // not the player leaving — it is the tail of an exit we requested
       // ourselves before they resumed (exitPointerLock reports back a frame or
@@ -357,7 +388,7 @@ export class Game {
       if (e.code !== 'Escape' || this.devConsole.open || this.inventory.open) return;
       // The arcade and the shop already swallowed it in the capture phase;
       // belt and braces, so leaving either can never reach the pause screen.
-      if (this.arcade.open || this.shop.open) return;
+      if (this.arcade.open || this.shop.open || this.radial.open) return;
       // The pause settings overlay eats Escape first (HUD._wire) to close
       // itself; if it is open, this must not also fire.
       if (this.hud.pauseSettingsEl && !this.hud.pauseSettingsEl.hidden) return;
@@ -373,6 +404,7 @@ export class Game {
         this.checkpoint = {
           wave, score: this.score.snapshot(), weapons: this.weapons.snapshotAmmo(),
           tokens: this.tokens.snapshot(), sentries: this.sentries.snapshot(),
+      companion: this.companions.snapshot(),
         };
       }
     });
@@ -443,6 +475,7 @@ export class Game {
     // again — a new run starts where the first one did.
     this.tokens.restore({ tokens: 0, earned: 0, spent: 0 });
     this.sentries.reset();
+    this.companions.reset();
     this.shop.resetStock();
     // The cabinets go back to attract too: high scores and half-finished runs
     // belong to the run that set them.
@@ -451,6 +484,7 @@ export class Game {
     this.checkpoint = {
       wave: 0, score: this.score.snapshot(), weapons: this.weapons.snapshotAmmo(),
       tokens: this.tokens.snapshot(), sentries: this.sentries.snapshot(),
+      companion: this.companions.snapshot(),
     };
     this.player.respawn();
     this.startPlaying();
@@ -477,6 +511,8 @@ export class Game {
       // already paid out, so a resumed session cannot farm the coin tray by
       // clearing BRICKFALL a second time.
       this.arcade.restore(s.arcade);
+      this.sentries.restore(s.sentries);
+      this.companions.restore(s.companion);
       this._arcadePaid = new Set((s.arcade?.paid || []).filter((id) => MACHINE_IDS.includes(id)));
       const wave = Math.max(1, s.wave | 0);
       this.world.zones.syncTo(this.score.kills);
@@ -484,6 +520,7 @@ export class Game {
       this.checkpoint = {
         wave, score: this.score.snapshot(), weapons: this.weapons.snapshotAmmo(),
         tokens: this.tokens.snapshot(), sentries: this.sentries.snapshot(),
+      companion: this.companions.snapshot(),
       };
     }
     this.startPlaying();
@@ -508,6 +545,10 @@ export class Game {
       // screen once. `paid` is which machines have already dropped something
       // in the tray, so the reward stays a first-clear reward.
       arcade: { ...this.arcade.snapshot(), paid: [...(this._arcadePaid || [])] },
+      // The hardware you bought rides with the run: the sentries you have not
+      // used up, and the escort — folded or standing, with her orders.
+      sentries: this.sentries.snapshot(),
+      companion: this.companions.snapshot(),
       wave,
       secretsFound: this.world.secrets.found.size,
       secretsTotal: this.world.secrets.total,
@@ -617,6 +658,7 @@ export class Game {
     // and their sentries standing back where the checkpoint left them.
     this.tokens.restore(cp.tokens);
     this.sentries.restore(cp.sentries);
+    this.companions.restore(cp.companion);
     // Re-seal the districts that the rolled-back kill count no longer clears, so
     // the section walls stand again (and reopen as the player re-earns them).
     this.world.zones.syncTo(cp.score.kills);
@@ -654,7 +696,8 @@ export class Game {
     // while they are open (the mouse is on the UI).
     if (this.state.is('menu')) {
       this._menuCinematic(dt);
-    } else if (this.state.is('playing') && !this.inventory.open && !this.arcade.open && !this.shop.open) {
+    } else if (this.state.is('playing') && !this.inventory.open && !this.arcade.open
+      && !this.shop.open && !this.radial.open) {
       this.time += dt;
       this.update(dt);
     }
@@ -672,7 +715,8 @@ export class Game {
     // ...and while the game is being played the pointer is the game's, granted
     // or not, so the system cursor stays out of sight (see HUD.setPlayCursor).
     this.hud.setPlayCursor(this.state.is('playing')
-      && !this.inventory.open && !this.arcade.open && !this.shop.open && !this.devConsole.open);
+      && !this.inventory.open && !this.arcade.open && !this.shop.open
+      && !this.radial.open && !this.devConsole.open);
     this.input.endFrame();
   }
 
@@ -734,7 +778,9 @@ export class Game {
     this.shopkeeper.update(dt, ctx);
     // The sentries shoot from the same zombie list the horde is stepped with,
     // and the held one reads the mouse for its placement click.
-    this.sentries.update(dt, ctx, this.input);
+    this.sentries.update(dt, ctx, this.input, this.radial?.open || this.shop?.open);
+    // ...and the escort walks, fights and takes her orders off the same list.
+    this.companions.update(dt, ctx);
 
     // x-ray cheat: run this AFTER the spawner (so any zombies streamed in this
     // frame already exist and get caught) and after the NPCs move.

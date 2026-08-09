@@ -239,9 +239,18 @@ export class WeaponView {
     // and the thing in your hands is still the same object.
     rig.group.scale.multiplyScalar(0.26);
     rig.group.position.set(0, -0.10, 0);
-    // Folded for carrying: legs in, head straight, exactly how it comes out
-    // of the bag — the legs only kick out once it is standing on the ground.
-    for (const leg of rig.parts.legs) leg.group.rotation.x = 0.06;
+    // Folded for carrying: legs in, knees tucked, mast down — exactly how it
+    // comes out of the bag. The legs only kick out once it is standing on the
+    // ground, and every joint the deployed one animates is posed here, or the
+    // thing in your hands is a different shape from the thing you put down.
+    for (const leg of rig.parts.legs) {
+      leg.hip.rotation.x = 0.06;
+      leg.knee.rotation.x = 0;
+      leg.pad.rotation.x = -0.06;
+      leg.ram.position.y = -0.14;
+      leg.ram.scale.y = 1;
+    }
+    rig.parts.mastStage.position.y = 0.09;
     rig.parts.body.position.y = 0.10;
     this.heldRig = rig;
     this.held.add(rig.group);
@@ -473,9 +482,16 @@ export class WeaponView {
       r.rot[1] + this.swayX * 0.8 + Math.sin(this.t * 0.8) * 0.02,
       r.rot[2] + e * 0.3 + Math.sin(this.t * 1.05) * 0.015,
     );
-    // its own dish keeps turning in your hands, and the lamp idles amber
-    this.heldRig.parts.dish.rotation.y += dt * 1.2;
-    this.heldRig.parts.lampMat.emissive.setRGB(0.42, 0.3, 0.05);
+    // It is not asleep in your hands: the pinion creeps, the optic breathes,
+    // and the lamps idle amber. A folded machine that was completely inert
+    // would read as a prop rather than as the thing you are about to switch on.
+    const p = this.heldRig.parts;
+    p.pinion.rotation.y += dt * 0.9;
+    const breath = 0.42 + Math.sin(this.t * 2.1) * 0.14;
+    for (const b of p.iris) b.blade.position.x = b.home * (0.35 + breath * 0.9);
+    p.lensMat.emissive.setRGB(0.03, 0.16, 0.11);
+    p.lampMat.emissive.setRGB(0.42, 0.3, 0.05);
+    for (const l of p.lamps) l.material.emissive.setRGB(0.34, 0.25, 0.04);
   }
 
   /** Three-phase recoil: windup, kickback, recovery. */

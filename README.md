@@ -79,8 +79,9 @@ the desktop shell.
 | 1–6 | Pistol / Shotgun / Assault Rifle / Sniper / Bat / Alien Blaster (once found) |
 | Mouse wheel | Cycle weapons (also reveals the weapon menu) |
 | R | Reload |
-| E | Interact (talk to the vendor, pack up a deployed sentry) |
-| Tab | Satchel — click a sentry there to take it in hand (not at the counter) |
+| E | Interact (talk to the vendor, order the escort, pack up a deployed sentry) |
+| Tab | Satchel — click a sentry to take it in hand, or the escort to unfold her |
+| R (sentry in hand) | Swing its arc 25° |
 | LMB / RMB (sentry in hand) | Set it down / put it back in the satchel |
 | Esc / E | At an arcade cabinet or the vendor's pitch, step away from it |
 | Esc | Otherwise: pause / resume |
@@ -209,7 +210,7 @@ keyboard while open and the game keeps running behind it. Commands:
 | `give` | Fill every weapon's magazine and reserve |
 | `tp <x> <z>` | Teleport to map coordinates (spawn is `0 20`) |
 | `speed <mult>` | Movement speed multiplier (0.1–10) |
-| `spawn <type> [n]` | Spawn `n` enemies near you (`walker`/`sprinter`/`tank`/`exploder`/`spitter`), or `citizen` for a captive in a random building — she ignores `n`, skips her 100-kill gate, and the console prints which building to `tp` to |
+| `spawn <type> [n]` | Spawn `n` enemies near you (`walker`/`sprinter`/`tank`/`exploder`/`spitter`), or `citizen` for a captive in a random building — she ignores `n`, skips her 100-kill gate, and the console prints which building to `tp` to — or `sentry`, which stands `n` **ordinary** sentries a foot in front of you (fanned out, since they refuse to stand on each other), already inside their own [E] radius |
 | `pos` | Print current position |
 | `help` / `clear` | List commands / clear the log |
 
@@ -806,25 +807,94 @@ There is deliberately no command that touches the kill counter — the
   with. The fourth is Escape, which by specification grants none — so that one
   exit leans on the silent recapture described under Controls rather than on a
   plate telling the player to go and click something. It sells a
-  **Portable Sentry at 100 tokens, two only**; **every ammunition type
-  separately at 10** a crate; and carries one dead bay at the bottom for
-  whatever has not arrived yet.
+  **Portable Sentry at 100 tokens, six of them**; the **escort android at
+  500, one only**; **every ammunition type separately at 10** a crate; and
+  carries one dead bay at the bottom for whatever has not arrived yet.
 - **Portable Sentry:** a tripod auto-pistol that stows in the satchel. Click it
   there and it comes up **into your hands** (the gun goes away — you cannot hold
   a rifle and a tripod at once), and the ground ahead of you shows exactly where
   it would go: a **green 180° wedge** of precisely the radius it will cover,
   draped over the real terrain with a bubble wall standing on its boundary, and
   a ghost of the machine facing the way you are. Green means the click lands,
-  red means the ground will not take it. Click to set it down; it kicks its legs
-  out, cycles its head once, and starts sweeping. It reaches **about sixty
-  feet** — far enough to hold a street — over a **180° arc centred on the way
-  you were looking**, and it is a
-  pistol on a stand quite literally — the same damage and the same fire rate,
-  read off the pistol's own config, so it is never better than the gun in your
-  hand, just a second one that never looks away. Nothing targets it: it is off
-  the friendly roster too. Press [E] on a deployed one and it folds back into
-  the satchel. Sentries roll back with a checkpoint, standing again where they
-  stood.
+  red means the ground will not take it. **[R] swings the arc 25° a press** —
+  a detent you can count rather than a smooth drag, so two sentries can be set
+  at a known angle to each other without a protractor, and the spot stays put
+  while the cover turns. Click to set it down; it kicks its legs out, cycles its
+  head once, and starts sweeping. It reaches **about sixty feet** — far enough
+  to hold a street — over a **180° arc**, and it is a pistol on a stand quite
+  literally: the same damage and the same fire rate, read off the pistol's own
+  config, so it is never better than the gun in your hand, just a second one
+  that never looks away. Nothing targets it: it is off the friendly roster too.
+  Press [E] on a deployed one and it folds back into the satchel. Sentries roll
+  back with a checkpoint, standing again where they stood, and `spawn sentry` in
+  the console stands one up a foot in front of you — the ordinary machine, not a
+  special one, so it packs into the satchel like a bought one.
+
+  **It is built as a mechanism, not as the shape of one.** Every joint that
+  bends has the ram that bends it, every rotation has the gear it runs on: three
+  two-segment legs on hydraulic rams with footpads that stay flat whatever the
+  legs do, a two-stage telescoping mast it stands up on, a **28-tooth yaw ring
+  driven by a visible pinion** at the exact ratio the tooth counts imply, a
+  receiver that is two rails with the **bolt cycling between them**, a **belt of
+  links that walks toward the feed tray one link per shot**, a spent case thrown
+  out of the port, a **six-blade iris** that stops down onto a target the way an
+  eye does, **louvres that crack open and fins that glow** as the barrel heats
+  (past its ceiling it stops firing and cools), and a whip aerial that trails
+  whatever the head just did.
+
+  **And it has an inner life.** Left with nothing to shoot it runs its own
+  routines — a **self-test** with the lamps in a chase and the tripod shaken
+  down, and eventually a **doze** where the barrel sinks and the lamps drop to
+  one slow heartbeat until something turns up. Stand in front of one, inside its
+  arc, doing nothing, and it will notice you, bring the barrel up **to the
+  vertical, hold it, and put it back down**. Every twenty-fifth kill it taps the
+  barrel twice, like a gunner notching a stock. Pick one up and set it down
+  three times inside twenty seconds and it deploys with a shake of the head.
+- **The escort — "NEKO", 500 tokens, one only.** A refurbished companion
+  android, and the only thing in this town that walks beside you on purpose.
+  She stows in the satchel folded into a ball; click her and she unfolds on the
+  ground, finds her feet, and stretches. **[E] on her opens the ORDER DIAL** — a
+  radial of eight, split down the middle by what the halves mean: **posture** on
+  the right (FOLLOW · GUARD · STAY), **rules** on the left (ATTACK · RANGED ·
+  MELEE · PASSIVE), and PACK UP at the foot. She holds one from each side at all
+  times and both are lit on the dial, so it doubles as the readout for what she
+  is currently doing. Every command sits at a fixed compass point, so after the
+  second time your hand knows where GUARD is without your eyes going near the
+  labels. 1–8 work too.
+
+  **She carries no gun**, and that is a rule rather than an oversight — there is
+  nowhere on her to put one. What she has is folded away until she needs it: a
+  **blade in each forearm** that drives down past the fist and locks over
+  square, and **two arc emitters** that hinge up off her shoulder blades and
+  split open. Her chest core spins up and lights before either fires, so there
+  is always a tell. Melee hits harder and needs her to close; the arc reaches
+  but costs a charge cycle. On ATTACK she picks whichever the range asks for.
+
+  **She is shorter than you** (1.42 m against your 1.75 — measured off the
+  assembled rig and checked in the suite), and she is built as a machine shaped
+  like a person: enamel panels with the seams showing, cable looms at the
+  joints, and a county service plate on her back. The catgirl silhouette is all
+  mechanism — the **ears are directional microphones** and point at what she is
+  listening to, the **tail is her balance mass** and swings against her turns,
+  and the bob is a cooling shroud with vents in it.
+
+  **Every state flows into every other, and not one transition is authored.**
+  Each state writes a POSE — a plain object of joint targets — and the rig is
+  EASED onto it rather than set, so walk into alert into melee into sit is one
+  continuous thing whatever order it happens in. The gait runs off distance
+  travelled rather than time, so her feet never skate; the arms counter-swing
+  their leg and the tail lags the hips by a beat. Idle, she cycles through
+  surveying the road, grooming the back of a hand, a full stretch with the ears
+  flat back, listening on one bearing with both ears swung round, **chasing her
+  own tail**, and dozing off sitting down. She blinks. The one loose strand of
+  hair never lies down. Her whole vocabulary is two- and three-note synth
+  phrases off one square-wave voice — rising is yes, falling is no, and the low
+  warble is the only thing she says that is not an answer to something.
+
+  Like the sentry, **the horde has no idea she exists**: she is off the friendly
+  roster, so nothing acquires her, swings at her, or catches her in a blast. A
+  companion you spend the run babysitting is not an asset, and the game is
+  consistent about which things it lets you lose.
 - **Secrets:** fifteen of them, found by shooting, interacting, standing,
   looking, or killing exactly the right number. The mannequin is watching.
   Eastgate holds four: a **treehouse** you cannot see the deck of from the
@@ -846,6 +916,7 @@ src/ai/             NPC AI: senses (360° ring + memory), context steering,
                     shared navigator, behaviour arbiter, opt-in flag registry
 src/entities/       player, zombies, exploder, spitter, NPC, savable citizen,
                     cockroach, shopkeeper (the vendor animatronic), the
+                    escort android (Companion.js) and the sentry, the
                     deployable sentry, pickups (ammo, health, keys, coins)
 src/weapons/        weapon configs + firing/ammo/hit resolution
 src/rendering/      renderer, texture pipeline, billboards, HUD (console bar +

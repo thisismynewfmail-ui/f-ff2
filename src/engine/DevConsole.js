@@ -114,6 +114,7 @@ const COMMANDS = {
     con.print('cull <s|off>    remove zombies blind to the player for s seconds');
     con.print('spawn <type> [n] spawn n enemies near you (walker/sprinter/tank/exploder/spitter)');
     con.print('                or "citizen" — a captive in a random building, ignores n');
+    con.print('                or "sentry"  — deployed sentries a foot in front of you');
     con.print('kill [n]        add n kills through the scoring pipeline (default 1)');
     con.print('time <0-24>     set the time of day (6=dawn, 12=noon, 0=midnight)');
     con.print('pos             print current position');
@@ -172,7 +173,7 @@ const COMMANDS = {
 
   spawn(con, game, args) {
     const type = (args[0] || '').toLowerCase();
-    const valid = ['walker', 'sprinter', 'tank', 'exploder', 'spitter', 'citizen'];
+    const valid = ['walker', 'sprinter', 'tank', 'exploder', 'spitter', 'citizen', 'sentry'];
     if (!valid.includes(type)) throw new Error('usage: spawn <' + valid.join('|') + '> [count]');
     // The savable citizen is not horde stock: she spawns captive inside a
     // random building rather than near you, and only one is ever live, so she
@@ -188,6 +189,21 @@ const COMMANDS = {
     }
     const n = args[1] ? Math.floor(Number(args[1])) : 1;
     if (!Number.isFinite(n) || n < 1 || n > 40) throw new Error('count must be 1–40');
+    // The sentry is not horde stock either, but unlike the captive it is
+    // ordinary hardware: the same class, deployed the same way, carrying the
+    // same [E] prompt, so a spawned one packs into the satchel and redeploys
+    // exactly like one bought from the vendor. A foot in front of the player
+    // puts it inside its own interact radius — spawn it and it is already
+    // yours to pick up. Fanned out slightly for a count above one, since
+    // sentries refuse to stand on top of each other.
+    if (type === 'sentry') {
+      let stood = 0;
+      for (let i = 0; i < n; i++) {
+        if (game.sentries.spawnAhead(game.player, 0.3048 + i * 1.25)) stood++;
+      }
+      con.print(`stood up ${stood} sentr${stood === 1 ? 'y' : 'ies'} — [E] to pack up`, stood ? 'ok' : 'err');
+      return;
+    }
     let made = 0;
     for (let i = 0; i < n; i++) if (game.spawner.spawnOne(type, game.player)) made++;
     con.print(`spawned ${made} ${type}${made === 1 ? '' : 's'}`, made ? 'ok' : 'err');
