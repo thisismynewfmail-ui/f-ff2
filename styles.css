@@ -436,10 +436,60 @@ html, body {
 .log-line.gold { color: var(--fo-amber); text-shadow: 0 0 5px rgba(240,160,32,0.5); }
 .log-line.warn { color: #ff8a30; text-shadow: 0 0 5px rgba(255,138,48,0.5); }
 
-/* HP + AMMO odometer meters */
-#cons-meters { display: flex; flex-direction: column; justify-content: center; gap: 7px; padding: 0 4px; }
-.cons-meter { display: flex; flex-direction: column; align-items: center; gap: 3px; }
-.cons-meter-label { font-size: 10px; letter-spacing: 3px; color: var(--fo-tan); }
+/* THE COUNTER BANK — HP, AMMO and TOKENS, in one housing.
+   ------------------------------------------------------------------
+   They were three bare odometers standing on the console's own
+   camouflage, which read as tiles dropped on the panel rather than as
+   an instrument bolted to it — and since each is a different width the
+   column was ragged down both edges. Now they share a raised plate with
+   the same stepped keyline every other instrument here carries, the
+   three counters are ROWS in it separated by hairline rules, and
+   `align-items: stretch` pulls every row out to the width of the widest
+   so the wells line up on both sides without a magic number anywhere. */
+#cons-meters {
+  /* Sized to its CONTENTS, never stretched: the chassis is a fixed 132px tall
+     and the bank is laid out to come in under that. It used to be three
+     stacked label-and-wheels blocks needing about 184, so it simply hung out
+     of the panel — which is what the digits sitting on the camouflage top and
+     bottom actually were. */
+  display: flex; flex-direction: column; align-items: stretch;
+  align-self: center; flex: 0 0 auto;
+  gap: 0; padding: 3px 8px 4px; margin: 0 2px;
+  background-color: var(--fo-steel-deep);
+  border: 1px solid var(--fo-steel-lo); border-radius: var(--rad-bay);
+  box-shadow:
+    var(--bev-out),
+    inset 0 0 0 3px rgba(0,0,0,0.22), inset 0 0 0 4px rgba(190,188,150,0.14);
+}
+.cons-meter { display: flex; align-items: flex-start; justify-content: center; padding: 2px 0 3px; }
+.cons-meter.cons-ammo { flex-direction: column; align-items: center; }
+/* the two single counters share the top line */
+.cons-meter.cons-row { gap: 12px; }
+.cons-cell { display: flex; flex-direction: column; align-items: center; gap: 1px; position: relative; }
+/* a scored line between the two readings, cut into the plate not drawn on it */
+.cons-meter + .cons-meter {
+  border-top: 1px solid rgba(0,0,0,0.55);
+  box-shadow: 0 -1px 0 rgba(190,188,150,0.13);
+}
+.cons-meter-label {
+  font-size: 9px; letter-spacing: 3px; color: var(--fo-tan); line-height: 11px;
+  text-shadow: 0 1px 0 rgba(0,0,0,0.75);
+}
+/* The counters run a size down inside the bank, so two rows of them and the
+   portrait monitor beside them are the same height and the chassis keeps its
+   proportions. */
+#cons-meters .digit {
+  width: 17px; height: 21px; line-height: 21px; font-size: 17px;
+}
+#cons-meters .digit.inf, #cons-meters .digit.melee { width: 36px; font-size: 16px; }
+#cons-meters .odometer { padding: 2px; }
+#cons-meters .odometer.small .digit {
+  width: 13px; height: 17px; line-height: 17px; font-size: 13px;
+}
+#cons-meters .odometer.small .digit.inf,
+#cons-meters .odometer.small .digit.melee { width: 28px; font-size: 13px; }
+#cons-meters .cons-ammo-sub { font-size: 7px; letter-spacing: 1px; line-height: 9px; }
+#cons-meters .cons-ammo-row { gap: 5px; }
 .odometer {
   display: flex; gap: 2px; padding: 3px; background-color: var(--fo-recess); background-image: var(--tex-recess);
   border: 1px solid #000; border-radius: var(--rad-well);
@@ -472,42 +522,11 @@ html, body {
 .odometer.small .digit.inf, .odometer.small .digit.melee { width: 34px; font-size: 16px; }
 .cons-ammo-col .odometer.empty .digit { color: #ff4a30; }
 
-/* alarm + map lamps */
-#cons-lamps { display: flex; flex-direction: column; justify-content: center; gap: 8px; padding: 0 2px; }
-/* The big round lamp. In the reference this is a domed glass cabochon sitting
-   in a machined bezel — the only warm mass on the whole chassis — so it gets
-   a real dome (an off-centre specular, a dark limb) rather than a flat disc,
-   and a stepped bezel ring around it. */
-.cons-lamp {
-  width: 42px; height: 42px; border-radius: 50%;
-  border: 3px solid var(--fo-steel-deep);
-  box-shadow:
-    inset 0 0 9px rgba(0,0,0,0.85), inset 0 3px 3px rgba(255,255,255,0.22),
-    0 0 0 1px #000, 0 0 0 3px rgba(116,112,79,0.45), 0 0 0 4px #000,
-    0 2px 4px rgba(0,0,0,0.8);
-}
-.cons-lamp.alarm {
-  background:
-    radial-gradient(circle at 36% 28%, rgba(255,255,255,0.7) 0 6%, transparent 26%),
-    radial-gradient(circle at 42% 36%, #ff6a48, #b8281c 52%, #4a0f08 88%);
-  opacity: 0.55; transition: opacity 0.1s;
-}
-.cons-lamp.alarm.lit {
-  opacity: 1;
-  box-shadow:
-    inset 0 0 9px rgba(0,0,0,0.45), inset 0 3px 3px rgba(255,255,255,0.28),
-    0 0 0 1px #000, 0 0 0 3px rgba(140,134,96,0.6), 0 0 0 4px #000,
-    0 0 18px 3px rgba(240,70,50,0.85);
-}
-/* CENTRE PORTRAIT MONITOR — the hero of the reference bar.
-   It is not one more instrument in the row: it is a separate casting bolted
-   onto the front, in a lighter alloy than the chassis, and it STANDS PROUD of
-   the top edge with a ribbed conduit running down into the case. Everything
-   here exists to make it read as a physically separate object. */
-/* The casting is TWO mouldings, not one: an outer shell with a wide arched
-   shoulder, and the bezel proper seated inside it. One rounded frame reads as
-   a rounded div; two nested arcs at different radii read as cast metal, which
-   is the whole difference between this and a border-radius. */
+/* The lamp cluster is gone: a MAP key that opened nothing, and beside it a
+   big red alarm cabochon that said nothing the health odometer and the
+   portrait were not already saying — in the one spot on the console where a
+   warm mass pulls the eye hardest. See HUD._buildConsole. */
+
 #cons-monitor {
   flex: 0 0 auto; display: flex; flex-direction: column; align-items: center;
   justify-content: flex-end; position: relative;
@@ -1809,9 +1828,12 @@ body.in-play, body.in-play * { cursor: none !important; }
    that goes down when you spend it. The coin under it is the only
    part that moves — it lifts and lights gold when the count goes up,
    and knocks red when the vendor refuses a price. */
+/* The coin beside the till. Absolutely placed, so a flash of it can never
+   change the height of the cell it sits in and shunt the row beside it. */
 .cons-tokens { position: relative; }
 .cons-token-coin {
-  width: 13px; height: 13px; border-radius: 50%;
+  position: absolute; top: 0; right: -2px;
+  width: 11px; height: 11px; border-radius: 50%;
   background: radial-gradient(circle at 34% 30%, #ffe8a8 0 18%, #e0b840 42%, #8a5c12 78%, #4a3208 100%);
   box-shadow: inset -1px -1px 0 rgba(0,0,0,0.6), inset 1px 1px 0 rgba(255,240,190,0.5);
   opacity: 0.55; transition: opacity 0.15s;

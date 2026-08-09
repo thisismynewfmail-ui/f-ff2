@@ -53,14 +53,23 @@ const FOLLOW_SPRINT = 9.0;    // badly behind: run flat out
 const TELEPORT_LOST = 34;     // hopelessly behind (through a wall): catch up
 
 const GUARD_LEASH = 9.0;      // how far from her post GUARD will chase
-const SIGHT = 16.0;           // how far she looks for something to fight
+const SIGHT = 26.0;           // how far she looks for something to fight
 const MELEE_REACH = 1.9;
 const MELEE_DAMAGE = 26;
 const MELEE_INTERVAL = 0.9;
-const ARC_RANGE = 13.0;
+// Her arc reaches further than the sentry's pistol does (60 ft), which is the
+// point of her: the sentry holds a doorway, she covers the street you are
+// crossing. SIGHT has to stay ahead of it or she would be unable to acquire
+// anything at the range she can actually shoot it.
+const ARC_RANGE = 22.0;
 const ARC_DAMAGE = 17;
 const ARC_INTERVAL = 1.4;
 const ARC_CHARGE = 0.62;      // of the interval, spent spinning up
+// Inside this she would rather use the blades. Deliberately an ABSOLUTE
+// distance and not a fraction of ARC_RANGE: tying the two together means every
+// extension of her reach quietly turns her into a melee unit that runs at
+// things from further away.
+const MELEE_PREFER = 6.0;
 
 export const POSTURES = ['follow', 'stay', 'guard'];
 export const RULES = ['passive', 'melee', 'ranged', 'attack'];
@@ -154,7 +163,12 @@ export class Companion extends Entity {
   _acquire(ctx) {
     if (this.rules === 'passive') return null;
     const anchor = this.posture === 'follow' && ctx.player?.alive ? ctx.player.position : this.position;
-    const leash = this.posture === 'guard' ? GUARD_LEASH : SIGHT;
+    // GUARD's leash is about how far she will WALK off her post, so it must not
+    // also decide how far she can shoot from standing on it: when the arc is
+    // available she engages out to its full reach and simply never leaves.
+    const leash = this.posture === 'guard'
+      ? (this._canArc() ? Math.max(GUARD_LEASH, ARC_RANGE) : GUARD_LEASH)
+      : SIGHT;
     let best = null, bestD = Infinity;
     for (const z of ctx.zombies ?? []) {
       if (z.state === 'dead') continue;
@@ -199,7 +213,7 @@ export class Companion extends Entity {
     let want = 'idle';
 
     if (this.target) {
-      const meleeWanted = this._canMelee() && (this.rules === 'melee' || tDist < ARC_RANGE * 0.45);
+      const meleeWanted = this._canMelee() && (this.rules === 'melee' || tDist < MELEE_PREFER);
       if (meleeWanted) {
         // close, unless STAY has her pinned to a spot
         if (tDist > MELEE_REACH * 0.8 && this.posture !== 'stay') goal = this.target.position;

@@ -318,6 +318,27 @@ const shop = await page.evaluate(async () => {
   out.ammoGained = w.reserve - reserveBefore;
   out.ammoCost = paidBefore - g.tokens.tokens;
 
+  /* Every line on the shelf has to be drawn as the thing it sells. _drawIcon
+   * is a chain of id tests ending in an ELSE that draws pistol rounds, so any
+   * line nobody wrote art for silently ships as a tray of ammunition — which
+   * is exactly what the escort was doing. Hash the pixels of each icon and
+   * require them all distinct: a duplicate here means a fall-through. */
+  const icons = {};
+  for (const s of SHOP_STOCK) {
+    const cv = document.createElement('canvas');
+    cv.width = 52; cv.height = 52;
+    g.shop._drawIcon(cv, s);
+    const d = cv.getContext('2d').getImageData(0, 0, 52, 52).data;
+    let h = 2166136261, ink = 0;
+    for (let i = 0; i < d.length; i += 4) {
+      if (d[i + 3] > 8) ink++;
+      h ^= d[i] + d[i + 1] * 3 + d[i + 2] * 7 + d[i + 3] * 11;
+      h = Math.imul(h, 16777619);
+    }
+    icons[s.id] = { hash: h >>> 0, ink };
+  }
+  out.icons = icons;
+
   const soon = SHOP_STOCK.find((s) => s.id === 'comingSoon');
   out.lockedRefused = g._buy(soon) === false;
   const spentBefore = g.tokens.tokens;
@@ -377,6 +398,15 @@ check('every ammunition type is listed separately at 10',
   shop.lines.filter((l) => l.id.startsWith('ammo_')).map((l) => `${l.id}:${l.price}`).join(' '));
 check('and the bottom line is an unbuyable placeholder',
   stockOf('comingSoon').locked && shop.lockedRefused && shop.lockedFree);
+const iconIds = Object.keys(shop.icons);
+const iconHashes = new Set(iconIds.map((id) => shop.icons[id].hash));
+check('every line on the shelf is drawn as the thing it sells',
+  iconHashes.size === iconIds.length
+  && shop.icons.companion.hash !== shop.icons.ammo_pistol.hash
+  && shop.icons.companion.ink > 300,
+  iconHashes.size === iconIds.length
+    ? `${iconIds.length} distinct icons, the escort in ${shop.icons.companion.ink} px of ink`
+    : `only ${iconHashes.size} distinct icons across ${iconIds.length} lines`);
 check('[E] opens the counter and freezes the street', shop.opened && shop.frozen);
 check('an empty purse buys nothing', shop.brokeRefused);
 check('the whole shelf of sentries can be bought, and no more than that',
@@ -632,6 +662,40 @@ const escort = await page.evaluate(async () => {
   for (let i = 0; i < 200; i++) c.update(1 / 60, fightCtx);
   out.standsDown = c.anim.bladeOut < 0.05 && c.anim.podOut < 0.05 && c.target === null;
 
+  /* REACH. Her arc is the reason to take her rather than another sentry, so
+   * three things about its range are pinned here. Sight lines are forced open
+   * for the duration — this is a range test, not a level-geometry test — and
+   * the shots are counted off the arc EVENT, because the range governs whether
+   * she fires at all, not what the bolt then does. */
+  const realLos = g.world.hasLineOfSight.bind(g.world);
+  g.world.hasLineOfSight = () => true;
+  let arcs = 0;
+  const offArc = g.events.on('companion:arc', () => { arcs++; });
+  const shootFrom = (dist, cmds, frames = 300) => {
+    for (const cmd of cmds) c.order(cmd);
+    z.position.x = c.position.x + dist; z.position.z = c.position.z;
+    z.hit = 0; arcs = 0;
+    const held = { x: c.position.x, z: c.position.z };
+    c.anim.bladeOut = 0;
+    for (let i = 0; i < frames; i++) c.update(1 / 60, fightCtx);
+    return { arcs, hit: z.hit || 0, moved: Math.hypot(c.position.x - held.x, c.position.z - held.z),
+      blades: c.anim.bladeOut };
+  };
+  // 1. 18 m — comfortably past the 13 m she used to have — pinned by STAY, so
+  //    a hit cannot be her having quietly walked into her old range.
+  out.long = shootFrom(18, ['stay', 'ranged']);
+  // 2. On ATTACK at 8 m she still picks the arc. The melee preference used to
+  //    be a FRACTION of the arc range, so every extension of her reach turned
+  //    her into a melee unit that charged from further out.
+  out.mid = shootFrom(8, ['attack']);
+  // 3. On GUARD she shoots what she can see from her post rather than only
+  //    what she would chase: 15 m is well past the 9 m chase leash.
+  c.post = { x: c.position.x, z: c.position.z };
+  out.guard = shootFrom(15, ['guard', 'ranged']);
+  offArc();
+  g.world.hasLineOfSight = realLos;
+  c.order('follow'); c.order('passive');
+
   // the horde must not know she is there
   out.onFriendlyRoster = g.friendlies.includes(c);
   out.tagged = [...c.tags];
@@ -658,6 +722,15 @@ check('her weapons are built in, and come out only when they are allowed',
   escort.gunParts === 0 && escort.bladesOut && escort.hitIt && escort.podsOut && escort.standsDown,
   `gun parts ${escort.gunParts}, blades ${escort.bladesOut}, hit ${escort.hitIt},`
   + ` pods ${escort.podsOut}, stood down ${escort.standsDown}`);
+check('her arc reaches well past the sentry\'s, and she fires without closing',
+  escort.long.arcs > 0 && escort.long.hit > 0 && escort.long.moved < 0.6,
+  `${escort.long.arcs} bolts at 18 m, ${escort.long.hit} hits, moved ${escort.long.moved.toFixed(2)}m`);
+check('...and the longer reach did not turn her into a melee unit',
+  escort.mid.arcs > 0 && escort.mid.blades < 0.5,
+  `at 8 m on ATTACK: ${escort.mid.arcs} bolts, blades ${escort.mid.blades.toFixed(2)}`);
+check('...and a guard shoots what she can see, not just what she would chase',
+  escort.guard.arcs > 0 && escort.guard.moved < 1.2,
+  `${escort.guard.arcs} bolts at 15 m from post, moved ${escort.guard.moved.toFixed(2)}m`);
 check('and the horde has no idea she exists',
   !escort.onFriendlyRoster && !escort.tagged.includes('friendly'), escort.tagged.join('/'));
 check('PACK UP folds her back into the satchel', escort.packed);

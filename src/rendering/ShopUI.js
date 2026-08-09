@@ -272,6 +272,61 @@ export class ShopUI {
       ctx.fillStyle = '#ffd24a'; ctx.fillRect(21, 5, 4, 4);
       return;
     }
+    if (entry.id === 'companion') {
+      // Her, standing, as the catalogue would show her — not folded up the way
+      // the satchel draws her, because the shop is selling the unit and the
+      // satchel is holding the parcel. Same paint as the model: county plum on
+      // county cream, dark articulation, a visor with two lit lozenges behind
+      // it and the reactor lit under the chest plate.
+      const shell = '#dcd6c8', shade = '#b9b2a2', dark = '#3c3a46';
+      const plum = '#7a3f5a', visor = '#1b2028', lit = '#7ce8d0';
+      ctx.fillStyle = dark;                       // the tail, out and curling up
+      ctx.lineWidth = 3; ctx.strokeStyle = dark;
+      ctx.beginPath();
+      ctx.moveTo(32, 40);
+      ctx.bezierCurveTo(43, 40, 46, 30, 41, 24);
+      ctx.stroke();
+      ctx.fillStyle = dark;                       // hips and the legs under them
+      ctx.fillRect(20, 37, 12, 4);
+      ctx.fillStyle = shell;
+      ctx.fillRect(21, 40, 4, 8); ctx.fillRect(27, 40, 4, 8);
+      ctx.fillStyle = dark;
+      ctx.fillRect(20, 47, 6, 3); ctx.fillRect(26, 47, 6, 3);
+      ctx.fillStyle = dark;                       // shoulder articulation...
+      ctx.fillRect(15, 23, 5, 4); ctx.fillRect(32, 23, 5, 4);
+      ctx.fillStyle = shade;                      // ...and the arms hanging off it
+      ctx.fillRect(16, 27, 4, 11); ctx.fillRect(33, 27, 4, 11);
+      ctx.fillStyle = shell;                      // the chest shell
+      ctx.beginPath();
+      ctx.moveTo(19, 23); ctx.lineTo(33, 23); ctx.lineTo(31, 38); ctx.lineTo(21, 38);
+      ctx.closePath(); ctx.fill();
+      ctx.fillStyle = plum;                       // the county's stripe
+      ctx.fillRect(19, 33, 13, 3);
+      ctx.fillStyle = lit;                        // the reactor, lit
+      ctx.beginPath(); ctx.arc(26, 28, 3, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#0d5f52';
+      ctx.beginPath(); ctx.arc(26, 28, 1.4, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = dark;                       // the ears, and the hair between
+      ctx.beginPath(); ctx.moveTo(17, 12); ctx.lineTo(19, 2); ctx.lineTo(24, 10); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(35, 12); ctx.lineTo(33, 2); ctx.lineTo(28, 10); ctx.fill();
+      ctx.fillStyle = plum;                       // the pink inside them
+      ctx.beginPath(); ctx.moveTo(19, 11); ctx.lineTo(20, 5); ctx.lineTo(23, 10); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(33, 11); ctx.lineTo(32, 5); ctx.lineTo(29, 10); ctx.fill();
+      ctx.fillStyle = shell;                      // the head
+      ctx.beginPath(); ctx.arc(26, 15, 8, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = dark;                       // the fringe over it
+      ctx.beginPath(); ctx.arc(26, 15, 8, Math.PI, Math.PI * 2); ctx.fill();
+      ctx.fillRect(18, 15, 3, 8); ctx.fillRect(31, 15, 3, 8);
+      ctx.fillStyle = visor;                      // the visor band
+      ctx.fillRect(19, 14, 14, 5);
+      ctx.fillStyle = lit;                        // and the two lights behind it
+      ctx.fillRect(21, 15.5, 4, 2.5); ctx.fillRect(27, 15.5, 4, 2.5);
+      ctx.strokeStyle = dark; ctx.lineWidth = 2.2; // the ahoge, because of course
+      ctx.beginPath();
+      ctx.moveTo(26, 8); ctx.quadraticCurveTo(30, 2, 24, 0.5);
+      ctx.stroke();
+      return;
+    }
     if (entry.id === 'comingSoon') {
       ctx.strokeStyle = '#7a7458';
       ctx.setLineDash([4, 4]);

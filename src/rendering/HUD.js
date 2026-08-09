@@ -26,8 +26,9 @@ const NOTICE_CPS = 46;
  *     secrets, orders) with a slow phosphor refresh sweep, seated flush at
  *     the panel's left edge (the old left vacuum-tube bank is gone; the
  *     right bank carries the console's remaining glass)
- *   - mechanical HP and AMMO odometer counters whose wheels tick as they roll
- *   - a red alarm lamp (pulses on damage), the one warm mass on the chassis
+ *   - the COUNTER BANK: one housed steel instrument carrying every mechanical
+ *     odometer, HP and TOKENS paired on its top line, LOADED and RESERVE on a
+ *     scored line beneath, all of them ticking their wheels as they roll
  *   - the centre PLAYER PORTRAIT in a green CRT monitor (see Portrait.js —
  *     health-driven head with a well-spaced look-around idle above 50% HP)
  *   - an AIM ON/OFF indicator (lit while the sniper scope is up)
@@ -422,13 +423,54 @@ export class HUD {
     logWrap.style.backgroundImage = `url(${this._tex.inset})`;
     this.logEl = this._el('div', 'cons-log', logWrap);
 
-    // --- HP + AMMO odometer meters ---
+    /* --- the counter bank: HP, AMMO and TOKENS, in ONE housing.
+     *
+     * They used to be three bare odometers standing on the console's own
+     * camouflage with nothing around them, which is what made them read as
+     * tiles somebody had dropped on the panel rather than as an instrument
+     * bolted to it — and because each one is a different width, the column
+     * they made was ragged down both edges.
+     *
+     * So they share a bay: a raised plate with the same stepped keyline every
+     * other instrument in this game carries, the three counters stacked in it
+     * as ROWS separated by hairline rules, and every row stretched to the
+     * width of the widest so the wells line up on both sides. The bay is one
+     * object with three readings on it now, not three objects.
+     */
     const meters = this._el('div', 'cons-meters', bar);
-    const hpBox = this._el('div', null, meters, 'cons-meter');
-    this._el('div', null, hpBox, 'cons-meter-label').textContent = 'HP';
-    this.hpOdo = this._el('div', null, hpBox, 'odometer');
+    meters.style.backgroundImage = `url(${this._tex.plate})`;
+    const cell = (parent, cls, label) => {
+      const c = this._el('div', null, parent, 'cons-cell' + (cls ? ' ' + cls : ''));
+      this._el('div', null, c, 'cons-meter-label').textContent = label;
+      return c;
+    };
+
+    /* ROW ONE — the two single counters, side by side.
+     *
+     * Side by side and not stacked, and this is the whole of the fix: the
+     * chassis is a fixed 132px tall and three stacked label-and-wheels blocks
+     * need about 184 of it, so the bank was hanging out of the panel top and
+     * bottom with its digits sitting on the camouflage. HP and TOKENS are both
+     * one short number with a word over it, so they pair naturally onto one
+     * line and the bank comes back inside the case.
+     *
+     * TOKENS belongs in this bank at all because it is the same KIND of number
+     * as the ammunition: a consumable you are carrying, that goes down when you
+     * spend it. On the KILLS device it would be filed under "score", which is
+     * exactly what it is not.
+     */
+    const top = this._el('div', null, meters, 'cons-meter cons-row');
+    const hpCell = cell(top, null, 'HP');
+    this.hpOdo = this._el('div', null, hpCell, 'odometer');
     this.hpOdo.style.backgroundImage = `url(${this._tex.inset})`;
-    // AMMO split into two meters: LOADED (in the gun) and RESERVE (carried)
+    const tokCell = cell(top, 'cons-tokens', 'TOKENS');
+    this.tokenOdo = this._el('div', null, tokCell, 'odometer');
+    this.tokenOdo.style.backgroundImage = `url(${this._tex.inset})`;
+    this._odoDigits(this.tokenOdo, 0, 4);
+    this.tokenCoin = this._el('div', null, tokCell, 'cons-token-coin');
+
+    // ROW TWO — AMMO, split into LOADED (in the gun) and RESERVE (carried),
+    // under one heading because they are two halves of one reading.
     const ammoBox = this._el('div', null, meters, 'cons-meter cons-ammo');
     this._el('div', null, ammoBox, 'cons-meter-label').textContent = 'AMMO';
     const ammoRow = this._el('div', null, ammoBox, 'cons-ammo-row');
@@ -441,27 +483,13 @@ export class HUD {
     this.resOdo.style.backgroundImage = `url(${this._tex.inset})`;
     this._el('div', null, resCol, 'cons-ammo-sub').textContent = 'RESERVE';
 
-    // --- TOKENS: what you are carrying to the vendor.
-    //
-    // It belongs HERE, in the meter bank beside the ammunition, because it is
-    // the same kind of number: a consumable you are carrying, that goes down
-    // when you spend it. Putting it on the KILLS device instead would file it
-    // under "score", which is exactly what it is not. It rides the dock's own
-    // transform, so it scales with everything else on narrow windows, and the
-    // dock's ResizeObserver re-fits the row when the count gains a digit.
-    const tokBox = this._el('div', null, meters, 'cons-meter cons-tokens');
-    this._el('div', null, tokBox, 'cons-meter-label').textContent = 'TOKENS';
-    this.tokenOdo = this._el('div', null, tokBox, 'odometer');
-    this.tokenOdo.style.backgroundImage = `url(${this._tex.inset})`;
-    this._odoDigits(this.tokenOdo, 0, 4);
-    this.tokenCoin = this._el('div', null, tokBox, 'cons-token-coin');
-
-    // --- alarm lamp ---
-    // There was a MAP key here. It was never wired to anything and there is no
-    // map to open, so it was a control that lied about what the panel could
-    // do; the lamp beside it is the whole cluster now.
-    const lamps = this._el('div', 'cons-lamps', bar);
-    this.alarmLamp = this._el('div', null, lamps, 'cons-lamp alarm');
+    // (There is no lamp cluster here any more. A MAP key went first — it was
+    // never wired to anything and there is no map, so it was a control that
+    // lied about what the panel could do — and the big red alarm cabochon that
+    // was left beside it has followed it: it said nothing the health odometer
+    // and the portrait were not already saying, in the one spot on the console
+    // where a warm mass pulls the eye hardest. Removing it also lets the
+    // counter bank sit against the monitor, which is where it belongs.)
 
     // --- centre portrait monitor ---
     const mon = this._el('div', 'cons-monitor', bar);
@@ -1384,10 +1412,11 @@ export class HUD {
       : d.sprinting ? 'RUN'
       : stam > 0.985 ? 'READY' : 'REGEN';
 
-    // --- console: alarm lamp + AIM indicator ---
+    // --- console: AIM indicator ---
+    // `_alarm` still decays because damage events set it and the HP odometer's
+    // own crit tint reads off the same health this does; there is simply no
+    // lamp on the panel for it to light any more.
     this._alarm = Math.max(0, this._alarm - dt * 2);
-    this.alarmLamp.style.opacity = (0.35 + this._alarm * 0.65).toFixed(2);
-    this.alarmLamp.classList.toggle('lit', this._alarm > 0.05 || hpFrac < 0.25);
     this.aimLamp.classList.toggle('on', this._scoped);
     this.aimState.textContent = this._scoped ? 'ON' : 'OFF';
 

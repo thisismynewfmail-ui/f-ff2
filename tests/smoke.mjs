@@ -2081,6 +2081,132 @@ check('and re-fits itself when its contents grow',
   + ` ${dockFit.grown.left.toFixed(0)}..${dockFit.grown.right.toFixed(0)} in ${dockFit.view},`
   + ` back to ${dockFit.back.right.toFixed(0)}`);
 
+/* every instrument stays INSIDE the chassis it is bolted to               */
+// The counter bank was three stacked label-and-wheels blocks in a case with a
+// hard 132px height, so it hung out of the panel top and bottom with its
+// digits sitting on the camouflage. That is invisible in a code review and
+// obvious the moment you look at the HUD, which is exactly what this suite is
+// for: every direct child of the console has to fit the box it is in, and none
+// of them may overflow its own.
+// One instrument is SUPPOSED to stand proud: the portrait tube is pulled up out
+// of the bar on a negative top margin so it breaks the top line, cable and all.
+// So a riser earns its exemption by declaring that margin, and only at the top
+// edge -- nothing, riser or not, may hang below the case, which is where the
+// digits went.
+const chassis = await page.evaluate(() => {
+  const bar = document.getElementById('console-bar');
+  const b = bar.getBoundingClientRect();
+  const cs = getComputedStyle(bar);
+  const padT = parseFloat(cs.paddingTop), padB = parseFloat(cs.paddingBottom);
+  const out = { bar: { top: b.top + padT, bottom: b.bottom - padB }, over: [], spill: [], risers: [] };
+  for (const el of bar.children) {
+    if (el.classList.contains('screw')) continue;
+    const r = el.getBoundingClientRect();
+    if (!r.height) continue;
+    const ecs = getComputedStyle(el);
+    const riser = parseFloat(ecs.marginTop) < -1;
+    if (riser) out.risers.push(el.id || el.className);
+    // proud of the chassis...
+    if ((r.top < out.bar.top - 1.5 && !riser) || r.bottom > out.bar.bottom + 1.5) {
+      out.over.push(`${el.id || el.className}:${r.top.toFixed(0)}..${r.bottom.toFixed(0)}`);
+    }
+    // ...or overflowing its own box, which is the same bug one level down --
+    // but only where the overflow would actually be SEEN. A screen that
+    // declares overflow:hidden has said its content is meant to run past the
+    // glass and be cut off there (the CRT log scrolls its oldest lines off the
+    // top by design); the counter bank makes no such claim, so the spill that
+    // put its digits on the camouflage still lands here.
+    if (ecs.overflow === 'visible'
+      && (el.scrollHeight > el.clientHeight + 2 || el.scrollWidth > el.clientWidth + 2)) {
+      out.spill.push(`${el.id || el.className}:${el.scrollWidth}x${el.scrollHeight}`
+        + ` in ${el.clientWidth}x${el.clientHeight}`);
+    }
+  }
+  out.lamp = !!document.querySelector('.cons-lamp');
+  const bank = document.getElementById('cons-meters');
+  out.rows = [...bank.querySelectorAll('.cons-meter')].map((r) => +r.getBoundingClientRect().width.toFixed(1));
+  return out;
+});
+check('every instrument sits inside the console chassis',
+  chassis.over.length === 0 && chassis.risers.join() === 'cons-monitor',
+  chassis.over.join(' ') || `all within the case, riser: ${chassis.risers.join() || 'none'}`);
+check('...and none of them overflows its own housing',
+  chassis.spill.length === 0, chassis.spill.join(' ') || 'nothing spilling');
+check('the counter bank reads as one instrument, not loose tiles',
+  chassis.rows.length === 2 && new Set(chassis.rows).size === 1 && !chassis.lamp,
+  `${chassis.rows.length} rows at ${[...new Set(chassis.rows)].join('/')}px,`
+  + ` alarm lamp ${chassis.lamp}`);
+
+/* dropped loot ages off the street, and warns before it goes            */
+// Three separate things have to hold at once: the item is still collectable
+// well past the warning, it BLINKS through the last stretch rather than fading
+// to a half-there ghost, and it is gone on time. The clock is driven by hand at
+// a fixed dt so the result cannot depend on frame rate, and it is fed a running
+// time — the blink is a function of the world clock, and a probe that passes a
+// frozen one will report a sprite that never blinks.
+const decay = await page.evaluate(() => {
+  const g = window.__game;
+  g.hud.showScreen(null); g.state.state = 'playing';
+  const p = g.player.position;
+  // Track the two items THIS check drops, by identity: the run has been killing
+  // things for several minutes by now, so the street already has other people's
+  // drops on it at unknown ages.
+  const already = new Set(g.pickups.items);
+  const seededBefore = g.pickups.items.filter((i) => i.life === 0).length;
+  g.events.emit('loot:spawn', { x: p.x + 3, z: p.z, type: 'ammo_rifle', amount: 30 });
+  g.events.emit('loot:spawn', { x: p.x + 4, z: p.z, type: 'coin_copper', amount: 1 });
+  const mine = g.pickups.items.filter((i) => !already.has(i));
+  const dropped = () => mine.filter((i) => g.pickups.items.includes(i));
+  let clock = 0;
+  const step = (secs) => {
+    for (let i = 0; i < Math.round(secs / 0.05); i++) {
+      clock += 0.05;
+      g.pickups.update(0.05, clock, g.player, g.renderer.camera.position);
+    }
+  };
+  const out = { spawned: mine.length, onTheClock: mine.every((i) => i.life === 45) };
+  step(30);
+  out.at30 = dropped().length;
+  out.steadyAt30 = dropped().every((i) => i.bb.mesh.material.opacity === 1);
+  const seen = new Set();
+  for (let i = 0; i < 120; i++) { step(0.05); dropped().forEach((it) => seen.add(+it.bb.mesh.material.opacity.toFixed(2))); }
+  out.blink = [...seen].sort();
+  out.at36 = dropped().length;
+  step(10);
+  out.at46 = dropped().length;
+  // ...and the world's own loot is NOT on the clock: it is placed at load, so
+  // this timer would strip every drawer in town before the player reached one.
+  // The count has to be exactly level, not merely non-zero — the town seeds to
+  // the pickup cap, so a full list that evicts by position rather than by age
+  // destroys a piece of building loot on every single drop.
+  const seededAfter = g.pickups.items.filter((i) => i.life === 0).length;
+  out.seededSurvives = seededBefore > 0 && seededAfter === seededBefore;
+  out.seeded = `${seededAfter}/${seededBefore}`;
+
+  // ...and the street can hold a wave's payout at once. This is the other half
+  // of the same budget: seed the list to its cap and every coin a zombie drops
+  // shoves the previous one off the end, so the ground never holds more than
+  // the last kill paid.
+  const room = new Set(g.pickups.items);
+  for (let i = 0; i < 20; i++) {
+    g.events.emit('loot:spawn', { x: p.x + 3 + i * 0.4, z: p.z + 2, type: 'coin_copper', amount: 1 });
+  }
+  out.wave = g.pickups.items.filter((i) => !room.has(i)).length;
+  return out;
+});
+check('dropped loot is still there long after it lands',
+  decay.spawned === 2 && decay.onTheClock && decay.at30 === 2 && decay.steadyAt30 && decay.at36 === 2,
+  `${decay.spawned} dropped on a 45s clock (${decay.onTheClock}),`
+  + ` ${decay.at30} at 30s (steady ${decay.steadyAt30}), ${decay.at36} at 36s`);
+check('...blinks through its last seconds rather than ghosting',
+  decay.blink.length === 2 && decay.blink[1] === 1 && decay.blink[0] < 0.3,
+  `opacity took ${decay.blink.join(' / ')}`);
+check('...and is gone at forty-five, while the world\'s own loot stays',
+  decay.at46 === 0 && decay.seededSurvives,
+  `${decay.at46} left at 46s, world loot ${decay.seeded} still standing`);
+check('...and the street still has room for a whole wave\'s payout',
+  decay.wave === 20, `${decay.wave} of 20 coins survived being dropped together`);
+
 /* the portrait keeps looking around, and keeps reporting the wound      */
 // Two separate things share one canvas and each has broken independently: the
 // idle glance (which must keep running while nothing is happening) and the
