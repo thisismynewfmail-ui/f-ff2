@@ -338,6 +338,17 @@ const shop = await page.evaluate(async () => {
   // the counter it does nothing at all rather than doing both things at once
   key('Tab');
   out.tabHolds = g.shop.open && !g.inventory.open;
+  // Leaving on Escape has to be CLEAN: no "click to take the mouse back"
+  // plate, and no system cursor sitting in the middle of the street while the
+  // browser gets round to the lock. Escape grants no user activation, so that
+  // window is real; it just must not be visible.
+  open();
+  key('Escape');
+  await new Promise((r) => requestAnimationFrame(r));
+  await new Promise((r) => requestAnimationFrame(r));
+  out.exitPrompt = !!document.getElementById('lock-hint');
+  out.exitCursorHidden = document.body.classList.contains('in-play');
+  out.exitClosed = !g.shop.open && g.state.state === 'playing';
   g.shop.close();
   return out;
 });
@@ -366,6 +377,9 @@ check('the button, the backdrop and [E] all leave too',
 check('and nothing else does — the case holds, a key repeat holds, Tab holds',
   shop.caseHolds && shop.survivesRepeat && shop.tabHolds,
   `case ${shop.caseHolds}, repeat ${shop.survivesRepeat}, tab ${shop.tabHolds}`);
+check('leaving on Escape shows no prompt and no cursor',
+  shop.exitClosed && !shop.exitPrompt && shop.exitCursorHidden,
+  `closed ${shop.exitClosed}, prompt ${shop.exitPrompt}, cursor hidden ${shop.exitCursorHidden}`);
 
 /* ------------------------------------------------------------------ */
 /* 5. the sentry                                                        */
