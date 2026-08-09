@@ -1573,6 +1573,90 @@ check('RESUME gets the pointer back too, refusals and all',
   `unlocked first ${lockFix.unlockedBeforeClick}, state ${lockFix.btnResumed},`
   + ` ${lockFix.btnAsked} asks, locked ${lockFix.btnLocked}`);
 
+/* you can still LOOK while the browser thinks about it                   */
+// How long a browser takes to hand the pointer back after a menu closes on
+// Escape is the browser's business — Escape grants no user activation, so the
+// request goes out and then it is a matter of waiting. The prompt and the
+// cursor were made to go away; this is the last piece, the camera. Staged
+// against a browser that refuses point blank and never relents, which is the
+// worst case a player can be in.
+const freeLook = await page.evaluate(async () => {
+  const g = window.__game;
+  const canvas = g.renderer.renderer.domElement;
+  const frame = () => new Promise((r) => requestAnimationFrame(r));
+  const out = {};
+  let locked = false;
+  const realGet = Object.getOwnPropertyDescriptor(Document.prototype, 'pointerLockElement');
+  Object.defineProperty(document, 'pointerLockElement', { configurable: true, get: () => (locked ? canvas : null) });
+  const realReq = canvas.requestPointerLock, realExit = document.exitPointerLock;
+  canvas.requestPointerLock = () => { document.dispatchEvent(new Event('pointerlockerror')); };
+  document.exitPointerLock = () => { locked = false; document.dispatchEvent(new Event('pointerlockchange')); };
+  const wasTest = g.testMode; g.testMode = false;
+  document.dispatchEvent(new Event('pointerlockchange'));   // Input: we hold nothing
+  await frame();
+
+  g.hud.showScreen(null);
+  g.state.state = 'playing';
+  const move = (x, y) => document.dispatchEvent(new MouseEvent('mousemove', { clientX: x, clientY: y, bubbles: true }));
+  g.events.emit('shop:open', {});
+  await frame(); await frame();
+  // ...and moving the mouse over an OPEN menu must not turn the world behind it
+  const yawInMenu = g.player.yaw;
+  move(400, 300); move(520, 300);
+  await frame(); await frame();
+  out.menuLookFrozen = g.player.yaw === yawInMenu;
+
+  document.dispatchEvent(new KeyboardEvent('keydown', { code: 'Escape', key: 'Escape', bubbles: true }));
+  await frame(); await frame();
+  out.closed = !g.shop.open;
+  out.refusedAndAsking = !locked && g.input.lockPending;
+
+  const yaw0 = g.player.yaw, pitch0 = g.player.pitch;
+  move(500, 320);                       // the first sample only sets the origin
+  await frame();
+  out.noFlickOnFirstSample = g.player.yaw === yaw0;
+  for (let i = 1; i <= 12; i++) { move(500 + i * 9, 320 + i * 3); await frame(); }
+  out.yawMoved = g.player.yaw - yaw0;
+  out.pitchMoved = g.player.pitch - pitch0;
+
+  // An unlocked cursor RUNS OUT OF WINDOW, and that is the failure this has to
+  // avoid: turn far enough and the pointer walks off the edge of the page, the
+  // look stops dead and the next click lands in whatever is behind the browser.
+  // A quarter turn has to cost less than half a window of travel.
+  const yawQ = g.player.yaw;
+  let x = 500, steps = 0;
+  move(x, 320); await frame();
+  while (Math.abs(g.player.yaw - yawQ) < Math.PI / 2 && steps < 400) {
+    x += 6; move(x, 320); await frame(); steps++;
+  }
+  out.travelForQuarterTurn = x - 500;
+  out.travelFitsWindow = (x - 500) < window.innerWidth / 2;
+  out.halfWindow = window.innerWidth / 2;
+  // a cursor that left the window and came back somewhere else is not a flick
+  const before = g.player.yaw;
+  move(980, 620); await frame();
+  out.reentryIgnored = Math.abs(g.player.yaw - before) < 0.02;
+
+  Object.defineProperty(document, 'pointerLockElement', realGet);
+  canvas.requestPointerLock = realReq; document.exitPointerLock = realExit;
+  g.testMode = wasTest;
+  g.input.releasePointerLock();
+  return out;
+});
+check('the world does not turn under an open menu',
+  freeLook.menuLookFrozen && freeLook.closed, `frozen ${freeLook.menuLookFrozen}`);
+check('and you can look around in the gap before the pointer comes back',
+  freeLook.refusedAndAsking && Math.abs(freeLook.yawMoved) > 0.05 && Math.abs(freeLook.pitchMoved) > 0.01,
+  `still refused ${freeLook.refusedAndAsking}, yaw ${freeLook.yawMoved.toFixed(3)},`
+  + ` pitch ${freeLook.pitchMoved.toFixed(3)}`);
+check('...without a flick on the first sample or on re-entering the window',
+  freeLook.noFlickOnFirstSample && freeLook.reentryIgnored,
+  `first sample ${freeLook.noFlickOnFirstSample}, re-entry ${freeLook.reentryIgnored}`);
+check('...and without running the cursor off the edge of the page to do it',
+  freeLook.travelFitsWindow,
+  `${freeLook.travelForQuarterTurn}px of travel for a quarter turn,`
+  + ` half a window is ${Math.round(freeLook.halfWindow)}px`);
+
 /* ------------------------------------------------------------------ */
 /* one material family: every interface is cut from the same plate      */
 /* ------------------------------------------------------------------ */

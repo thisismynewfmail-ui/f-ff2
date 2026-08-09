@@ -125,15 +125,39 @@ keypress has nothing behind it, and whether it lands is the browser's call.
 (This is why the same menus close *instantly and perfectly* on their button, on
 a click off the case, and on [E] — every one of those carries activation.)
 
-What the game does about it: it stops asking the player to fix it. The prompt
-is gone; the **system cursor is hidden for the whole time the game is being
-played**, granted or not, so the transition has nothing to show; the standing
-request rides on **every event that does carry activation** — pointerdown,
-keyup, any keydown but Escape — unthrottled, so the pointer comes back on the
-first thing the player does; and the click or keypress that buys it back is
-**swallowed**, so returning from a menu never costs an accidental shot. Every
-way out of play — pause, death, the title, an overlay, the dev console — puts
-the cursor back, so it can never be lost.
+What the game does about it: it stops asking the player to fix it, and it stops
+waiting on the answer. The prompt is gone; the **system cursor is hidden for the
+whole time the game is being played**, granted or not, so the transition has
+nothing to show; the standing request rides on **every event that does carry
+activation** — pointerdown, keyup, any keydown but Escape — unthrottled, so the
+pointer comes back on the first thing the player does; and the click or keypress
+that buys it back is **swallowed**, so returning from a menu never costs an
+accidental shot.
+
+And — the part that actually removes the wait — **you can look around without
+the lock.** While the game wants the pointer and has not been given it, the
+camera is driven from ordinary cursor movement instead of from locked deltas,
+so mouse look is back the instant the menu closes whatever the browser is
+doing about the request.
+
+The one thing an unlocked cursor cannot do is go on forever: it **runs out of
+window**. Turn far enough and the pointer walks off the edge of the page, the
+look stops dead, and the next click lands in whatever is behind the browser.
+So during the gap the view turns **further per pixel** than it does once the
+lock lands — a quarter turn costs about 440px of travel instead of a thousand,
+which fits inside half a window with room to spare. It is a slightly quick
+second, and that is a far better trade than losing the mouse out of the window.
+
+The rest of the handover is invisible: the first sample only establishes an
+origin so there is no flick, a cursor that leaves the window and comes back
+elsewhere re-origins rather than turning, movement over an OPEN menu is ignored
+so the world never turns behind a panel, and when the lock lands
+`_settleMouse`'s quiet period covers the switch back to real deltas. Movement
+also *asks* on every step (floored at 60ms) — it cannot redeem the request
+itself, but a browser that was only waiting out a cooldown takes the first ask
+after it lapses, and looking around is the one thing a player does constantly.
+Every way out of play — pause, death, the title, an overlay, the dev console —
+puts the cursor back, so it can never be lost.
 
 **Mouse look filters the pointer-lock plumbing out of your aim.** A locked
 mousemove does not always carry your hand: the browser reports the cursor's
