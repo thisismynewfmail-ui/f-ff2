@@ -1660,11 +1660,13 @@ export class World {
     ]) this.veg.bush(this.group, bx, bz, s);
     this._sprinkleTufts(x, z + 4.5, 6, 2.5, 22);
 
-    // What collects around a counter: a bench for the wait, a bin, a crate
-    // somebody stands on, and a notice nailed to the tree by the track.
+    // What collects around a counter: a bench for the wait, a bin, a notice by
+    // the track — and the barrier the crew that put the shelter up left across
+    // the verge, which is what says this pull-off belongs to the county rather
+    // than to whoever is standing in it.
     this._prop(P.bench(), x - 3.4, z + 2.6, { yaw: 0.5 });
     this._prop(P.trashCan(), x + 3.0, z + 1.6, { nav: false });
-    this._prop(P.crateStack(2), x - 4.0, z - 1.4, { yaw: 0.3 });
+    this._prop(P.jerseyBarrier(), x - 4.4, z - 1.4, { yaw: 0.32 });
     this._prop(P.noticeBoard(), x + 4.2, z - 0.6, { yaw: -0.9 });
     this.addInteractable({
       x: x + 4.2, z: z - 0.6, y: this.terrain.heightAt(x + 4.2, z - 0.6), radius: 2.0,

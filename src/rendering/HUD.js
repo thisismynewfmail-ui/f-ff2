@@ -153,6 +153,11 @@ export class HUD {
     if (!natural) return;
     const scale = Math.min(1, (window.innerWidth - 16) / natural);
     this.dockInner.style.setProperty('--dock-scale', scale.toFixed(4));
+    // Publish how tall the dock ACTUALLY ends up, so the things that sit above
+    // it (the interact prompt) can be parked on its top edge rather than at a
+    // guessed offset that only holds at 1:1. offsetHeight is the layout height
+    // and ignores the transform, so it has to be scaled the same way.
+    this.root.style.setProperty('--dock-h', `${Math.round(this.dockInner.offsetHeight * scale) + 10}px`);
   }
 
   /* ==================================================================

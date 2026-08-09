@@ -443,6 +443,14 @@ There is deliberately no command that touches the kill counter — the
   back to a line and dies**. A second message replaces the first and restrikes:
   this is one readout, not a stack. Every message also lands in the console
   bar's permanent CRT log, so nothing is lost if you were looking elsewhere.
+- **The interact prompt is a footnote, and sits like one.** "Trade with the
+  shopkeeper [E]" lives in the **lower right**, small, on the top edge of the
+  dock — not on a 13px plate parked just under the crosshair, which is dead
+  centre of the part of the screen you are aiming with and big enough to read
+  from the next room. A prompt tells you a key is available and then gets out
+  of the way of the thing it is telling you about. Its offset is driven off the
+  dock's MEASURED height rather than a guessed one, so it stays on the dock's
+  edge when the dock scales itself down on a narrow window.
 - **Waves:** **kill-driven** escalating hordes. Each wave sets a kill quota and
   clears the moment you hit it, so racking up kills is what advances the wave;
   then a short respite with a supply drop before the next, larger wave. Past
@@ -690,23 +698,39 @@ There is deliberately no command that touches the kill counter — the
   the shopping you had not done yet rather than handing you a windfall.
 - **The Shopkeeper, and the trading post.** Out on the Eastgate knoll, a short
   walk in from the district gate, there is a break in the trees with a track
-  worn up to it and a timber pitch in the clearing, **open to the road and open
-  to the ground**: shingled shed roof, side hoardings, a hanging trade sign and
-  the only working lamp on that stretch of road. There is no counter across the
-  front — what keeps you out is that the pitch is FULL. Crates stacked
-  head-high in both front corners, barrels, sacks, a churn, a spare wheel and a
-  strongbox pile up around a clear lane down the middle, and the machine itself
-  closes that lane. You can walk right up to it and see the whole thing, boots
-  to hat, which a plank across the front made impossible.
+  worn up to it and, in the clearing, a **county highway pull-off**: a poured
+  concrete pad with a bolted steel shelter over it, **open to the road and open
+  to the ground**. Four galvanised stanchions on base plates, cross-braced down
+  both flanks and across the back, purlins and a corrugated deck pitched to the
+  rear, chain-link where a wall would be, a hanging trade sign and the only
+  working lamp on that stretch of road. Nothing is clad — you can see every
+  joint in it, and through it to the trees. (It was a shingled timber lean-to
+  first, and timber was the wrong material: this town is poured kerbs,
+  chain-link and filling-station canopies, and a frontier stall in the middle
+  of that read as set dressing from another game.)
+
+  There is no counter across the front — what keeps you out is that the bay is
+  OCCUPIED. Jersey barriers and a pallet stack in the front corners, a cable
+  drum, a gas-bottle rack, the county's utility cabinet, a hazard drum, a
+  folded barricade, a coil of cable and cones pile up around a clear lane down
+  the middle, and the machine itself closes that lane. You can walk right up to
+  it and see the whole thing, boots to hat, which a plank across the front made
+  impossible.
 
   In the lane stands a **coin-operated upper-torso animatronic** — a fairground
-  fortune-teller crossed with a frontier shopkeeper. Lacquered oxblood cabinet
-  on cast feet, brass coin throat, delivery tray, pressure dial and a lit
-  marquee; rising out of it, a half-figure in a waistcoat with a moustache, a
-  pipe, a wide-brim hat and lamps for eyes, jointed at the waist, shoulders,
-  elbows, neck and jaw. It has no legs and never had any. **Cabinet and figure
-  together stand about 1.6 m** — a machine you stand in front of, and still
-  shorter than you are.
+  fortune-teller crossed with a frontier shopkeeper. Lacquered oxblood case on
+  cast feet, brass coin throat, delivery tray, pressure dial and a lit marquee;
+  above it an **open brass column**, the works it turns on; and rising out of
+  that, a half-figure in a waistcoat with a moustache, a pipe, a wide-brim hat
+  and lamps for eyes, jointed at the waist, shoulders, elbows, neck and jaw. It
+  has no legs and never had any. The column is the difference between a figure
+  that is standing IN the machine and one that is standing ON it: the arms hang
+  about twelve centimetres below the waist, so bolted straight to the top of a
+  solid case both hands were inside it at rest. The stand is the same height it
+  always was — its top is just no longer cabinet, and every pose now clears the
+  case (measured, not eyeballed: the worst of them by four centimetres).
+  **Stand and figure together come to about 1.6 m** — a machine you stand in
+  front of, and still shorter than you are.
 
   It is a machine that noticed you. Its head tracks you the whole time it is
   awake, and it does not have *an* idle: it dozes when the road is empty, wakes
@@ -725,7 +749,12 @@ There is deliberately no command that touches the kill counter — the
 - **The shop.** [E] at the machine opens it: the vendor live on the left,
   turning on its own little stage (a real 3D render of the same rig, not a
   picture of one), the goods on the right in bubbled bays, the till along the
-  foot. It freezes the street the way the satchel and the arcade do, and it
+  foot. **Nothing is written across the machine.** There was a line of green
+  flavour laid over its stage, opening with a greeting that told you nothing —
+  you can see the prices, and you came here on purpose. What the till has to
+  say (short, out, locked, sold) now says it on the FOOTER, beside the money,
+  in the same stencil as everything else on the plate. It freezes the street
+  the way the satchel and the arcade do, and it
   **always hands the mouse straight back** on the way out — never the pause
   menu, and never a "click to take the mouse back" prompt. That last part is
   why there are three ways out: the STEP BACK button, a click anywhere off the

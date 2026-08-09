@@ -96,7 +96,6 @@ export class ShopUI {
             <canvas class="shop-vendor" width="300" height="420"></canvas>
             <div class="shop-stage-glass"></div>
             <div class="shop-plate">THE PROPRIETOR</div>
-            <div class="shop-say"></div>
           </div>
           <div class="shop-bays"></div>
         </div>
@@ -109,7 +108,7 @@ export class ShopUI {
     root.appendChild(this.el);
     this.baysEl = this.el.querySelector('.shop-bays');
     this.tillEl = this.el.querySelector('.shop-till b');
-    this.sayEl = this.el.querySelector('.shop-say');
+    this.sayEl = this.el.querySelector('.shop-hint');
     this.canvas = this.el.querySelector('.shop-vendor');
     this.closeBtn = this.el.querySelector('.shop-close');
 
@@ -380,21 +379,38 @@ export class ShopUI {
   _tryBuy(id) {
     const entry = SHOP_STOCK.find((s) => s.id === id);
     if (!entry) return;
-    if (entry.locked) { this._say('That bay is not stocked. Come back when it is.'); return; }
-    if (this.remaining(entry) <= 0) { this._say('That was the last one. There are no more.'); return; }
+    if (entry.locked) { this._say('THAT BAY IS NOT STOCKED', 'bad'); return; }
+    if (this.remaining(entry) <= 0) { this._say('THAT WAS THE LAST ONE', 'bad'); return; }
     const ok = this.cb.onBuy?.(entry);
-    if (!ok) { this._say('Tokens, friend. You are short.'); this._syncAfford(); return; }
-    this._say(entry.id === 'sentry'
-      ? 'It comes folded. Mind where you set it down.'
-      : 'Loaded and counted. Try not to need it.');
+    if (!ok) { this._say('NOT ENOUGH TOKENS', 'bad'); this._syncAfford(); return; }
+    this._say(entry.id === 'sentry' ? 'SENTRY STOWED — IT COMES FOLDED' : 'LOADED AND COUNTED', 'good');
     this._renderStock();
   }
 
-  _say(text) {
+  /**
+   * Say something back, on the FOOTER's hint line.
+   *
+   * It used to be a line of green flavour laid across the vendor's own stage,
+   * and it opened with a greeting that told you nothing — you can see the
+   * prices, and you came here on purpose. What is left is only the four things
+   * a till has to tell you (short, out, locked, sold), where a till tells you
+   * them: beside the money, in the same stencil as everything else on the
+   * plate, and off the machine you came to look at.
+   */
+  _say(text, kind = 'good') {
+    clearTimeout(this._sayTimer);
     this.sayEl.textContent = text;
-    this.sayEl.classList.remove('on');
-    void this.sayEl.offsetWidth;      // restart the fade
+    this.sayEl.className = 'shop-hint said ' + kind;
+    void this.sayEl.offsetWidth;      // restart the flash
     this.sayEl.classList.add('on');
+    this._sayTimer = setTimeout(() => this._restHint(), 3200);
+  }
+
+  /** Back to the standing instruction. */
+  _restHint() {
+    clearTimeout(this._sayTimer);
+    this.sayEl.className = 'shop-hint';
+    this.sayEl.textContent = 'CLICK TO BUY';
   }
 
   /* ---------------- lifecycle ---------------- */
@@ -406,7 +422,7 @@ export class ShopUI {
     this.el.style.display = 'flex';
     this._ensureStage();
     this._renderStock();
-    this._say('Tokens on the counter. Everything is priced.');
+    this._restHint();
     this.cb.onOpen?.();
     return true;
   }

@@ -17,25 +17,33 @@ import { mergeStatic, scaleBoxUVs } from './Buildings.js';
  * off the carriageway, facing the traffic, with its back to the trees.
  *
  * WHAT it is. Not a house — the district has enough of those, and a shop you
- * walk INTO would hide the machine that is the point of the detour. It is an
- * open-fronted timber lean-to: four posts, a shingled shed roof pitched to the
- * back, side hoardings, a hanging trade sign and a lamp over the pitch. You
- * walk up to it and the vendor is right there, lit, with the road behind you.
+ * walk INTO would hide the machine that is the point of the detour. It is a
+ * COUNTY HIGHWAY PULL-OFF: the bolted steel shelter a road crew puts up over
+ * a piece of plant, on a poured concrete pad, at the side of the road they
+ * are working on. Four galvanised stanchions on base plates, cross-braced,
+ * carrying purlins and a corrugated deck pitched to the back. Nothing is
+ * clad. You can see every joint in it, and through it to the trees.
+ *
+ * It was a timber lean-to first, and timber was the wrong material for this
+ * town: Eastgate is poured kerbs, chain-link, filling-station canopies and a
+ * water tower. A shingled frontier stall in the middle of that reads as set
+ * dressing from a different game. Steel angle over concrete reads as
+ * something the county left behind, which is exactly what a coin-operated
+ * machine standing at a roadside ought to be sheltering under.
  *
  * THE FRONT IS OPEN TO THE GROUND, and that is the point. There was a boarded
  * counter across it at first, and it did exactly what a counter does: it hid
  * the machine from the waist down, so the thing you had walked across the
  * district to look at was a head and a hat over a plank. What keeps you OUT
- * now is the same thing that keeps you out of any working stall — it is full.
- * Crates stacked to head height in both front corners, barrels, sacks, a
- * tea-chest, a spare wheel, a churn: a pitch with its stock piled up around
- * the machine, leaving a clear lane down the middle to the vendor and nowhere
- * at all to stand beside it.
+ * now is what keeps you out of any working site — the plant is in the way.
+ * Jersey barriers and a pallet stack in the front corners, a bottle rack, a
+ * cable drum, a utility cabinet, a hazard drum, cones and a folded barricade
+ * down the flanks: a clear lane down the middle to the machine and nowhere at
+ * all to stand beside it.
  *
  * The build is one merged group of static geometry plus a few colliders (the
- * stacked stock at either side, the back of the pitch) — no interior, no
- * doors, nothing to furnish. The shopkeeper is placed by World at
- * `counterSpot()`.
+ * plant at either side, the back of the bay) — no interior, no doors, nothing
+ * to furnish. The shopkeeper is placed by World at `counterSpot()`.
  */
 
 // The site. Chosen against the district plan: north verge of Main St East,
@@ -49,11 +57,11 @@ import { mergeStatic, scaleBoxUVs } from './Buildings.js';
 // arrive from.
 export const TRADING_POST = { x: 62, z: -19, yaw: -Math.PI * 0.06 };
 const W = 3.6;              // frontage
-const D = 2.4;              // depth, front post to back wall
+const D = 2.4;              // depth, front stanchion to back frame
 const H_FRONT = 2.5;        // eaves at the open front
-const H_BACK = 2.15;        // ...and at the back, so the roof sheds off the rear
-const POST = 0.16;
-const DECK_H = 0.12;        // the plank floor: a step up off the grass
+const H_BACK = 2.15;        // ...and at the back, so the deck sheds off the rear
+const POST = 0.14;          // square-section stanchion
+const DECK_H = 0.12;        // the concrete pad: a step up off the grass
 
 export class TradingPost {
   /**
@@ -76,7 +84,7 @@ export class TradingPost {
       x: x + Math.sin(yaw) * fwd,
       z: z + Math.cos(yaw) * fwd,
       yaw,
-      // ...and standing ON the plank deck, not sunk a hand's width into it.
+      // ...and standing ON the concrete pad, not sunk a hand's width into it.
       lift: DECK_H,
     };
   }
@@ -89,13 +97,19 @@ export class TradingPost {
     const g = new THREE.Group();
 
     const mat = {
-      post: P.mat('wallWood'),
-      plank: P.mat('wallWoodRot'),
-      roof: P.mat('roofShakeWood'),
-      metal: P.mat('metalRust'),
+      steel: P.mat('metalRust'),
+      pad: P.mat('concrete'),
+      pallet: P.mat('pallet'),
+      hazard: P.mat('barrelHazard'),
+      barricade: P.mat('barricade'),
       brass: P.mat('vendorBrass'),
       sign: P.mat('signTokens'),
       tarp: P.mat('tarpBlue'),
+      galv: P.colorMat(0x8e9298),      // galvanised: stanchions, base plates
+      cabinet: P.colorMat(0x5d6a5e),   // the county's own paint
+      cone: P.colorMat(0xc4531f),
+      coneBand: P.colorMat(0xd8d4c6),
+      cable: P.colorMat(0x24242a),
     };
     const box = (bw, bh, bd, m) => {
       const geo = new THREE.BoxGeometry(bw, bh, bd);
@@ -107,120 +121,250 @@ export class TradingPost {
     const board = (bw, bh, bd, m) => new THREE.Mesh(new THREE.BoxGeometry(bw, bh, bd), m);
     const put = (m, px, py, pz) => { m.position.set(px, py, pz); g.add(m); return m; };
 
-    // --- the floor: a plank deck a step up off the grass, so the post reads
-    // as built rather than as furniture left in a field
-    put(box(W + 0.3, DECK_H, D + 0.3, mat.plank), 0, DECK_H / 2, 0);
+    // --- the pad: a poured slab a step up off the grass, with the kerb the
+    // county always casts along the road edge of one
+    put(box(W + 0.4, DECK_H, D + 0.4, mat.pad), 0, DECK_H / 2, 0);
+    put(box(W + 0.4, 0.07, 0.10, mat.pad), 0, DECK_H + 0.02, (D + 0.4) / 2 - 0.05);
+    // ...and what has been dripping on it since the crew left. depthWrite off
+    // and a render order, the same way every other decal in the town is laid
+    // down, so it never fights the slab it is painted on.
+    const stain = put(new THREE.Mesh(new THREE.PlaneGeometry(1.5, 1.1),
+      new THREE.MeshLambertMaterial({ map: P.texLib?.get('oilStain'), transparent: true, depthWrite: false })),
+      0.5, DECK_H + 0.008, -0.35);
+    stain.rotation.x = -Math.PI / 2;
+    stain.renderOrder = 2;
 
-    // --- four posts, front pair taller so the roof falls to the back
+    // --- four stanchions on bolted base plates, front pair taller so the
+    // deck falls to the back. Square section, galvanised, nothing over them.
     const hw = W / 2, hd = D / 2;
+    const stanchion = (sx, sz, h) => {
+      put(box(0.26, 0.035, 0.26, mat.galv), sx * hw, DECK_H + 0.018, sz * hd);
+      put(box(POST, h, POST, mat.galv), sx * hw, h / 2 + DECK_H, sz * hd);
+      // a gusset in the inside face of each foot, the way a fabricated
+      // stanchion is actually stiffened
+      put(box(0.02, 0.22, 0.22, mat.galv), sx * (hw - 0.08), DECK_H + 0.13, sz * hd);
+    };
     for (const sx of [-1, 1]) {
-      put(box(POST, H_FRONT, POST, mat.post), sx * hw, H_FRONT / 2 + 0.1, hd);
-      put(box(POST, H_BACK, POST, mat.post), sx * hw, H_BACK / 2 + 0.1, -hd);
+      stanchion(sx, 1, H_FRONT);
+      stanchion(sx, -1, H_BACK);
     }
 
-    // --- back wall and side hoardings, boarded to shoulder height
-    put(box(W + POST, H_BACK - 0.25, 0.09, mat.plank), 0, (H_BACK - 0.25) / 2 + 0.1, -hd);
+    /* --- the frame, left bare.
+     *
+     * Diagonal bracing down both flanks and across the back, plus three
+     * purlins under the deck. This is the whole reason the shelter changed
+     * material: a braced steel bay tells you at a glance how it stands up,
+     * and a boarded timber one tells you nothing at all.
+     */
+    const brace = (x1, y1, z1, x2, y2, z2, t = 0.055) => {
+      const len = Math.hypot(x2 - x1, y2 - y1, z2 - z1);
+      const b = box(t, len, t, mat.steel);
+      b.position.set((x1 + x2) / 2, (y1 + y2) / 2, (z1 + z2) / 2);
+      // aim its local +Y down the run
+      b.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0),
+        new THREE.Vector3(x2 - x1, y2 - y1, z2 - z1).normalize());
+      g.add(b);
+      return b;
+    };
+    const yF = DECK_H + H_FRONT, yB = DECK_H + H_BACK;
     for (const sx of [-1, 1]) {
-      put(box(0.08, 1.55, D, mat.plank), sx * hw, 1.55 / 2 + 0.1, 0);
+      brace(sx * hw, yF - 0.10, hd, sx * hw, DECK_H + 0.55, -hd);      // flank, front-top to back-low
+      brace(sx * hw, DECK_H + 0.55, hd, sx * hw, yB - 0.10, -hd);      // ...and its opposite
+      brace(sx * hw, yF - 0.55, hd - 0.02, sx * (hw - 0.5), yF - 0.06, hd - 0.02, 0.05); // knee brace at the eaves
     }
-
-    // --- the roof: one shed slope from the front eaves down to the back
+    brace(-hw, yB - 0.10, -hd, hw, DECK_H + 0.6, -hd);                 // the back bay, crossed
+    brace(hw, yB - 0.10, -hd, -hw, DECK_H + 0.6, -hd);
+    // head rails, front and back, tying the stanchions together
+    put(box(W + POST, 0.10, 0.09, mat.steel), 0, yF - 0.05, hd);
+    put(box(W + POST, 0.10, 0.09, mat.steel), 0, yB - 0.05, -hd);
+    // purlins: three round tubes across the slope, on show under the deck
     const rise = H_FRONT - H_BACK;
     const slope = Math.atan2(rise, D);
-    const deck = box(W + 0.9, 0.10, Math.hypot(D, rise) + 0.7, mat.roof);
-    deck.position.set(0, (H_FRONT + H_BACK) / 2 + 0.2, 0);
-    deck.rotation.x = -slope;
-    g.add(deck);
-    // a fascia board across the front eaves, and the sign hung under it
-    put(box(W + 0.9, 0.20, 0.07, mat.post), 0, H_FRONT + 0.16, hd + 0.34);
-    const sign = put(board(1.5, 0.62, 0.05, mat.sign), 0, H_FRONT - 0.28, hd + 0.36);
-    sign.rotation.z = 0.04;                                          // hung slightly off true
-    for (const sx of [-1, 1]) {                                      // its two chains
-      put(box(0.025, 0.22, 0.025, mat.metal), sx * 0.6, H_FRONT + 0.02, hd + 0.36);
+    for (const f of [-0.34, 0, 0.34]) {
+      const pz = f * D;
+      const py = (yF + yB) / 2 - f * rise + 0.05;
+      const pur = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, W + 0.8, 8), mat.steel);
+      pur.rotation.z = Math.PI / 2;
+      pur.position.set(0, py, pz);
+      g.add(pur);
     }
 
-    // --- the lamp over the pitch. It is the only light on this stretch of
+    // --- the deck: one corrugated sheet slope, front eaves down to the back
+    const deck = box(W + 0.9, 0.07, Math.hypot(D, rise) + 0.7, mat.steel);
+    deck.position.set(0, (yF + yB) / 2 + 0.12, 0);
+    deck.rotation.x = -slope;
+    g.add(deck);
+    // a folded channel across the front eaves, and the sign hung under it
+    put(box(W + 0.9, 0.16, 0.08, mat.galv), 0, yF + 0.14, hd + 0.34);
+    const sign = put(board(1.5, 0.62, 0.05, mat.sign), 0, yF - 0.30, hd + 0.36);
+    sign.rotation.z = 0.04;                                          // hung slightly off true
+    for (const sx of [-1, 1]) {                                      // its two chains
+      put(box(0.025, 0.22, 0.025, mat.steel), sx * 0.6, yF, hd + 0.36);
+    }
+
+    // --- chain-link across the back bay and the upper flanks. It closes the
+    // shelter without cladding it: you can see the trees through the back of
+    // the pitch, which is what stops a bare frame reading as a solid shed.
+    if (w.texLib) {
+      const mesh = (len, h) => new THREE.Mesh(new THREE.PlaneGeometry(len, h),
+        new THREE.MeshLambertMaterial({
+          map: w.texLib.tiled('chainlink', Math.max(1, Math.round(len / 1.5)), Math.max(1, Math.round(h / 1.5))),
+          alphaTest: 0.4, side: THREE.DoubleSide,
+        }));
+      const back = mesh(W, H_BACK - 0.35);
+      back.position.set(0, DECK_H + (H_BACK - 0.35) / 2, -hd + 0.02);
+      g.add(back);
+      for (const sx of [-1, 1]) {
+        const side = mesh(D, 0.95);
+        side.rotation.y = Math.PI / 2;
+        side.position.set(sx * (hw - 0.02), yB - 0.60, 0);
+        g.add(side);
+      }
+    }
+
+    // --- the work light over the bay. It is the only light on this stretch of
     // road, which is most of why the site reads as somewhere to walk toward.
-    put(box(0.05, 0.28, 0.05, mat.metal), 0, H_FRONT - 0.32, hd - 0.7);
-    const shade = new THREE.Mesh(new THREE.ConeGeometry(0.20, 0.16, 10, 1, true), mat.metal);
-    shade.position.set(0, H_FRONT - 0.5, hd - 0.7);
+    // A caged lamp on a conduit drop, not a shop lantern.
+    put(box(0.04, 0.30, 0.04, mat.steel), 0, yF - 0.34, hd - 0.7);
+    const shade = new THREE.Mesh(new THREE.ConeGeometry(0.19, 0.14, 10, 1, true), mat.galv);
+    shade.position.set(0, yF - 0.52, hd - 0.7);
     g.add(shade);
+    const cage = new THREE.Mesh(new THREE.TorusGeometry(0.135, 0.012, 5, 12), mat.steel);
+    cage.rotation.x = Math.PI / 2;
+    cage.position.set(0, yF - 0.63, hd - 0.7);
+    g.add(cage);
+    // the conduit run: along a purlin and down the near stanchion
+    put(box(0.035, 0.035, 0.72, mat.steel), 0, yF - 0.20, hd - 0.36);
+    put(box(0.035, 1.5, 0.035, mat.steel), -hw + 0.09, yF - 0.95, hd - 0.02);
     // The bulb's material is kept rather than its mesh: mergeStatic below
     // collapses the whole group and clears the originals, but a merged mesh
     // still draws with the same material object, so animating it still works.
     this.bulbMat = new THREE.MeshLambertMaterial({ color: 0xffe6b0, emissive: 0x9a6a1c });
-    put(new THREE.Mesh(new THREE.SphereGeometry(0.055, 8, 6), this.bulbMat), 0, H_FRONT - 0.58, hd - 0.7);
+    put(new THREE.Mesh(new THREE.SphereGeometry(0.055, 8, 6), this.bulbMat), 0, yF - 0.70, hd - 0.7);
 
-    /* --- THE STOCK, which is also the wall.
+    /* --- THE PLANT, which is also the wall.
      *
-     * Everything below is piled in the two front corners and up the flanks,
-     * head-high at the outside and stepping down toward the middle, so the
-     * pitch is visibly full and the only way in is the lane the machine
-     * stands in. It replaces the counter that used to run across the front:
-     * a stall you cannot walk into because it is packed reads better than one
-     * you cannot walk into because there is a plank in the way, and — the
-     * reason it was worth changing — it leaves the whole vendor visible from
-     * the boots up.
+     * Everything below is roadside kit, stacked in the two front corners and
+     * up the flanks, head-high at the outside and stepping down toward the
+     * middle, so the bay is visibly occupied and the only way in is the lane
+     * the machine stands in. It replaces the counter that used to run across
+     * the front: a bay you cannot walk into because there is plant in it reads
+     * better than one you cannot walk into because there is a plank in the
+     * way, and — the reason it was worth changing — it leaves the whole vendor
+     * visible from the boots up.
+     *
+     * It also replaces the crates and grain sacks that stood here when this
+     * was a timber stall. Barrels and churns belong to a different century
+     * from the town they were standing in.
      */
-    const crate = P.mat('crate');
-    const stack = (px, pz, tiers, sizeW, rot = 0) => {
-      let py = 0.1;
-      for (let i = 0; i < tiers; i++) {
-        const s = sizeW * (1 - i * 0.09);
-        const h = 0.44 - i * 0.03;
-        const c = put(box(s, h, s * 0.92, crate), px + (i % 2 ? 0.04 : -0.03), py + h / 2, pz + (i % 2 ? -0.03 : 0.04));
-        c.rotation.y = rot + i * 0.11;
-        py += h;
-      }
-      return py;
-    };
-    // the two front corners: shoulder-to-head high, and the deepest part of
-    // the pile is the bit nearest the road, so the stall reads as loaded
-    stack(-hw + 0.42, hd - 0.44, 4, 0.66, 0.2);
-    stack(hw - 0.42, hd - 0.46, 4, 0.66, -0.3);
-    // ...running back along both flanks, stepping down
-    stack(-hw + 0.40, hd - 1.22, 3, 0.60, -0.15);
-    stack(hw - 0.40, hd - 1.20, 3, 0.60, 0.25);
-    stack(-hw + 0.38, -hd + 0.45, 2, 0.56, 0.35);
+    const PAD = DECK_H;
 
-    // barrels, sacks and the odd bit of freight nobody unpacked
-    const barrel = (px, pz, r, h, m) => {
-      const b = new THREE.Mesh(new THREE.CylinderGeometry(r, r, h, 12), m);
-      b.position.set(px, 0.1 + h / 2, pz);
-      g.add(b);
-      return b;
+    /** A jersey barrier: the tapered concrete block every closed lane has. */
+    const jersey = (px, pz, len, rot) => {
+      const j = new THREE.Group();
+      const foot = box(len, 0.20, 0.56, mat.pad); foot.position.y = 0.10; j.add(foot);
+      const mid = box(len, 0.22, 0.36, mat.pad); mid.position.y = 0.31; j.add(mid);
+      const top = box(len, 0.40, 0.22, mat.pad); top.position.y = 0.62; j.add(top);
+      j.position.set(px, PAD, pz);
+      j.rotation.y = rot;
+      g.add(j);
+      return j;
     };
-    barrel(hw - 0.46, -hd + 0.5, 0.26, 0.78, mat.metal);
-    barrel(hw - 0.5, -hd + 1.1, 0.22, 0.66, mat.post);
-    barrel(-hw + 0.5, hd - 1.85, 0.24, 0.7, mat.metal);
-    // a churn on its side, and a spare wheel leaning on the pile
-    const churn = new THREE.Mesh(new THREE.CylinderGeometry(0.19, 0.19, 0.54, 10), mat.brass);
-    churn.rotation.z = Math.PI / 2;
-    churn.position.set(-hw + 0.44, 0.1 + 0.19, hd - 1.75);
-    g.add(churn);
-    const wheel = new THREE.Mesh(new THREE.TorusGeometry(0.30, 0.075, 6, 14), mat.metal);
-    wheel.rotation.set(0.28, 0.3, 0);
-    wheel.position.set(hw - 0.34, 0.42, hd - 1.7);
-    g.add(wheel);
-    // sacks: squat, leaning, stacked two deep against the back boards
-    for (const [sx2, sz2, sr] of [[-0.75, -hd + 0.36, 0.2], [-0.42, -hd + 0.33, -0.3], [0.66, -hd + 0.38, 0.5]]) {
-      const sack = new THREE.Mesh(new THREE.SphereGeometry(0.24, 8, 6), mat.tarp);
-      sack.scale.set(1, 0.86, 0.8);
-      sack.rotation.z = sr;
-      sack.position.set(sx2, 0.1 + 0.2, sz2);
-      g.add(sack);
+
+    /** A stack of pallets, each one a deck on three bearers. */
+    const pallets = (px, pz, n, rot) => {
+      for (let i = 0; i < n; i++) {
+        const y = PAD + i * 0.145;
+        const deckP = put(box(1.15, 0.055, 0.95, mat.pallet), px + (i % 2 ? 0.03 : -0.02), y + 0.118, pz + (i % 2 ? -0.02 : 0.03));
+        deckP.rotation.y = rot + i * 0.05;
+        for (const bz of [-0.38, 0, 0.38]) {
+          const bear = put(box(1.15, 0.09, 0.10, mat.pallet), px, y + 0.045, pz + bz);
+          bear.rotation.y = rot + i * 0.05;
+        }
+      }
+      return PAD + n * 0.145;
+    };
+
+    /** A traffic cone, banded. */
+    const cone = (px, py, pz, s = 1) => {
+      const c = new THREE.Mesh(new THREE.ConeGeometry(0.16 * s, 0.52 * s, 8), mat.cone);
+      c.position.set(px, py + 0.28 * s, pz);
+      g.add(c);
+      const band = new THREE.Mesh(new THREE.CylinderGeometry(0.107 * s, 0.122 * s, 0.07 * s, 8), mat.coneBand);
+      band.position.set(px, py + 0.30 * s, pz);
+      g.add(band);
+      const base = put(box(0.34 * s, 0.03 * s, 0.34 * s, mat.cone), px, py + 0.015 * s, pz);
+      base.rotation.y = 0.3;
+      return c;
+    };
+
+    // --- the two front corners: barriers on the road side, plant behind them
+    jersey(-hw + 0.44, hd - 0.55, 1.5, Math.PI / 2);
+    jersey(hw - 0.44, hd - 0.58, 1.5, Math.PI / 2 + 0.03);
+    cone(-hw + 0.46, PAD + 0.98, hd - 0.55);            // one left on top of each
+    cone(hw - 0.42, PAD + 0.98, hd - 0.62, 0.92);
+
+    // --- left flank: a pallet stack with a cable drum leaning off it
+    pallets(-hw + 0.52, hd - 1.55, 4, 0.06);
+    const drum = new THREE.Group();
+    for (const dz of [-0.13, 0.13]) {                    // two flanges and a hub
+      const disc = new THREE.Mesh(new THREE.CylinderGeometry(0.36, 0.36, 0.045, 14), mat.pallet);
+      disc.rotation.x = Math.PI / 2; disc.position.z = dz; drum.add(disc);
     }
-    // a tarp over whatever is under it, in the back corner
-    put(box(0.7, 0.44, 0.6, mat.tarp), -hw + 1.15, 0.32, -hd + 0.42).rotation.y = 0.3;
-    // and the strongbox, on top of the left-hand front stack where a trader
-    // would keep it: in reach, in sight, and not on the floor
-    put(box(0.34, 0.22, 0.26, mat.brass), -hw + 0.44, 1.72, hd - 0.44).rotation.y = 0.2;
+    const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.24, 12), mat.cable);
+    hub.rotation.x = Math.PI / 2; drum.add(hub);
+    drum.position.set(-hw + 0.48, PAD + 0.36, -hd + 0.62);
+    drum.rotation.y = 0.35;
+    g.add(drum);
+
+    // --- right flank: the county's utility cabinet and a bottle rack
+    const cab = put(box(0.72, 1.05, 0.46, mat.cabinet), hw - 0.46, PAD + 0.525, hd - 1.62);
+    cab.rotation.y = -0.05;
+    put(box(0.02, 0.95, 0.02, mat.galv), hw - 0.80, PAD + 0.53, hd - 1.62);   // its hinge stile
+    put(box(0.09, 0.05, 0.03, mat.galv), hw - 0.14, PAD + 0.60, hd - 1.40);   // and the hasp
+    put(box(0.78, 0.05, 0.52, mat.galv), hw - 0.46, PAD + 1.07, hd - 1.62).rotation.y = -0.05; // rain lip
+    for (let i = 0; i < 3; i++) {                        // gas bottles in a frame
+      const b = new THREE.Mesh(new THREE.CylinderGeometry(0.115, 0.115, 0.76, 10), mat.steel);
+      b.position.set(hw - 0.62 + i * 0.24, PAD + 0.38, -hd + 0.52);
+      g.add(b);
+      const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.075, 0.10, 8), mat.galv);
+      cap.position.set(hw - 0.62 + i * 0.24, PAD + 0.81, -hd + 0.52);
+      g.add(cap);
+    }
+    put(box(0.80, 0.05, 0.05, mat.steel), hw - 0.38, PAD + 0.55, -hd + 0.40);  // the rack rail
+    put(box(0.05, 0.95, 0.05, mat.steel), hw - 0.76, PAD + 0.48, -hd + 0.40);
+    put(box(0.05, 0.95, 0.05, mat.steel), hw - 0.02, PAD + 0.48, -hd + 0.40);
+
+    // --- the back of the bay: a hazard drum, a folded barricade, a sign panel
+    const haz = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.28, 0.88, 12), mat.hazard);
+    haz.position.set(-hw + 1.25, PAD + 0.44, -hd + 0.40);
+    g.add(haz);
+    put(box(0.60, 0.03, 0.60, mat.galv), -hw + 1.25, PAD + 0.885, -hd + 0.40);  // a board over it
+    const barr = put(box(1.5, 0.60, 0.09, mat.barricade), 0.35, PAD + 0.42, -hd + 0.20);
+    barr.rotation.set(-0.22, 0.04, 0);                                          // leaning on the frame
+    // a road-sign panel nobody put back up, face-in against the chain-link
+    const panel = put(board(0.66, 0.66, 0.04, mat.galv), -0.55, PAD + 0.50, -hd + 0.24);
+    panel.rotation.set(-0.18, 0.12, 0.4);
+    // a coil of cable and a toolbox, on the floor where they were dropped
+    const coil = new THREE.Mesh(new THREE.TorusGeometry(0.24, 0.065, 6, 14), mat.cable);
+    coil.rotation.x = Math.PI / 2;
+    coil.position.set(-hw + 0.95, PAD + 0.065, hd - 0.35);
+    g.add(coil);
+    put(box(0.44, 0.20, 0.24, mat.cabinet), hw - 1.05, PAD + 0.10, -hd + 0.35).rotation.y = 0.24;
+    // and a tarp over whatever the crew did not want rained on
+    put(box(0.78, 0.42, 0.62, mat.tarp), -hw + 0.52, PAD + 0.79, hd - 1.55).rotation.y = 0.22;
+    // the strongbox, on top of the right-hand cabinet where a trader would
+    // keep it: in reach, in sight, and not on the floor
+    put(box(0.32, 0.20, 0.24, mat.brass), hw - 0.46, PAD + 1.19, hd - 1.62).rotation.y = 0.18;
+    // two more cones out on the apron, marking the lane in
+    cone(-1.05, PAD, hd + 0.06, 0.85);
+    cone(1.15, PAD, hd + 0.02, 0.85);
 
     // Collapse the lot to one mesh per material, THEN hang the light on it:
     // mergeStatic clears the group as it goes, and a light is not geometry.
     mergeStatic(g);
     this.lamp = new THREE.PointLight(0xffd08a, 2.6, 7.5, 2);
-    this.lamp.position.set(0, H_FRONT - 0.62, hd - 0.55);
+    this.lamp.position.set(0, DECK_H + H_FRONT - 0.74, hd - 0.55);
     g.add(this.lamp);
     P.place(g, x, z, { yaw });
     w.group.add(g);

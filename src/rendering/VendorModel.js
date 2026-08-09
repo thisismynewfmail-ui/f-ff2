@@ -39,10 +39,25 @@ export const SCALE = 1.18;
 // Total height, ground to the crown of the hat — measured off the assembled
 // model rather than declared and hoped for (tests/shop.mjs checks the two
 // agree, and that it stays under Player.height).
-export const HEIGHT = 1.34 * SCALE;  // ≈ 1.58 m
-export const BASE_H = 0.62;          // the cabinet, in the model's own units
-export const BASE_W = 0.78;
-export const BASE_D = 0.56;
+export const HEIGHT = 1.37 * SCALE;  // ≈ 1.62 m
+
+/**
+ * The stand, in the model's own units, and why it is two things.
+ *
+ * The figure used to be bolted straight onto the top of a 0.62 cabinet, and
+ * its arms hang about 0.12 below the waist — so at rest both hands were inside
+ * the case, which is to say the machine looked like a torso that had been
+ * pushed down into its own box. The stand is the same total height it always
+ * was; the top of it is now an OPEN BRASS COLUMN instead of more cabinet, so
+ * the arms hang beside the works in clear air and the figure reads as rising
+ * out of the machine rather than sunk into it.
+ */
+export const BASE_H = 0.48;                       // the enamel case
+export const PEDESTAL = 0.17;                     // the column above it
+export const STAND_H = BASE_H + PEDESTAL;         // 0.65
+export const BASE_W = 0.70;
+export const BASE_D = 0.54;
+const COL_R = 0.13;                               // slim enough for the arms to miss
 
 /* ------------------------------------------------------------------ */
 /* painted surfaces                                                     */
@@ -150,55 +165,80 @@ export function buildVendorModel(texLib = null) {
 
   /* ---- the cabinet: a lacquered case on cast feet ---- */
   const hw = BASE_W / 2, hd = BASE_D / 2;
+  const PLINTH_TOP = 0.11;
   for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
-    g.add(at(cyl(0.045, 0.06, 0.09, brassDark, 8), sx * (hw - 0.07), 0.045, sz * (hd - 0.07)));
+    g.add(at(cyl(0.045, 0.06, 0.06, brassDark, 8), sx * (hw - 0.07), 0.03, sz * (hd - 0.07)));
   }
-  const plinth = at(box(BASE_W, 0.07, BASE_D, brassDark), 0, 0.125, 0);
+  const plinth = at(box(BASE_W, 0.05, BASE_D, brassDark), 0, PLINTH_TOP - 0.025, 0);
   g.add(plinth);
-  const cab = at(box(BASE_W - 0.04, BASE_H - 0.22, BASE_D - 0.04, enamel), 0, 0.16 + (BASE_H - 0.22) / 2, 0);
+  const CAB_TOP = BASE_H - 0.045;                 // the underside of the deck
+  const cabH = CAB_TOP - PLINTH_TOP;
+  const cab = at(box(BASE_W - 0.04, cabH, BASE_D - 0.04, enamel), 0, PLINTH_TOP + cabH / 2, 0);
   g.add(cab);
   // brass corner posts, so the case reads as panels bolted into a frame
   for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
-    g.add(at(box(0.045, BASE_H - 0.24, 0.045, brass), sx * (hw - 0.03), 0.17 + (BASE_H - 0.24) / 2, sz * (hd - 0.03)));
+    g.add(at(box(0.045, cabH, 0.045, brass), sx * (hw - 0.03), PLINTH_TOP + cabH / 2, sz * (hd - 0.03)));
   }
-  // the counter deck the figure rises out of, with a brass nosing
-  g.add(at(box(BASE_W + 0.06, 0.045, BASE_D + 0.06, brass), 0, BASE_H - 0.02, 0));
-  g.add(at(box(BASE_W + 0.08, 0.02, 0.05, brassDark), 0, BASE_H - 0.05, hd + 0.03));
+  // The cap over the case, with a nosing. It is a CAPPING, not a counter: a
+  // wide bright shelf up here made the figure look like it was standing on a
+  // table rather than growing out of the machine, so it barely oversails and
+  // it is the dark brass, not the bright.
+  g.add(at(box(BASE_W + 0.02, 0.035, BASE_D + 0.02, brassDark), 0, BASE_H - 0.017, 0));
+  g.add(at(box(BASE_W + 0.05, 0.018, 0.04, brass), 0, BASE_H - 0.042, hd + 0.02));
 
   // the delivery tray: a recess under the fascia with a brass lip
-  g.add(at(box(0.30, 0.10, 0.05, flat(0x120e0a)), 0, 0.30, hd - 0.03));
-  g.add(at(box(0.34, 0.03, 0.09, brass), 0, 0.245, hd - 0.01));
-  // the coin throat, off to the machine's right where a hand falls
-  const throat = at(cyl(0.055, 0.04, 0.05, brass, 10), 0.22, 0.47, hd - 0.03);
+  g.add(at(box(0.28, 0.09, 0.05, flat(0x120e0a)), 0, 0.195, hd - 0.03));
+  g.add(at(box(0.32, 0.03, 0.09, brass), 0, 0.145, hd - 0.01));
+  // The working band across the fascia: gauge, trade card, coin throat, all on
+  // one line at the height a hand falls to. The case is shorter than it was
+  // (its top twelve centimetres went to the column) so the furniture that used
+  // to be stacked up it now sits side by side.
+  const BAND = 0.335;
+  const throat = at(cyl(0.055, 0.04, 0.05, brass, 10), 0.21, BAND, hd - 0.03);
   throat.rotation.x = Math.PI / 2;
   g.add(throat);
-  g.add(at(box(0.035, 0.012, 0.02, flat(0x0a0a0a)), 0.22, 0.47, hd - 0.005));
+  g.add(at(box(0.035, 0.012, 0.02, flat(0x0a0a0a)), 0.21, BAND, hd - 0.005));
 
   // the pressure dial: brass bezel, ivory card, a needle that actually moves
   const dialR = 0.075;
-  g.add(at(cyl(dialR, dialR, 0.03, brass, 16), -0.22, 0.46, hd - 0.02).rotateX(Math.PI / 2));
-  const card = at(new THREE.Mesh(new THREE.CircleGeometry(dialR - 0.012, 18), flat(0xc9bd97)), -0.22, 0.46, hd + 0.001);
+  g.add(at(cyl(dialR, dialR, 0.03, brass, 16), -0.21, BAND, hd - 0.02).rotateX(Math.PI / 2));
+  const card = at(new THREE.Mesh(new THREE.CircleGeometry(dialR - 0.012, 18), flat(0xc9bd97)), -0.21, BAND, hd + 0.001);
   g.add(card);
   const needle = at(box(0.008, dialR - 0.03, 0.006, flat(0xa8281c)), 0, (dialR - 0.03) / 2, 0);
-  const needlePivot = at(new THREE.Group(), -0.22, 0.46, hd + 0.004);
+  const needlePivot = at(new THREE.Group(), -0.21, BAND, hd + 0.004);
   needlePivot.add(needle);
   g.add(needlePivot);
   parts.needle = needlePivot;
 
-  // the marquee: the trade card across the top of the fascia, with a row of
-  // bulbs over it that chase while the machine is awake
-  const sign = at(box(BASE_W - 0.12, 0.16, 0.02, tex('signTokens', { fallback: 0x3a2c1c })), 0, BASE_H - 0.16, hd - 0.005);
+  // the marquee: the trade card between them, with a row of bulbs over it
+  // that chase while the machine is awake
+  const sign = at(box(0.24, 0.12, 0.02, tex('signTokens', { fallback: 0x3a2c1c })), 0, BAND, hd - 0.005);
   g.add(sign);
   parts.lamps = [];
   for (let i = 0; i < 5; i++) {
     const bulb = at(new THREE.Mesh(new THREE.SphereGeometry(0.018, 7, 6), flat(0xffd88a, { emissive: 0x704a10 })),
-      -0.26 + i * 0.13, BASE_H - 0.04, hd - 0.02);
+      -0.22 + i * 0.11, BASE_H - 0.075, hd - 0.02);
     g.add(bulb);
     parts.lamps.push(bulb);
   }
 
-  /* ---- the figure: everything above the counter ---- */
-  const torso = at(new THREE.Group(), 0, BASE_H + 0.01, 0);
+  /* ---- the column: the works the figure turns on ----
+   *
+   * Open, and slim on purpose. The arms hang about twelve centimetres below
+   * the waist, so anything wider than the shoulders are apart is something for
+   * them to disappear into — which is the whole reason the top of the stand
+   * stopped being cabinet.
+   */
+  g.add(at(cyl(COL_R + 0.03, COL_R + 0.04, 0.03, brassDark, 14), 0, BASE_H + 0.015, 0));
+  g.add(at(cyl(COL_R, COL_R, PEDESTAL - 0.05, brass, 14), 0, BASE_H + 0.02 + (PEDESTAL - 0.05) / 2, 0));
+  // two banded rings up it, and the drive shaft showing through the gap
+  for (const ry of [0.34, 0.72]) {
+    g.add(at(cyl(COL_R + 0.018, COL_R + 0.018, 0.016, brassDark, 14), 0, BASE_H + 0.02 + PEDESTAL * ry, 0));
+  }
+  g.add(at(cyl(0.028, 0.028, PEDESTAL, flat(0x2a2118)), 0.075, BASE_H + PEDESTAL / 2, -0.03));
+
+  /* ---- the figure: everything above the column ---- */
+  const torso = at(new THREE.Group(), 0, STAND_H + 0.01, 0);
   g.add(torso);
   parts.torso = torso;
 
@@ -548,7 +588,7 @@ export class VendorAnimator {
       // These are the MODEL's own units — the group's scale is applied above
       // them — so the rest height here is the unscaled cabinet, not HEIGHT.
       p.torso.rotation.set(o.torsoPitch, o.torsoYaw, 0);
-      p.torso.position.y = BASE_H + 0.01 + o.torsoLift + breath;
+      p.torso.position.y = STAND_H + 0.01 + o.torsoLift + breath;
     }
     if (p.head) p.head.rotation.set(o.headPitch, o.headYaw, o.headRoll);
     if (p.jaw) p.jaw.rotation.x = o.jaw;
