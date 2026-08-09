@@ -70,6 +70,25 @@ const MOUSE_FRAME_CLAMP = 1430;
 // Unlocked look only: a single step bigger than this is the cursor having left
 // the window and come back somewhere else, not the player's hand.
 const FREE_LOOK_JUMP = 220;
+/**
+ * ...and how much further the view turns per pixel of cursor travel while
+ * unlocked than it does once the lock lands.
+ *
+ * This exists for one reason: an unlocked cursor RUNS OUT OF WINDOW. Turn far
+ * enough to the left or right during the gap and the pointer walks off the edge
+ * of the page, at which point the look stops dead and the next click lands in
+ * whatever is behind the browser. Turning further per pixel means the same
+ * turn costs a fraction of the travel, so the cursor stays in the window for
+ * the whole of a gap it would otherwise escape halfway through. It is a
+ * different feel for about a second, and a second of slightly quick aiming is
+ * a much better trade than losing the mouse out of the window entirely.
+ */
+const FREE_LOOK_GAIN = 2.2;
+// Unlocked look asks for the pointer on every movement, since a browser that
+// was only waiting out a cooldown will take the first ask after it lapses.
+// This is the floor on how often, so a refusal is not logged sixty times a
+// second while the player looks around.
+const FREE_LOOK_ASK_MS = 60;
 
 export class Input {
   constructor(element) {
@@ -147,9 +166,17 @@ export class Input {
      * do something specific.
      */
     const grab = () => { if (this.lockPending) this._tryLock(true); };
-    // pointerdown fires ahead of mousedown and is the earliest of the lot
+    // pointerdown fires ahead of mousedown and is the earliest of the lot;
+    // pointerup is on the spec's activation list too, so it is a second bite
+    // at the same click.
     document.addEventListener('pointerdown', grab, true);
+    document.addEventListener('pointerup', grab, true);
     document.addEventListener('keyup', grab, true);
+    // Not activation, but free chances a browser may honour: coming back to
+    // the tab, and the cursor crossing out of the page during the gap (the
+    // last event we get before it is gone).
+    window.addEventListener('focus', grab);
+    document.addEventListener('visibilitychange', grab);
 
     document.addEventListener('keydown', (e) => {
       // Any gesture is a chance to get an outstanding lock back — except
@@ -164,12 +191,15 @@ export class Input {
     window.addEventListener('blur', () => this.keys.clear());
 
     document.addEventListener('mousemove', (e) => {
-      // Movement is not activation, so this one stays THROTTLED: it cannot
-      // redeem an outstanding request on its own, and asking sixty times a
-      // second turns one refusal into a console full of them. It is here
-      // because a browser that was only waiting out its own cooldown will
-      // take this one, and a player with a loose cursor moves it first.
-      if (this.lockPending) this._tryLock();
+      // Movement cannot redeem an outstanding request on its own — the spec
+      // does not count it as user activation — but a browser that was only
+      // waiting out a cooldown will take the first ask after it lapses, and
+      // this is the one thing a player looking around does constantly. So it
+      // asks on every movement, floored so a refusal is not logged sixty times
+      // a second.
+      if (this.lockPending && performance.now() - this._lastLockTry >= FREE_LOOK_ASK_MS) {
+        this._tryLock(true);
+      }
       if (this.suppressed) { this._freeLast = null; return; }
 
       /**
@@ -200,8 +230,8 @@ export class Input {
         // A cursor that left the window and came back somewhere else reports
         // the whole journey as one step. Re-origin on it instead of turning.
         if (Math.abs(dx) > FREE_LOOK_JUMP || Math.abs(dy) > FREE_LOOK_JUMP) return;
-        this.mouseDX = clamp(this.mouseDX + dx, MOUSE_FRAME_CLAMP);
-        this.mouseDY = clamp(this.mouseDY + dy, MOUSE_FRAME_CLAMP);
+        this.mouseDX = clamp(this.mouseDX + dx * FREE_LOOK_GAIN, MOUSE_FRAME_CLAMP);
+        this.mouseDY = clamp(this.mouseDY + dy * FREE_LOOK_GAIN, MOUSE_FRAME_CLAMP);
         return;
       }
       this._freeLast = null;
@@ -229,8 +259,9 @@ export class Input {
       if (e.button < this.mouseDown.length) this.mouseDown[e.button] = false;
     });
     // The cursor left the page: forget where it was, so coming back in at the
-    // far side does not read as one enormous flick of the wrist.
-    document.addEventListener('mouseleave', () => { this._freeLast = null; });
+    // far side does not read as one enormous flick of the wrist — and take the
+    // last chance to ask for the pointer before it is out of reach.
+    document.addEventListener('mouseleave', () => { this._freeLast = null; grab(); });
     document.addEventListener('contextmenu', (e) => e.preventDefault());
     document.addEventListener('wheel', (e) => { this.wheelDelta += Math.sign(e.deltaY); }, { passive: true });
 

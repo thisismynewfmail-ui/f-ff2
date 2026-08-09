@@ -1618,6 +1618,20 @@ const freeLook = await page.evaluate(async () => {
   for (let i = 1; i <= 12; i++) { move(500 + i * 9, 320 + i * 3); await frame(); }
   out.yawMoved = g.player.yaw - yaw0;
   out.pitchMoved = g.player.pitch - pitch0;
+
+  // An unlocked cursor RUNS OUT OF WINDOW, and that is the failure this has to
+  // avoid: turn far enough and the pointer walks off the edge of the page, the
+  // look stops dead and the next click lands in whatever is behind the browser.
+  // A quarter turn has to cost less than half a window of travel.
+  const yawQ = g.player.yaw;
+  let x = 500, steps = 0;
+  move(x, 320); await frame();
+  while (Math.abs(g.player.yaw - yawQ) < Math.PI / 2 && steps < 400) {
+    x += 6; move(x, 320); await frame(); steps++;
+  }
+  out.travelForQuarterTurn = x - 500;
+  out.travelFitsWindow = (x - 500) < window.innerWidth / 2;
+  out.halfWindow = window.innerWidth / 2;
   // a cursor that left the window and came back somewhere else is not a flick
   const before = g.player.yaw;
   move(980, 620); await frame();
@@ -1638,6 +1652,10 @@ check('and you can look around in the gap before the pointer comes back',
 check('...without a flick on the first sample or on re-entering the window',
   freeLook.noFlickOnFirstSample && freeLook.reentryIgnored,
   `first sample ${freeLook.noFlickOnFirstSample}, re-entry ${freeLook.reentryIgnored}`);
+check('...and without running the cursor off the edge of the page to do it',
+  freeLook.travelFitsWindow,
+  `${freeLook.travelForQuarterTurn}px of travel for a quarter turn,`
+  + ` half a window is ${Math.round(freeLook.halfWindow)}px`);
 
 /* ------------------------------------------------------------------ */
 /* one material family: every interface is cut from the same plate      */
