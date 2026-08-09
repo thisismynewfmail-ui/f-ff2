@@ -1,5 +1,5 @@
 import { Entity } from './Entity.js';
-import { buildVendorModel, VendorAnimator, BASE_H, SCALE } from '../rendering/VendorModel.js';
+import { buildVendorModel, VendorAnimator, STAND_H, SCALE } from '../rendering/VendorModel.js';
 
 /**
  * The SHOPKEEPER — the coin-operated vendor standing in its kiosk out on the
@@ -46,8 +46,9 @@ export class ShopKeeper extends Entity {
     const y = world.groundHeightFor(x, z, 1e9) + lift;
     this.position.set(x, y, z);
     this.yaw = yaw;
-    // What a hit test would use: the cabinet it is bolted to, not the hat.
-    this.height = BASE_H * SCALE;
+    // What a hit test would use: the stand it is bolted to — case and column
+    // together — not the hat.
+    this.height = STAND_H * SCALE;
 
     this.rig = buildVendorModel(texLib);
     this.mesh = this.rig.group;
