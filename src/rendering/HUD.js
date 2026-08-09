@@ -576,11 +576,12 @@ export class HUD {
     c.style.backgroundImage = `url(${this._tex.bar})`;
     for (const k of ['tl', 'tr', 'bl', 'br']) this._el('div', null, c, 'screw ' + k);
 
+    // A hold lamp and a rule, and no words. The panel used to be topped with a
+    // stencilled title and a SYSTEM HOLD stamp, and tailed with a property-of
+    // notice; all three told you what the blinking red lamp and the frozen game
+    // behind the case already say.
     const head = this._el('div', null, c, 'pause-head');
     this._el('div', null, head, 'pause-lamp');
-    const title = this._el('div', null, head, 'pause-title');
-    title.innerHTML = 'SANDBOX DEFENSE NETWORK <span>// OPERATOR STATUS</span>';
-    this._el('div', null, head, 'pause-stamp').textContent = 'SYSTEM HOLD';
 
     const bays = this._el('div', 'pause-stats', c, 'pause-bays');
     this.pauseParts = {
@@ -605,18 +606,25 @@ export class HUD {
     mk('btn-save', 'SAVE RUN', 'pact-save');
     mk('btn-pause-settings', 'SETTINGS', 'pact-set');
     mk('btn-quit', 'QUIT TO TITLE', 'pact-quit');
-    this._el('div', null, c, 'pause-foot').textContent =
-      'FIELD TERMINAL · UNIT 07 · PROPERTY OF THE COUNTY · DO NOT REMOVE FROM POST';
     return s;
   }
 
-  /** A titled instrument bay with its own bezel and a hover-revealed detail. */
+  /**
+   * A titled instrument bay with its own bezel.
+   *
+   * Each bay used to carry a green caption under the instrument restating the
+   * same quantity in words — "80 OF 100 · 80%" beneath a fluid cell already
+   * showing four fifths, "0.0% OF 0 FIRED" beneath a needle already parked at
+   * zero. Seven of them turned a panel of instruments into a panel of
+   * instruments with subtitles, which is exactly the reading-it-twice the
+   * instruments were built to avoid. The one figure that was NOT on its
+   * instrument — the wave's cleared-of-quota — moved onto the tube bank.
+   */
   _bay(parent, area, label) {
     const el = this._el('div', null, parent, 'bay bay-' + area);
     this._el('div', null, el, 'bay-label').textContent = label;
     const body = this._el('div', null, el, 'bay-body');
-    const detail = this._el('div', null, el, 'bay-detail');
-    return { el, body, detail };
+    return { el, body };
   }
 
   /** HEALTH — a vertical fluid cell: graduated scale, danger band, odometer. */
@@ -632,7 +640,7 @@ export class HUD {
     }
     this._el('div', null, tube, 'cell-gloss');
     const odo = this._el('div', null, col, 'odometer pause-odo');
-    return { el: b.el, detail: b.detail, fill, tube, odo };
+    return { el: b.el, fill, tube, odo };
   }
 
   /** WAVE — a bank of vacuum tubes that light as the quota is cleared. */
@@ -649,8 +657,13 @@ export class HUD {
       this._el('div', null, t, 'vtube-fil');
       tubes.push(t);
     }
+    // The mode word, and under it the only figure the bank itself can't show:
+    // how many of the quota are down. Ten tubes give you the fraction at a
+    // glance; they can't give you 37 of 48.
     const state = this._el('div', null, row, 'tube-state');
-    return { el: b.el, detail: b.detail, num, tubes, state };
+    const mode = this._el('div', null, state, 'tube-mode');
+    const count = this._el('div', null, state, 'tube-count');
+    return { el: b.el, num, tubes, state, mode, count };
   }
 
   /** ACCURACY — the dock's analogue needle gauge, on the pause bench. */
@@ -665,7 +678,7 @@ export class HUD {
         { from: 0.65, to: 1, color: '#4f8f3a' },
       ],
     });
-    return { el: b.el, detail: b.detail, gauge: g };
+    return { el: b.el, gauge: g };
   }
 
   /** KILLS — punched paper tape running toward 250,000. */
@@ -678,7 +691,7 @@ export class HUD {
     const punch = this._el('div', null, tape, 'tape-punch');
     const pct = this._el('div', null, tape, 'tape-pct');
     this._el('div', null, tape, 'tape-head');
-    return { el: b.el, detail: b.detail, odo, run, punch, pct };
+    return { el: b.el, odo, run, punch, pct };
   }
 
   /** SECRETS — one lamp per secret; found ones are lit. */
@@ -686,14 +699,14 @@ export class HUD {
     const b = this._bay(parent, 'secrets', 'SECRETS');
     const row = this._el('div', null, b.body, 'sec-row');
     const count = this._el('div', null, b.body, 'sec-count');
-    return { el: b.el, detail: b.detail, row, count, lamps: [] };
+    return { el: b.el, row, count, lamps: [] };
   }
 
   /** SCORE — a mechanical odometer that rolls up to the number. */
   _bayScore(parent) {
     const b = this._bay(parent, 'score', 'SCORE');
     const odo = this._el('div', null, b.body, 'odometer pause-odo');
-    return { el: b.el, detail: b.detail, odo };
+    return { el: b.el, odo };
   }
 
   /** TIME — a split-flap board, seconds flipping as it lands. */
@@ -706,7 +719,7 @@ export class HUD {
       const pair = this._el('div', null, board, 'flap-pair');
       flaps.push(this._el('div', null, pair, 'flap'), this._el('div', null, pair, 'flap'));
     }
-    return { el: b.el, detail: b.detail, flaps };
+    return { el: b.el, flaps };
   }
 
   _screen(id, html) {
@@ -1197,22 +1210,19 @@ export class HUD {
     p.vitals.fill.style.height = '0%';
     p.vitals.tube.classList.toggle('crit', hp < 0.25);
     p.vitals.tube.classList.toggle('low', hp >= 0.25 && hp < 0.5);
-    p.vitals.detail.textContent = `${Math.ceil(extra.health ?? 0)} OF ${extra.maxHealth ?? 100} · ${(hp * 100) | 0}%`;
 
     // --- ENGAGEMENT: one tube per tenth of the quota, and the wave in stencil
     p.wave.num.textContent = w.n ? String(w.n).padStart(2, '0') : '--';
-    p.wave.state.textContent = w.state === 'active' ? 'ENGAGED' : 'RESPITE';
+    p.wave.mode.textContent = w.state === 'active' ? 'ENGAGED' : 'RESPITE';
+    p.wave.count.textContent = w.state === 'active' ? `${w.cleared}/${w.quota}` : 'CLEAR';
     p.wave.state.className = 'tube-state ' + (w.state === 'active' ? 'hot' : 'cool');
     p.wave.el.classList.toggle('respite', w.state !== 'active');
     for (const t of p.wave.tubes) t.classList.remove('lit');
-    p.wave.detail.textContent = w.state === 'active'
-      ? `${w.cleared} OF ${w.quota} CLEARED` : 'WAVE COMPLETE — SUPPLIES INBOUND';
 
     // --- MARKSMANSHIP: the needle parks at zero, then sweeps up on arming
     p.aim.gauge.set(0);
     p.aim.gauge.caption.innerHTML =
       `<span>${stats.shotsHit}</span> / ${stats.shotsFired} ROUNDS`;
-    p.aim.detail.textContent = `${(stats.accuracy * 100).toFixed(1)}% OF ${stats.shotsFired} FIRED`;
 
     // --- PROGRESS: the tape runs out under the count
     const frac = Math.max(0, Math.min(1, stats.kills / WIN_KILLS));
@@ -1220,8 +1230,6 @@ export class HUD {
     p.progress.odo._last = null;
     this._odoDigits(p.progress.odo, 0, 6);
     p.progress.pct.textContent = (frac * 100).toFixed(3) + '%';
-    p.progress.detail.textContent =
-      `${(WIN_KILLS - stats.kills).toLocaleString('en-US')} REMAINING · ${(frac * 100).toFixed(3)}%`;
 
     // --- SECRETS: one lamp each, lit in sequence once armed
     if (p.secrets.lamps.length !== extra.total) {
@@ -1235,19 +1243,13 @@ export class HUD {
     }
     for (const l of p.secrets.lamps) l.classList.remove('lit');
     p.secrets.count.innerHTML = `<b>${extra.found}</b> / ${extra.total}`;
-    p.secrets.detail.textContent = extra.found === extra.total
-      ? 'THE TOWN HAS NOTHING LEFT TO SHOW YOU'
-      : `${extra.total - extra.found} STILL OUT THERE`;
 
     // --- SCORE + CLOCK: both roll up from nothing
     p.score.odo._last = null;
     this._odoDigits(p.score.odo, 0, 6);
-    p.score.detail.textContent = `${stats.kills.toLocaleString('en-US')} CONFIRMED`;
     const t = stats.timePlayed;
     const hh = Math.floor(t / 3600), mm = Math.floor((t % 3600) / 60), ss = Math.floor(t % 60);
     for (const f of p.clock.flaps) { f.textContent = '0'; f.classList.remove('flip'); }
-    p.clock.detail.textContent = hh
-      ? `${hh} HOURS ${mm} MINUTES ON POST` : `${mm} MINUTES ${ss} SECONDS ON POST`;
 
     // Arm across two frames, so the rest pose has been through a full style,
     // layout and paint cycle before the real values land on top of it. One

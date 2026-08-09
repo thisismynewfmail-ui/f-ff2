@@ -1274,21 +1274,36 @@ export class InteriorKit {
     const fall = this.P.box(1.4, 0.13, 0.06, this.P.colorMat(0x120d09));   // fallboard
     fall.position.set(0, 0.85, 0.32);
     g.add(body, lid, front, desk, sheet, fall);
-    // Candle sconces, with wicks that catch while it is being played. Nobody
-    // lights them. That is the point of them.
+    /* Candle sconces, with wicks that catch while it is being played. Nobody
+     * lights them. That is the point of them.
+     *
+     * They stand ON the lid. They used to be hung off the front panel at
+     * y = 1.16, which is INSIDE the lid (1.17–1.23) — so the wax ran through
+     * the piano's own top and all you could see was two flames floating over
+     * a closed instrument. A sconce belongs on the lid of an upright anyway:
+     * a brass dish sat on the timber, a candle standing in it, a dark wick,
+     * and the flame above that. Every part below is measured off LID_TOP, so
+     * the whole set moves with the lid if the case is ever reproportioned.
+     */
+    const LID_TOP = 1.23;                 // lid: 0.06 thick, centred at 1.20
     const flames = [];
-    for (const sx of [-0.5, 0.5]) {
-      const arm = this.P.box(0.14, 0.02, 0.02, this.P.colorMat(0x8a7433));
-      arm.position.set(sx, 1.1, 0.28);
-      const candle = this.P.box(0.03, 0.11, 0.03, this.P.colorMat(0xd6cdb2));
-      candle.position.set(sx + 0.06, 1.16, 0.28);
-      g.add(arm, candle);
-      const flame = new THREE.Mesh(new THREE.ConeGeometry(0.022, 0.075, 5, 1, true),
+    for (const sx of [-0.52, 0.52]) {
+      const dish = this.P.box(0.13, 0.014, 0.11, this.P.colorMat(0x8a7433));
+      dish.position.set(sx, LID_TOP + 0.007, 0.16);
+      const collar = this.P.box(0.05, 0.03, 0.05, this.P.colorMat(0xa08a3e));
+      collar.position.set(sx, LID_TOP + 0.028, 0.16);
+      const candle = this.P.box(0.032, 0.15, 0.032, this.P.colorMat(0xd6cdb2));
+      candle.position.set(sx, LID_TOP + 0.118, 0.16);
+      const wick = this.P.box(0.006, 0.022, 0.006, this.P.colorMat(0x2a241c));
+      wick.position.set(sx, LID_TOP + 0.203, 0.16);
+      g.add(dish, collar, candle, wick);
+      const flame = new THREE.Mesh(new THREE.ConeGeometry(0.024, 0.085, 5, 1, true),
         new THREE.MeshBasicMaterial({
           color: 0xffd070, transparent: true, opacity: 0, depthWrite: false,
           blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
         }));
-      flame.position.set(sx + 0.06, 1.26, 0.28);
+      // seated on the wick, so it grows out of the candle rather than hovering
+      flame.position.set(sx, LID_TOP + 0.256, 0.16);
       flame.renderOrder = 3;
       g.add(flame);
       flames.push(flame);

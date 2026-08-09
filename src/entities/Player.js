@@ -111,8 +111,8 @@ export class Player extends Entity {
       return;
     }
 
-    // --- gait (all rebindable; KeyC is kept as a fixed crouch alternate)
-    this.crouching = input.isActionDown('crouch') || input.isDown('KeyC');
+    // --- gait (all rebindable, both slots; C ships as crouch's alternate)
+    this.crouching = input.isActionDown('crouch');
     const wantSprint = input.isActionDown('sprint') && !this.crouching;
     const targetEye = this.crouching ? EYE_CROUCH : EYE_STAND;
     this.eyeHeight += (targetEye - this.eyeHeight) * Math.min(1, dt * 10);

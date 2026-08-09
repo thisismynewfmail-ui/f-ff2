@@ -343,12 +343,23 @@ export class Anomalies {
           a.node.rotation[a.axis] = hit * hit * a.amp * fade;
           if (a.flames) {
             a.lit = true;
-            const flick = 0.6 + Math.sin(time * 17.3) * 0.2 + Math.sin(time * 6.1) * 0.2;
             const up = Math.min(1, (a.dur - a.t) * 3);    // they take a moment to catch
-            for (const f of a.flames) {
-              f.material.opacity = up * Math.min(1, fade * 1.8) * flick;
-              f.scale.y = 0.8 + flick * 0.4;
-            }
+            const strength = up * Math.min(1, fade * 1.8);
+            a.flames.forEach((f, i) => {
+              // Each wick burns on its OWN beat. Two flames flickering in
+              // lockstep read as one animation played twice, which is the
+              // giveaway that they are decoration rather than fire — so the
+              // phase, and the rates, differ per candle.
+              const ph = i * 2.4;
+              const flick = 0.62 + Math.sin(time * (16.1 + i * 2.7) + ph) * 0.2
+                + Math.sin(time * (5.3 + i * 1.1) + ph * 1.7) * 0.18;
+              f.material.opacity = strength * flick;
+              f.scale.set(0.86 + flick * 0.2, 0.78 + flick * 0.45, 0.86 + flick * 0.2);
+              // ...and it leans, the way a flame does off a draught nobody
+              // can find in a sealed hall.
+              f.rotation.z = Math.sin(time * (2.1 + i * 0.4) + ph) * 0.13 * flick;
+              f.rotation.x = Math.cos(time * (1.7 + i * 0.3) + ph) * 0.09 * flick;
+            });
           }
         } else if (a.kind === 'swing') {
           a.node.rotation[a.axis] = Math.sin(time * a.speed + a.phase) * a.amp

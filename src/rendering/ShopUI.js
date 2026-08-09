@@ -342,7 +342,8 @@ export class ShopUI {
       // one frame, and an auto-repeat of that same key half a second later
       // would otherwise close it again under the player's finger.
       if (!this.open || e.repeat) return;
-      // Escape, and the interact key that opened it. The second is here for a
+      // Escape, and EITHER interact key — the action has two slots and the
+      // player may have arrived on the alternate. The second is here for a
       // real reason rather than for symmetry: an ORDINARY key press carries
       // user activation where Escape does not, so leaving with the same key
       // you arrived with is the exit that always gets the mouse back on the
@@ -353,7 +354,7 @@ export class ShopUI {
       // Tab here meant the one keypress opened the satchel AND shut the shop,
       // leaving the player in an inventory they never asked for. The satchel
       // simply declines to open at the counter instead (see Game.load).
-      if (e.code === 'Escape' || e.code === this.cb.interactCode?.()) {
+      if (e.code === 'Escape' || this.cb.interactCodes?.().includes(e.code)) {
         e.preventDefault();
         e.stopImmediatePropagation();
         this.close();

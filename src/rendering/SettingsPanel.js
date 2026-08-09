@@ -1,4 +1,4 @@
-import { BINDING_ROWS, codeLabel } from '../engine/KeyBindings.js';
+import { BINDING_ROWS, MAX_SLOTS, codeLabel } from '../engine/KeyBindings.js';
 
 /**
  * The reusable Settings form — sliders (sensitivity / FOV / volume), invert-Y,
@@ -6,11 +6,14 @@ import { BINDING_ROWS, codeLabel } from '../engine/KeyBindings.js';
  * title-screen Settings and another backs the in-game (pause) Settings; both
  * read and write the same shared SettingsStore.
  *
- * Rebinding: click a key chip to arm capture ("PRESS A KEY…"); the next key or
- * mouse button becomes the binding. Pressing ESCAPE while armed CANCELS the
- * capture and keeps the old key — it never closes the menu. Capture runs on the
- * capture phase and swallows the event so the armed key can't leak into the
- * game (or trigger the host's own ESC handling).
+ * Rebinding: every action has TWO chips, a primary and an alternate, and either
+ * fires it — Shift and the mouse's thumb button can both be SPRINT. Click a
+ * chip to arm capture ("PRESS A KEY…"); the next key or mouse button becomes
+ * that slot's binding. BACKSPACE clears the slot (refused if it is the action's
+ * last one). Pressing ESCAPE while armed CANCELS the capture and keeps the old
+ * key — it never closes the menu. Capture runs on the capture phase and
+ * swallows the event so the armed key can't leak into the game (or trigger the
+ * host's own ESC handling).
  *
  * `footer` is a list of { label, cls, onClick } buttons the host supplies
  * (e.g. BACK on the title, APPLY + RETURN TO GAME in the pause menu).
@@ -19,7 +22,7 @@ export class SettingsPanel {
   constructor(host, store, { footer = [] } = {}) {
     this.store = store;
     this.host = host;
-    this._capture = null; // { action, btn } while armed
+    this._capture = null; // { action, slot, btn } while armed
     this._syncers = [];
     this._build(footer);
     this.sync(); // seed labels/values so the form reads correctly before first open
@@ -44,21 +47,36 @@ export class SettingsPanel {
 
     this._el('div', 'tm-set-sub', panel).textContent = 'KEY BINDINGS';
     const hint = this._el('div', 'tm-set-hint', panel);
-    hint.textContent = 'CLICK A KEY, THEN PRESS THE KEY OR MOUSE BUTTON TO BIND · ESC CANCELS';
+    hint.textContent =
+      'TWO KEYS PER ACTION — EITHER FIRES IT · CLICK A SLOT, THEN PRESS THE KEY OR MOUSE BUTTON'
+      + ' · BKSP CLEARS · ESC CANCELS';
     const binds = this._el('div', 'tm-binds', panel);
     this.bindBtns = {};
     for (const [action, label] of BINDING_ROWS) {
       const row = this._el('div', 'tm-bind-row', binds);
       this._el('span', null, row, label);
-      const btn = this._el('button', 'tm-bind-key', row);
-      btn.type = 'button';
-      btn.dataset.action = action;
-      btn.addEventListener('click', () => this._arm(action, btn));
-      this.bindBtns[action] = btn;
-      this._syncers.push(() => {
-        if (this._capture && this._capture.action === action) return;
-        btn.textContent = codeLabel(this.store.bindings[action]);
-      });
+      const slots = this._el('div', 'tm-bind-slots', row);
+      this.bindBtns[action] = [];
+      for (let slot = 0; slot < MAX_SLOTS; slot++) {
+        const btn = this._el('button', 'tm-bind-key' + (slot ? ' alt' : ''), slots);
+        btn.type = 'button';
+        btn.dataset.action = action;
+        btn.dataset.slot = String(slot);
+        btn.addEventListener('click', () => this._arm(action, slot, btn));
+        this.bindBtns[action].push(btn);
+        this._syncers.push(() => {
+          if (this._capture && this._capture.action === action && this._capture.slot === slot) return;
+          const code = this.store.bindings[action]?.[slot];
+          const text = code ? codeLabel(code) : '+';
+          btn.textContent = text;
+          btn.classList.toggle('long', text.length > 5);
+          // An empty alternate is an invitation, not a fault; an empty PRIMARY
+          // means the code was taken by something else and the action is dead
+          // until it is given one, so only that one is flagged.
+          btn.classList.toggle('empty', !code);
+          btn.classList.toggle('unbound', !code && slot === 0);
+        });
+      }
     }
 
     const actions = this._el('div', 'tm-set-actions', panel);
@@ -95,9 +113,9 @@ export class SettingsPanel {
 
   isCapturing() { return !!this._capture; }
 
-  _arm(action, btn) {
+  _arm(action, slot, btn) {
     this.cancelCapture();
-    this._capture = { action, btn };
+    this._capture = { action, slot, btn };
     btn.classList.add('capturing');
     btn.textContent = 'PRESS A KEY…';
     // Capture phase + swallow, so the armed input never reaches the game input
@@ -105,6 +123,16 @@ export class SettingsPanel {
     this._onKey = (e) => {
       e.preventDefault(); e.stopPropagation();
       if (e.code === 'Escape') { this.cancelCapture(); return; }
+      if (e.code === 'Backspace' || e.code === 'Delete') {
+        // Clearing a slot has to be reachable from the same armed state that
+        // sets one, because there is nowhere else to put it: every key press
+        // while armed is a binding by definition.
+        const { action: a, slot: s } = this._capture;
+        this._teardown();
+        this.store.clearBinding(a, s);
+        this.sync();
+        return;
+      }
       this._commit(e.code);
     };
     this._onMouse = (e) => {
@@ -121,9 +149,9 @@ export class SettingsPanel {
   }
 
   _commit(code) {
-    const { action } = this._capture;
+    const { action, slot } = this._capture;
     this._teardown();
-    this.store.setBinding(action, code);
+    this.store.setBinding(action, slot, code);
     this.sync();
   }
 

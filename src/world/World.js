@@ -1159,22 +1159,43 @@ export class World {
     // local X axis, a spinner rotation of −θ reads as θ CLOCKWISE from 12 to
     // the viewer in the plaza below.
     const t = this.built.get('clocktower');
-    const cx = t.spec.x, cy = t.spec.y + 11.5, cz = t.spec.z;
-    const clock = new THREE.Mesh(new THREE.CircleGeometry(1.4, 24), new THREE.MeshBasicMaterial({ color: 0xd8d2c0 }));
-    clock.position.set(cx, cy, cz - 2.55);
+    const cx = t.spec.x, cy = t.spec.y + 11.5;
+    // The dial is set out from the WALL FACE, not from the building's centre.
+    //
+    // It used to be pinned at a fixed offset from the centreline that left it
+    // five centimetres proud of the masonry — and the tower's belt courses
+    // stand ten centimetres proud, with one of them landing at 11.35 m, dead
+    // across the middle of the dial. So the clock had a stone band running
+    // through its face. Everything below is measured off the face and clears
+    // the deepest trim on the building by a comfortable margin, so it stays
+    // clear if the tower is ever restyled.
+    const faceZ = t.spec.z - t.spec.d / 2;
+    const OUT = 0.30;                       // how far the movement stands proud
+    const R = 1.4;
+    const stoneMat = this.texLib
+      ? new THREE.MeshLambertMaterial({ map: this.texLib.get('trimStone') })
+      : new THREE.MeshBasicMaterial({ color: 0x8d8a80 });
+    // A surround the dial is seated in, so the trim dies into a fitting
+    // instead of crossing a disc floating on the wall.
+    const surround = new THREE.Mesh(new THREE.CylinderGeometry(R + 0.2, R + 0.26, OUT, 28), stoneMat);
+    surround.rotation.x = Math.PI / 2;
+    surround.position.set(cx, cy, faceZ - OUT / 2);
+    this.group.add(surround);
+    const clock = new THREE.Mesh(new THREE.CircleGeometry(R, 24), new THREE.MeshBasicMaterial({ color: 0xd8d2c0 }));
+    clock.position.set(cx, cy, faceZ - OUT - 0.005);
     clock.rotation.y = Math.PI;
     this.group.add(clock);
     const darkMat = new THREE.MeshBasicMaterial({ color: 0x1c1c22 });
     for (let k = 0; k < 12; k++) { // hour ticks, quarters heavier
       const a = k * Math.PI / 6;
       const tick = new THREE.Mesh(new THREE.PlaneGeometry(k % 3 === 0 ? 0.1 : 0.06, k % 3 === 0 ? 0.24 : 0.14), darkMat);
-      tick.position.set(cx + Math.sin(a) * 1.2, cy + Math.cos(a) * 1.2, cz - 2.56);
+      tick.position.set(cx + Math.sin(a) * 1.2, cy + Math.cos(a) * 1.2, faceZ - OUT - 0.015);
       tick.rotation.set(0, Math.PI, a);
       this.group.add(tick);
     }
-    const mkHand = (len, width, zOff) => {
+    const mkHand = (len, width, lift) => {
       const pivot = new THREE.Group();
-      pivot.position.set(cx, cy, cz - zOff);
+      pivot.position.set(cx, cy, faceZ - OUT - lift);
       pivot.rotation.y = Math.PI;
       const spinner = new THREE.Group();
       const blade = new THREE.Mesh(new THREE.PlaneGeometry(width, len + 0.14), darkMat);
@@ -1184,9 +1205,9 @@ export class World {
       this.group.add(pivot);
       return spinner;
     };
-    this.clockHands = { hour: mkHand(0.62, 0.13, 2.57), minute: mkHand(0.98, 0.09, 2.58) };
+    this.clockHands = { hour: mkHand(0.62, 0.13, 0.025), minute: mkHand(0.98, 0.09, 0.035) };
     const hub = new THREE.Mesh(new THREE.CircleGeometry(0.09, 12), darkMat);
-    hub.position.set(cx, cy, cz - 2.59);
+    hub.position.set(cx, cy, faceZ - OUT - 0.045);
     hub.rotation.y = Math.PI;
     this.group.add(hub);
     // street furniture serving the new plaza-facing buildings

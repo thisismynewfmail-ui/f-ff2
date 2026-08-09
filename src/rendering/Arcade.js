@@ -22,7 +22,15 @@
  * It never reaches the pause menu: the handler runs in the capture phase and
  * stops the event dead, because a player leaving Asteroids wants to be back in
  * the street, not looking at a stats panel.
+ *
+ * Stepping away does not throw the game away. Each machine keeps its run —
+ * score, lives, the ball where it was — and comes back PAUSED with the board
+ * as you left it, because losing a good run to a zombie at your shoulder is
+ * the kind of thing that stops people playing at all. The best score on each
+ * cabinet rides along in the game save (snapshot / restore).
  */
+import { codeLabel } from '../engine/KeyBindings.js';
+
 const W = 320, H = 240;
 
 /** Per-machine identity: palette, title, and the flavour under the marquee. */
@@ -483,6 +491,17 @@ function hexOf(v) { return '#' + v.toString(16).padStart(6, '0'); }
 /* ------------------------------------------------------------------ */
 /* the overlay                                                          */
 /* ------------------------------------------------------------------ */
+/**
+ * Codes the machines themselves read. The interact key doubles as a way out
+ * (see _wire) but only when it is not one of these — a player who has put
+ * INTERACT on Space would otherwise find that launching the ball ejects them
+ * from the cabinet.
+ */
+const CONTROL_CODES = new Set([
+  'Space', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown',
+  'KeyW', 'KeyA', 'KeyS', 'KeyD',
+]);
+
 export class Arcade {
   constructor(root, callbacks = {}) {
     this.callbacks = callbacks;
@@ -490,6 +509,8 @@ export class Arcade {
     this.id = null;
     this.game = null;
     this.best = {};              // machine id -> best score this run
+    this.games = {};             // machine id -> its run, held across visits
+    this.paused = false;         // re-entered on a run that was left in progress
     this.keys = new Set();
     this.pressed = new Set();
     this._build(root);
@@ -527,6 +548,7 @@ export class Arcade {
     this.bestEl = this.el.querySelector('.arc-best b');
     this.msgEl = this.el.querySelector('.arc-msg');
     this.cabEl = this.el.querySelector('.arc-cab');
+    this.coinEl = this.el.querySelector('.arc-coin');
   }
 
   _wire() {
@@ -536,7 +558,15 @@ export class Arcade {
     // they did not ask for.
     document.addEventListener('keydown', (e) => {
       if (!this.open) return;
-      if (e.code === 'Escape') {
+      // Escape, and the interact key. The second is not decoration: a browser
+      // only grants pointer lock to a document holding TRANSIENT USER
+      // ACTIVATION, and **Escape grants none** — so an Escape exit leaves the
+      // player standing in the street with a loose cursor until some later
+      // gesture happens to redeem it, which is the "the mouse comes back a few
+      // seconds later" report. An ordinary key press carries activation, so
+      // leaving on [E] gets the mouse back on the spot. Same fix, same reason,
+      // as the vendor's counter.
+      if (e.code === 'Escape' || (this._exitCode && e.code === this._exitCode)) {
         e.preventDefault();
         e.stopImmediatePropagation();
         this.close();
@@ -545,6 +575,7 @@ export class Arcade {
       e.preventDefault();
       e.stopImmediatePropagation();
       if (!e.repeat) {
+        if (this.paused) { if (e.code === 'Space' || e.code === 'Enter') this._resume(); return; }
         this.keys.add(e.code);
         this.pressed.add(e.code);
         if (e.code === 'Space' && this.game?.over) this._start();
@@ -555,6 +586,20 @@ export class Arcade {
       e.stopImmediatePropagation();
       this.keys.delete(e.code);
     }, true);
+    // Clicking the room around the cabinet steps away from it — and a click is
+    // the strongest user activation there is, so this is the exit that ALWAYS
+    // hands the mouse straight back. Clicks on the cabinet itself do nothing:
+    // that is the machine, not the way out.
+    this.el.addEventListener('mousedown', (e) => {
+      if (this.open && e.target === this.el) this.close();
+    });
+  }
+
+  /** The code that also closes the cabinet, refreshed from the live bindings
+   *  each time one is opened. Null when INTERACT is a key a machine needs. */
+  _pickExitCode() {
+    const codes = this.callbacks.interactCodes?.() || [];
+    return codes.find((c) => !CONTROL_CODES.has(c) && !c.startsWith('Mouse')) || null;
   }
 
   /** Open machine `id`. Returns false if it is not a machine. */
@@ -563,7 +608,11 @@ export class Arcade {
     const m = MACHINES[id];
     this.id = id;
     this.open = true;
-    this.game = BUILDERS[id](m);
+    // The run you left is the run you come back to. A machine is only built
+    // once per session; walking away from it and returning finds the board
+    // exactly as it was, which is the whole point of holding it.
+    const held = this.games[id];
+    this.game = held || (this.games[id] = BUILDERS[id](m));
     this.el.style.display = 'flex';
     this.cabEl.style.setProperty('--ink', m.ink);
     this.cabEl.style.setProperty('--dim', m.dim);
@@ -578,30 +627,74 @@ export class Arcade {
     // again on close, so a cabinet cannot make noise from inside a closed
     // overlay, and never installed at all when the attract frames are baked.
     this.game.beep = (kind) => this.callbacks.onBeep?.(kind, id);
-    this._start();
+    this._exitCode = this._pickExitCode();
+    this.coinEl.textContent = this._exitCode
+      ? `ESC OR ${codeLabel(this._exitCode)} — STEP AWAY FROM THE MACHINE`
+      : 'ESC — STEP AWAY FROM THE MACHINE';
+    if (!held || held.over) this._start();
+    else this._hold();          // a run left in progress: back on the board, frozen
     this.callbacks.onOpen?.(id);
     return true;
   }
 
   _start() {
     this.game.reset();
+    this.paused = false;
     this.msgEl.textContent = '';
     this.msgEl.classList.remove('on');
     this._ended = false;
   }
 
+  /** Re-entered on a live run: show it, but do not move it until asked. */
+  _hold() {
+    this.paused = true;
+    this.msgEl.textContent = 'PAUSED — SPACE TO PLAY ON';
+    this.msgEl.classList.add('on');
+    this.scoreEl.textContent = String(this.game.score);
+    this._draw();
+  }
+
+  _resume() {
+    this.paused = false;
+    this.msgEl.textContent = '';
+    this.msgEl.classList.remove('on');
+  }
+
   close() {
     if (!this.open) return;
     this.open = false;
+    // Stepping away pauses the machine rather than ending it: update() stops
+    // being fed the moment `open` goes false, so the run is frozen exactly
+    // where it stood and play() puts it back on the board.
+    this.paused = !!this.game && !this.game.over;
     this.el.style.display = 'none';
     this.keys.clear();
+    this.pressed.clear();
     if (this.game) this.game.beep = SILENT;
     this.callbacks.onClose?.();
   }
 
+  /** Best score per machine, for the game save. */
+  snapshot() { return { best: { ...this.best } }; }
+
+  restore(data) {
+    this.best = {};
+    for (const [id, v] of Object.entries(data?.best || {})) {
+      if (MACHINES[id]) this.best[id] = Math.max(0, v | 0);
+    }
+    if (this.open) this.bestEl.textContent = String(this.best[this.id] || 0);
+  }
+
+  /** A new run: the cabinets go back to attract and the board is wiped. */
+  resetRun() {
+    this.games = {};
+    this.best = {};
+    this.paused = false;
+  }
+
   /** Called every frame by the host, open or not. */
   update(dt) {
-    if (!this.open || !this.game) return;
+    if (!this.open || !this.game || this.paused) return;
     const g = this.game;
     const was = g.over;
     g.update(Math.min(0.05, dt), this.keys, this.pressed);

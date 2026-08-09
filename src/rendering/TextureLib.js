@@ -134,7 +134,7 @@ function makeTexture(img) {
  * Flood fills from every border pixel across near-white pixels and clears
  * only that connected region, so interior white details survive. Then undoes
  * the white matte on the antialiased fringe the flood leaves behind — see
- * unmatteWhiteFringe, which is what stops every sprite wearing a light halo.
+ * unmatteFringe, which is what stops every sprite wearing a light halo.
  */
 function keyOutBackground(img, threshold = 232) {
   const c = document.createElement('canvas');
@@ -163,20 +163,23 @@ function keyOutBackground(img, threshold = 232) {
     stack.push(x + 1, y, x - 1, y, x, y + 1, x, y - 1);
   }
 
-  unmatteWhiteFringe(d, w, h);
+  unmatteFringe(d, w, h, [255, 255, 255]);
   ctx.putImageData(data, 0, 0);
   return c;
 }
 
 /**
- * Undo the white matte along a keyed silhouette.
+ * Undo the background matte along a keyed silhouette.
  *
- * These sheets are RGB art composited over a white backdrop, so every edge
- * texel is a blend of the art and that white: c = a*S + (1-a)*255, for some
- * coverage a and the art's true colour S. The flood fill removes what is
- * near-white enough to read as pure background, which leaves the tail of that
- * blend behind — texels carrying real coverage but a colour washed toward
- * white. Drawn against grass they are a light rim around the whole sprite.
+ * These sheets are RGB art composited over a flat backdrop K, so every edge
+ * texel is a blend of the art and that backdrop: c = a*S + (1-a)*K, for some
+ * coverage a and the art's true colour S. The flood fill removes what is close
+ * enough to K to read as pure background, which leaves the tail of that blend
+ * behind — texels carrying real coverage but a colour washed toward K. Drawn
+ * against anything else they are a rim of the WRONG COLOUR around the whole
+ * sprite: a light halo on the white-backed sheets, and a pale green-lit outline
+ * on the green-screened HUD portraits (see rendering/Portrait.js), which is the
+ * same defect wearing a different colour.
  *
  * Eroding them does not work, and neither does any brightness threshold. The
  * fringe's colour depends entirely on what the art is blending INTO: white over
@@ -199,10 +202,10 @@ function keyOutBackground(img, threshold = 232) {
  * exactly as it is. And a feature too thin to have any core at all — a finger,
  * a bikini strap — is left alone rather than thinned away.
  */
-function unmatteWhiteFringe(d, w, h, rim = 3) {
+export function unmatteFringe(d, w, h, key = [255, 255, 255], rim = 3) {
   const n = w * h;
   const CUT = 0.5;      // coverage below which a texel is background
-  const FLAT = 25;      // channel contrast against white needed to trust `a`
+  const FLAT = 25;      // channel contrast against the key needed to trust `a`
 
   // 1. Layer the silhouette: 0 = transparent, 1..rim = fringe, 255 = core art.
   const layer = new Uint8Array(n);
@@ -257,12 +260,16 @@ function unmatteWhiteFringe(d, w, h, rim = 3) {
     if (k === 0 || k === 255 || !known[p]) continue;
     const i = p * 4;
     const S = [sr[p], sg[p], sb[p]];
+    // Whichever channel separates the art from the key most is the one that
+    // measures coverage best; on a white backdrop that is always the darkest
+    // channel, but against an arbitrary key it can be any of the three, and it
+    // can separate in either direction.
     let denom = 0, a = 1;
     for (let ch = 0; ch < 3; ch++) {
-      const dk = 255 - S[ch];
-      if (dk > denom) { denom = dk; a = (255 - d[i + ch]) / dk; }
+      const dk = Math.abs(key[ch] - S[ch]);
+      if (dk > denom) { denom = dk; a = (key[ch] - d[i + ch]) / (key[ch] - S[ch]); }
     }
-    if (denom < FLAT) continue;                          // art is near-white: leave it
+    if (denom < FLAT) continue;                          // art matches the key: leave it
     if (a < CUT) { d[i + 3] = 0; continue; }
     d[i] = S[0]; d[i + 1] = S[1]; d[i + 2] = S[2];       // un-washed art colour
   }
