@@ -67,6 +67,9 @@ const LOCK_SETTLED_MS = 1000;
 // frame. The per-event guard above is what actually catches spikes; this only
 // bounds the damage if one ever slips past it.
 const MOUSE_FRAME_CLAMP = 1430;
+// Unlocked look only: a single step bigger than this is the cursor having left
+// the window and come back somewhere else, not the player's hand.
+const FREE_LOOK_JUMP = 220;
 
 export class Input {
   constructor(element) {
@@ -87,6 +90,11 @@ export class Input {
     this.lockReleased = true;    // ...and has explicitly given it up since
     this._lastLockTry = 0;
     this._urgentUntil = 0;       // retry hard until this timestamp (see LOCK_URGENT_MS)
+    // Last cursor position while looking WITHOUT a lock; null when not doing so.
+    // See the mousemove handler: this is what keeps the camera under the
+    // player's hand during the gap between asking for the pointer and getting
+    // it, which is the browser's decision and not ours to shorten.
+    this._freeLast = null;
     // True from an Escape the PAGE received until a lock has SURVIVED long
     // enough to count as the player being back at the controls. The browser
     // eats the Escape keydown whenever it is holding the pointer — that
@@ -162,7 +170,41 @@ export class Input {
       // because a browser that was only waiting out its own cooldown will
       // take this one, and a player with a loose cursor moves it first.
       if (this.lockPending) this._tryLock();
-      if (!this.pointerLocked || this.suppressed) return;
+      if (this.suppressed) { this._freeLast = null; return; }
+
+      /**
+       * LOOKING WITHOUT THE LOCK.
+       *
+       * How long a browser takes to hand the pointer back after a menu closes
+       * on Escape is the browser's business — Escape grants no user activation
+       * (the spec forbids it, so a page cannot trap you on the key you press to
+       * get out), so the request goes out and then it is a matter of waiting.
+       * Everything else about the transition was made invisible: no prompt, no
+       * cursor. This is the last piece — the CAMERA.
+       *
+       * While the game wants the pointer and has not been given it, the view is
+       * driven from ordinary cursor movement instead of from locked deltas. It
+       * is not as good — the cursor eventually reaches the edge of the window
+       * and stops, which locked movement never does — but the gap it covers is
+       * about a second, and a second of being able to look around beats a
+       * second of a dead mouse. The moment the lock lands this stops and the
+       * real deltas take over, and _settleMouse's quiet period covers the
+       * handover so the switch cannot throw the aim.
+       */
+      if (!this.pointerLocked) {
+        if (!this.lockWanted) { this._freeLast = null; return; }
+        const prev = this._freeLast;
+        this._freeLast = { x: e.clientX, y: e.clientY };
+        if (!prev) return;           // the first sample only sets the origin
+        const dx = e.clientX - prev.x, dy = e.clientY - prev.y;
+        // A cursor that left the window and came back somewhere else reports
+        // the whole journey as one step. Re-origin on it instead of turning.
+        if (Math.abs(dx) > FREE_LOOK_JUMP || Math.abs(dy) > FREE_LOOK_JUMP) return;
+        this.mouseDX = clamp(this.mouseDX + dx, MOUSE_FRAME_CLAMP);
+        this.mouseDY = clamp(this.mouseDY + dy, MOUSE_FRAME_CLAMP);
+        return;
+      }
+      this._freeLast = null;
       const dx = e.movementX || 0, dy = e.movementY || 0;
       if (this._isMouseSpike(dx, dy)) return;
       this.mouseDX = clamp(this.mouseDX + dx, MOUSE_FRAME_CLAMP);
@@ -186,6 +228,9 @@ export class Input {
     document.addEventListener('mouseup', (e) => {
       if (e.button < this.mouseDown.length) this.mouseDown[e.button] = false;
     });
+    // The cursor left the page: forget where it was, so coming back in at the
+    // far side does not read as one enormous flick of the wrist.
+    document.addEventListener('mouseleave', () => { this._freeLast = null; });
     document.addEventListener('contextmenu', (e) => e.preventDefault());
     document.addEventListener('wheel', (e) => { this.wheelDelta += Math.sign(e.deltaY); }, { passive: true });
 
@@ -226,6 +271,7 @@ export class Input {
   _settleMouse() {
     this._lockedAt = performance.now();
     this._mouseBaseline = MOUSE_BASELINE_FLOOR;
+    this._freeLast = null;      // the unlocked-look origin is meaningless now
   }
 
   /** See the block comment above: is this event the pointer-lock plumbing
@@ -276,6 +322,7 @@ export class Input {
   releasePointerLock() {
     this.lockWanted = false;
     this.lockReleased = true;
+    this._freeLast = null;
     if (document.pointerLockElement) document.exitPointerLock();
   }
 

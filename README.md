@@ -125,15 +125,28 @@ keypress has nothing behind it, and whether it lands is the browser's call.
 (This is why the same menus close *instantly and perfectly* on their button, on
 a click off the case, and on [E] — every one of those carries activation.)
 
-What the game does about it: it stops asking the player to fix it. The prompt
-is gone; the **system cursor is hidden for the whole time the game is being
-played**, granted or not, so the transition has nothing to show; the standing
-request rides on **every event that does carry activation** — pointerdown,
-keyup, any keydown but Escape — unthrottled, so the pointer comes back on the
-first thing the player does; and the click or keypress that buys it back is
-**swallowed**, so returning from a menu never costs an accidental shot. Every
-way out of play — pause, death, the title, an overlay, the dev console — puts
-the cursor back, so it can never be lost.
+What the game does about it: it stops asking the player to fix it, and it stops
+waiting on the answer. The prompt is gone; the **system cursor is hidden for the
+whole time the game is being played**, granted or not, so the transition has
+nothing to show; the standing request rides on **every event that does carry
+activation** — pointerdown, keyup, any keydown but Escape — unthrottled, so the
+pointer comes back on the first thing the player does; and the click or keypress
+that buys it back is **swallowed**, so returning from a menu never costs an
+accidental shot.
+
+And — the part that actually removes the wait — **you can look around without
+the lock.** While the game wants the pointer and has not been given it, the
+camera is driven from ordinary cursor movement instead of from locked deltas.
+It is not as good, because the cursor eventually reaches the edge of the window
+and stops where locked movement never would, but the gap it covers is about a
+second and a second of looking around beats a second of a dead mouse. The
+handover is invisible: the first sample only establishes an origin so there is
+no flick, a cursor that leaves the window and comes back elsewhere re-origins
+rather than turning, movement over an OPEN menu is ignored so the world never
+turns behind a panel, and when the lock lands `_settleMouse`'s quiet period
+covers the switch back to real deltas. Every way out of play — pause, death,
+the title, an overlay, the dev console — puts the cursor back, so it can never
+be lost.
 
 **Mouse look filters the pointer-lock plumbing out of your aim.** A locked
 mousemove does not always carry your hand: the browser reports the cursor's
