@@ -25,6 +25,7 @@
  * is allowed to obscure the face; it is there to make the face look LIVE.
  */
 import { assetUrl } from './assetUrl.js';
+import { unmatteFringe } from './TextureLib.js';
 
 const SRC = {
   forward: 'player_imgs/fullhealth_looking_forwards_default.png',
@@ -168,29 +169,82 @@ export class Portrait {
   }
 }
 
-/** Return an offscreen canvas with the bright-green field keyed transparent. */
+/**
+ * Return an offscreen canvas with the green screen keyed out — and, crucially,
+ * with the MATTE it leaves behind undone.
+ *
+ * The portraits are art shot against a flat green field, so every texel along
+ * the silhouette is a blend of the art and that green: c = a·K + (1−a)·S.
+ * Clearing the pixels that read as "green enough" removes the field and leaves
+ * the tail of that blend standing — texels with real coverage but a colour
+ * washed toward the key. On the tube's dark ground those washed texels are
+ * brighter than everything around them, which is the pale outline that used to
+ * run all the way round the hair and shoulders. Softening their alpha does not
+ * help: a half-transparent green-lit texel is still a green-lit texel.
+ *
+ * So it is solved the same way the sprite sheets solve their white matte —
+ * unmatteFringe recovers each rim texel's true colour and coverage from the
+ * core art behind it — and the two now share that code rather than each
+ * carrying its own half of the fix.
+ *
+ * The key colour is read from the border ring rather than from one corner: a
+ * single pixel is one JPEG artefact away from being wrong, and a wrong key is
+ * a portrait that keeps its background.
+ */
 function keyGreen(img) {
   const c = document.createElement('canvas');
   c.width = img.naturalWidth || 512; c.height = img.naturalHeight || 512;
-  const ctx = c.getContext('2d');
+  const ctx = c.getContext('2d', { willReadFrequently: true });
   ctx.drawImage(img, 0, 0);
   let data;
   try { data = ctx.getImageData(0, 0, c.width, c.height); } catch { return c; }
   const d = data.data;
-  // sample the top-left corner as the key colour
-  const kr = d[0], kg = d[1], kb = d[2];
-  for (let i = 0; i < d.length; i += 4) {
-    const r = d[i], g = d[i + 1], b = d[i + 2];
-    // green-dominant field close to the sampled key → transparent, with a
-    // soft edge so hair strands don't fringe
-    const greenish = g > r * 1.12 && g > b * 1.12 && g > 70;
-    const near = Math.abs(r - kr) < 70 && Math.abs(g - kg) < 80 && Math.abs(b - kb) < 70;
-    if (greenish && near) {
-      d[i + 3] = 0;
-    } else if (greenish) {
-      d[i + 3] = Math.min(d[i + 3], 150); // soft fringe
-    }
+  const w = c.width, h = c.height;
+
+  // --- the key: the median border pixel, which is the field by definition
+  const rs = [], gs = [], bs = [];
+  const sample = (x, y) => {
+    const i = (y * w + x) * 4;
+    rs.push(d[i]); gs.push(d[i + 1]); bs.push(d[i + 2]);
+  };
+  for (let x = 0; x < w; x += 4) { sample(x, 0); sample(x, h - 1); }
+  for (let y = 0; y < h; y += 4) { sample(0, y); sample(w - 1, y); }
+  const mid = (a) => a.sort((p, q) => p - q)[a.length >> 1];
+  const key = [mid(rs), mid(gs), mid(bs)];
+
+  /**
+   * Flood the field from the border. Two conditions, and both earn their keep:
+   *
+   * GREEN DOMINANCE, not proximity in RGB. A plain "within N of the key on
+   * every channel" box is wide enough to swallow lit skin — (200,180,150) sits
+   * inside it — so the fill leaks through the silhouette and eats holes in the
+   * face. Requiring green to LEAD the other two by a clear margin cannot: skin
+   * and hair are red-dominant whatever their brightness.
+   *
+   * And a flood rather than a global test, so a green in the ART — an eye, a
+   * print on a shirt — is never cleared just for being green.
+   */
+  const near = (i) => d[i + 1] - Math.max(d[i], d[i + 2]) >= 30
+    && Math.abs(d[i] - key[0]) < 60
+    && Math.abs(d[i + 1] - key[1]) < 60 && Math.abs(d[i + 2] - key[2]) < 60;
+  const seen = new Uint8Array(w * h);
+  const stack = [];
+  for (let x = 0; x < w; x++) { stack.push(x, 0, x, h - 1); }
+  for (let y = 0; y < h; y++) { stack.push(0, y, w - 1, y); }
+  while (stack.length) {
+    const y = stack.pop(), x = stack.pop();
+    if (x < 0 || y < 0 || x >= w || y >= h) continue;
+    const p = y * w + x;
+    if (seen[p]) continue;
+    seen[p] = 1;
+    if (!near(p * 4)) continue;
+    d[p * 4 + 3] = 0;
+    stack.push(x + 1, y, x - 1, y, x, y + 1, x, y - 1);
   }
+
+  // Four layers rather than three: these are soft-edged 512px renders, so the
+  // blend into the field runs a texel wider than a pixel-art sheet's does.
+  unmatteFringe(d, w, h, key, 4);
   ctx.putImageData(data, 0, 0);
   return c;
 }

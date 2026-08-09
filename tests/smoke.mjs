@@ -1145,7 +1145,10 @@ const pauseData = await page.evaluate(async () => {
   await new Promise((r) => setTimeout(r, 1100));
   out.health = q('.bay-vitals .odometer').textContent;
   out.wave = q('.tube-num').textContent;
-  out.waveState = q('.tube-state').textContent;
+  out.waveState = q('.tube-mode').textContent;
+  // The bank shows the FRACTION cleared; the count under the mode word is the
+  // only place the actual numbers appear now that the caption rows are gone.
+  out.waveCount = q('.tube-count').textContent;
   out.kills = q('.bay-progress .odometer').textContent;
   out.aim = q('.bay-aim .dev-gauge-cap').textContent.replace(/\s+/g, ' ').trim();
   out.clock = [...document.querySelectorAll('.flap')].map((f) => f.textContent).join('');
@@ -1163,8 +1166,9 @@ check('the readouts show the run that is actually being played',
   pauseData.health === '041' && pauseData.wave === '12' && pauseData.waveState === 'ENGAGED'
   && pauseData.kills === '001180' && /389 \/ 612/.test(pauseData.aim)
   && pauseData.tubesLit === 7 && pauseData.lampsLit === pauseData.secretsWanted
-  && pauseData.clock === '010222',
-  `hp ${pauseData.health} wave ${pauseData.wave}/${pauseData.waveState} kills ${pauseData.kills}`
+  && pauseData.clock === '010222' && pauseData.waveCount === '17/26',
+  `hp ${pauseData.health} wave ${pauseData.wave}/${pauseData.waveState} ${pauseData.waveCount}`
+  + ` kills ${pauseData.kills}`
   + ` aim "${pauseData.aim}" tubes ${pauseData.tubesLit}`
   + ` secrets ${pauseData.lampsLit}/${pauseData.secretsTotal} (want ${pauseData.secretsWanted})`
   + ` clock ${pauseData.clock}`);
@@ -1184,8 +1188,9 @@ check('the odometer rolls up to the score', pauseData.score === '014820', pauseD
 // Driven by real pointer moves rather than element.focus(), because
 // :focus-visible is a heuristic and a scripted focus does not always trip it.
 // The bays are readouts, not controls: nothing in them is clickable, so they
-// must not twitch under a cursor that is on its way to a button — and their
-// supporting figures must be on screen without having to point at them.
+// must not twitch under a cursor that is on its way to a button — and the
+// panel must say each thing ONCE, on its instrument, with no caption row
+// underneath restating it and no stencilled titles top and bottom.
 const bayRest = await page.evaluate(() => [...document.querySelectorAll('.bay')].map((b) => {
   const r = b.getBoundingClientRect();
   return { key: r.top.toFixed(1) + '|' + getComputedStyle(b).transform, cx: r.x + r.width / 2, cy: r.y + r.height / 2 };
@@ -1200,15 +1205,19 @@ for (const b of bayRest) {
   }));
   now.forEach((v, j) => { if (v !== bayRest[j].key) bayMoved.push(`bay${j}`); });
 }
-const bayDetails = await page.evaluate(() => [...document.querySelectorAll('.bay-detail')]
-  .map((d) => ({ t: d.textContent.trim(), h: d.getBoundingClientRect().height })));
+const pauseChrome = await page.evaluate(() => ({
+  extra: ['.bay-detail', '.pause-title', '.pause-stamp', '.pause-foot']
+    .filter((s) => document.querySelector(s)),
+  count: document.querySelector('.tube-count')?.textContent.trim() || '',
+}));
 await page.mouse.move(4, 4);
 check('the pause readouts do not move under the pointer',
   bayRest.length >= 7 && bayMoved.length === 0,
   `${bayRest.length} bays probed, moved: ${[...new Set(bayMoved)].join(' ') || 'none'}`);
-check('and every bay shows its supporting figure without being pointed at',
-  bayDetails.length >= 7 && bayDetails.every((d) => d.h > 0 && d.t.length > 0),
-  `${bayDetails.filter((d) => d.h > 0 && d.t).length}/${bayDetails.length} on screen`);
+check('and the panel carries no caption restating what an instrument shows',
+  pauseChrome.extra.length === 0 && /^(\d+\/\d+|CLEAR)$/.test(pauseChrome.count),
+  pauseChrome.extra.length ? `still present: ${pauseChrome.extra.join(' ')}`
+    : `wave count "${pauseChrome.count}"`);
 
 const readPact = () => window.__game && [...document.querySelectorAll('.pact')].map((b) => {
   const w = b.querySelector('.pact-wipe'), k = b.querySelector('.pact-key');
@@ -1797,6 +1806,102 @@ check('and it holds when the browser takes its time refusing',
 check('and the pointer comes back with you',
   arcEsc.fastRevoke.locked && arcEsc.locked,
   `prompt-revoke ${arcEsc.fastRevoke.locked}, late-revoke ${arcEsc.locked}`);
+
+/* a run you walked away from is still there when you come back            */
+// Escape at a cabinet used to throw the game away: play() built a new machine
+// every time, so a good run ended the moment a zombie walked past the arcade
+// door. Now the run is HELD, frozen, and re-entered paused — and the best
+// score rides along in the save.
+const arcHold = await page.evaluate(async () => {
+  const g = window.__game;
+  const settle = (n) => new Promise((r) => { let i = 0; const t = () => (++i >= n ? r() : requestAnimationFrame(t)); t(); });
+  const key = (code) => document.dispatchEvent(new KeyboardEvent('keydown', { code, key: code, bubbles: true }));
+  g.state.state = 'playing';
+  g.arcade.resetRun();
+  g.arcade.play('brickfall');
+  key('Space');                                    // launch the ball
+  for (let i = 0; i < 40; i++) { g.arcade.update(1 / 30); }
+  g.arcade.game.score = 340;                       // a run worth keeping
+  const mid = { score: g.arcade.game.score, bx: g.arcade.game.bx, by: g.arcade.game.by };
+  key('Escape');
+  await settle(3);
+  const away = { closed: !g.arcade.open, paused: g.arcade.paused };
+  // The world runs on while the cabinet is shut, and the machine must not.
+  for (let i = 0; i < 30; i++) g.arcade.update(1 / 30);
+  const still = g.arcade.games.brickfall.score === mid.score
+    && g.arcade.games.brickfall.bx === mid.bx && g.arcade.games.brickfall.by === mid.by;
+  g.arcade.play('brickfall');
+  await settle(2);
+  const back = { score: g.arcade.game.score, paused: g.arcade.paused, msg: g.arcade.msgEl.textContent };
+  // ...and it does not move until asked
+  for (let i = 0; i < 20; i++) g.arcade.update(1 / 30);
+  const frozen = g.arcade.game.bx === mid.bx && g.arcade.game.by === mid.by;
+  key('Space');
+  for (let i = 0; i < 20; i++) g.arcade.update(1 / 30);
+  const running = !g.arcade.paused && (g.arcade.game.bx !== mid.bx || g.arcade.game.by !== mid.by);
+  // the best score is in the save, and a NEW run wipes the board
+  g.arcade.best.vermin = 970;
+  const saved = g.captureSession().arcade;
+  g.arcade.resetRun();
+  const wiped = !g.arcade.games.brickfall && !g.arcade.best.vermin;
+  g.arcade.restore(saved);
+  const restored = g.arcade.best.vermin;
+  g.arcade.close();
+  g.arcade.resetRun();
+  return { mid, away, still, back, frozen, running, saved, wiped, restored };
+});
+check('a machine you walked away from keeps the run you left on it',
+  arcHold.away.closed && arcHold.away.paused && arcHold.still
+  && arcHold.back.score === arcHold.mid.score && arcHold.back.paused,
+  `closed ${arcHold.away.closed}, frozen while shut ${arcHold.still},`
+  + ` back at ${arcHold.back.score} (left ${arcHold.mid.score}), paused ${arcHold.back.paused}`);
+check('and it stays paused until you ask it to play on',
+  arcHold.frozen && arcHold.running && /PAUSED/.test(arcHold.back.msg),
+  `held still ${arcHold.frozen}, resumed ${arcHold.running}, "${arcHold.back.msg}"`);
+check('the cabinet high scores are written into the game save',
+  arcHold.saved?.best?.vermin === 970 && arcHold.wiped && arcHold.restored === 970,
+  `saved ${JSON.stringify(arcHold.saved?.best)}, wiped ${arcHold.wiped}, restored ${arcHold.restored}`);
+
+/* two keys per action, and either one fires it                            */
+// A player with a thumb button wants SPRINT on the thumb AND on Shift; the
+// action layer has to honour both slots, and the settings form has to offer
+// somewhere to put the second one.
+const binds = await page.evaluate(() => {
+  const g = window.__game;
+  const before = [...g.input.codesFor('sprint')];
+  g.settings.setBinding('sprint', 1, 'Mouse3');
+  g.settings.apply();
+  const out = { slots: [...g.input.codesFor('sprint')] };
+  const held = (fn) => { const was = g.input.keys, wasM = g.input.mouseDown; fn(); const v = g.input.isActionDown('sprint'); g.input.keys = was; g.input.mouseDown = wasM; return v; };
+  out.byPrimary = held(() => { g.input.keys = new Set(['ShiftLeft']); g.input.mouseDown = [false, false, false, false, false]; });
+  // 'Mouse3' is MouseEvent.button 3 — the thumb button, labelled MOUSE4.
+  out.byAlt = held(() => { g.input.keys = new Set(); g.input.mouseDown = [false, false, false, true, false]; });
+  out.byNeither = held(() => { g.input.keys = new Set(['KeyZ']); g.input.mouseDown = [false, false, false, false, false]; });
+  // both slots are on the form, and both are labelled
+  const row = document.querySelector('#screen-pause-settings .tm-bind-row');
+  out.chips = row ? [...row.querySelectorAll('.tm-bind-key')].map((b) => b.textContent) : [];
+  // a code belongs to exactly one cell: taking it moves it
+  g.settings.setBinding('reload', 1, 'ShiftLeft');
+  out.stolen = [...g.input.codesFor('sprint')];
+  out.thief = [...g.input.codesFor('reload')];
+  // and an action can never be left with nothing
+  out.clearedLast = g.settings.clearBinding('jump', 0);
+  g.settings.bindings.sprint = before;
+  g.settings.bindings.reload = ['KeyR'];
+  g.settings.apply();
+  return out;
+});
+check('every action takes two keys, and either one fires it',
+  binds.slots.join() === 'ShiftLeft,Mouse3' && binds.byPrimary && binds.byAlt && !binds.byNeither,
+  `${binds.slots.join(' + ')} — primary ${binds.byPrimary}, alternate ${binds.byAlt},`
+  + ` neither ${binds.byNeither}`);
+check('and the settings form offers both slots',
+  binds.chips.length === 2 && binds.chips.every((c) => c && c !== '—'),
+  `chips ${JSON.stringify(binds.chips)}`);
+check('a key can only be in one place, and no action is left unbound',
+  !binds.stolen.includes('ShiftLeft') && binds.thief.includes('ShiftLeft') && !binds.clearedLast,
+  `sprint ${binds.stolen.join('+')}, reload ${binds.thief.join('+')},`
+  + ` cleared jump's last key ${binds.clearedLast}`);
 
 /* a weapon you have not found leaves an EMPTY bay, not a preview          */
 // The Alien Blaster is a secret. A dimmed silhouette of it sitting in slot 6

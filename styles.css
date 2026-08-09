@@ -1013,10 +1013,12 @@ html, body {
   100% { opacity: 1; transform: none; filter: none; }
 }
 
-/* header: hold lamp, stencil title, stamped state */
+/* header: the hold lamp on a rule, and nothing else. A stencilled title and a
+   SYSTEM HOLD stamp both said what the lamp says, on a screen that is itself
+   the evidence the game is held. */
 .pause-head {
-  display: flex; align-items: center; gap: 10px;
-  padding: 0 6px 7px; border-bottom: 1px solid var(--fo-steel-lo);
+  display: flex; align-items: center;
+  padding: 0 6px 6px; border-bottom: 1px solid var(--fo-steel-lo);
   box-shadow: 0 1px 0 rgba(190,188,150,0.18);
 }
 .pause-lamp {
@@ -1029,21 +1031,6 @@ html, body {
 @keyframes holdlamp {
   0%, 55% { filter: none; box-shadow: 0 0 10px 2px rgba(184,40,28,0.9), inset 0 2px 2px rgba(255,255,255,0.25); }
   56%, 100% { filter: saturate(0.3) brightness(0.45); box-shadow: none; }
-}
-.pause-title {
-  font-size: 11px; font-weight: bold; letter-spacing: 3px; color: var(--fo-tan);
-  text-shadow: 0 1px 0 rgba(0,0,0,0.8);
-}
-.pause-title span { color: var(--fo-amber); }
-/* A rubber stamp struck on the plate: slightly off-square, and READABLE —
-   ink-red on olive is the one pairing in this palette with no contrast, so
-   the stamp gets its own bleached ground to bite into. */
-.pause-stamp {
-  margin-left: auto; font-size: 10px; letter-spacing: 4px; color: #ff5a42;
-  background: rgba(24, 8, 5, 0.72);
-  border: 2px solid var(--fo-red); border-radius: var(--rad-bay); padding: 2px 9px;
-  transform: rotate(-1.5deg);
-  text-shadow: 0 0 7px rgba(255,90,66,0.45), 0 1px 0 #000;
 }
 
 /* --- the bay grid ---------------------------------------------------- */
@@ -1096,14 +1083,6 @@ html, body {
   box-shadow: 0 1px 0 rgba(190,188,150,0.14);
 }
 .bay-body { flex: 1; display: flex; align-items: center; justify-content: center; min-width: 0; }
-/* Its supporting figure, always on. It used to unfold on hover, which meant
-   the number was hidden exactly when you were not pointing at it AND the bay
-   changed height when you were. Both are worse than simply showing it. */
-.bay-detail {
-  font-size: 8px; letter-spacing: 1px; color: var(--fo-green); text-align: center;
-  height: 11px; overflow: hidden;
-  white-space: nowrap; text-overflow: ellipsis;
-}
 
 /* --- VITALS: a graduated fluid cell ---------------------------------- */
 .cell-col {
@@ -1190,8 +1169,14 @@ html, body {
   20% { height: 18px; background: #7a6a30; box-shadow: 0 0 6px rgba(200,160,60,0.4); }
 }
 .tube-state { font-size: 9px; letter-spacing: 2px; min-width: 54px; text-align: right; }
-.tube-state.hot { color: var(--fo-amber); animation: modeblink 0.9s steps(2, end) infinite; }
-.tube-state.cool { color: var(--fo-green); }
+.tube-state.hot .tube-mode { color: var(--fo-amber); animation: modeblink 0.9s steps(2, end) infinite; }
+.tube-state.cool .tube-mode { color: var(--fo-green); }
+/* The count does NOT blink with the mode word — a number you are trying to
+   read is the last thing that should be strobing. */
+.tube-count {
+  font-size: 11px; letter-spacing: 1px; color: var(--fo-tan); margin-top: 3px;
+  text-shadow: 0 1px 0 rgba(0,0,0,0.8);
+}
 
 /* --- MARKSMANSHIP: the dock's needle gauge, on the bench -------------- */
 .bay-aim .dev-gauge-face { width: 150px; height: 100px; }
@@ -1365,12 +1350,6 @@ html, body {
 }
 #pause-case .pact-quit:hover, #pause-case .pact-quit:focus-visible { color: #ffd8ce; }
 #pause-case .pact-quit:hover .pact-wipe, #pause-case .pact-quit:focus-visible .pact-wipe { transform: scaleY(1); }
-
-.pause-foot {
-  font-size: 7px; letter-spacing: 2px; color: var(--fo-tan-dim); text-align: center;
-  border-top: 1px solid var(--fo-steel-lo); padding-top: 6px;
-  box-shadow: 0 -1px 0 rgba(190,188,150,0.12);
-}
 
 /* Short windows: drop the case to a single readable column of instruments
    rather than letting the grid push the action row off the bottom. */
@@ -1716,20 +1695,35 @@ html, body {
 }
 .tm-set-hint { font-size: 8px; letter-spacing: 1px; color: var(--fo-tan-dim); margin-top: -8px; }
 .tm-binds { display: flex; flex-direction: column; gap: 5px; }
-.tm-bind-row { display: grid; grid-template-columns: 1fr 120px; align-items: center; gap: 10px; }
+.tm-bind-row { display: grid; grid-template-columns: 1fr 240px; align-items: center; gap: 10px; }
 .tm-bind-row span { font-size: 10px; letter-spacing: 2px; color: var(--fo-tan); text-shadow: 0 1px 0 rgba(0,0,0,0.7); }
+/* Two slots per action, primary then alternate. The alternate is drawn a shade
+   quieter so the row still reads left-to-right as "this key, or this one" —
+   two identical caps read as two different actions. */
+.tm-bind-slots { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
 /* each binding is its own little stamped keycap */
 .tm-bind-key {
-  font-size: 11px; letter-spacing: 1px; padding: 6px 8px; cursor: pointer;
+  font-size: 11px; letter-spacing: 1px; padding: 6px 4px; cursor: pointer;
   color: var(--fo-green); text-shadow: 0 0 5px rgba(64,240,64,0.35);
   background-color: var(--fo-recess); background-image: var(--tex-recess);
   border: 1px solid var(--fo-steel-lo); border-radius: var(--rad-well);
   box-shadow: var(--bev-in);
-  text-align: center; min-width: 0;
+  text-align: center; min-width: 0; overflow: hidden; white-space: nowrap;
   transition: color 0.12s, box-shadow 0.12s;
+}
+/* MOUSE4 / RSHIFT are half again as wide as W — they get their own size
+   rather than being allowed to run out of the cap they are stamped on. */
+.tm-bind-key.long { font-size: 9px; letter-spacing: 0; }
+.tm-bind-key.alt { color: #2c8f2c; text-shadow: none; }
+.tm-bind-key.empty { color: var(--fo-tan-dim); text-shadow: none; }
+.tm-bind-key.unbound {           /* a primary with nothing on it: the action is dead */
+  color: #e05a44; border-color: var(--fo-red-lo);
+  box-shadow: var(--bev-in), inset 0 0 12px rgba(184,40,28,0.3);
 }
 .tm-bind-key:hover { color: var(--fo-amber); box-shadow: var(--bev-in), inset 0 0 14px rgba(240,160,32,0.25); }
 .tm-bind-key.capturing {
+  /* the armed label is longer than any key name, so it gets its own size */
+  font-size: 8px; letter-spacing: 0;
   color: #10120c; text-shadow: none;
   background-color: var(--fo-amber); background-image: none;
   box-shadow: var(--bev-out);

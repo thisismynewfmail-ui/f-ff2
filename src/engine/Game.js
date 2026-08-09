@@ -27,7 +27,7 @@ import { HUD } from '../rendering/HUD.js';
 import { ShopUI } from '../rendering/ShopUI.js';
 import { AudioManager } from '../audio/AudioManager.js';
 import { Shell } from './Shell.js';
-import { Arcade } from '../rendering/Arcade.js';
+import { Arcade, MACHINE_IDS } from '../rendering/Arcade.js';
 
 /**
  * Wires every system together and runs the frame loop. Owns nothing
@@ -184,6 +184,9 @@ export class Game {
       },
       onBeep: (kind, id) => this.audio.arcadeBeep(kind, id),
       onScore: (id, score, best, won) => this._arcadeScore(id, score, best, won),
+      // Same reason as the counter's: Escape carries no user activation, so
+      // the cabinet needs one exit that does (see Arcade._wire).
+      interactCodes: () => this.input.codesFor('interact'),
     });
     this.events.on('arcade:play', ({ id }) => {
       if (this.state.is('playing') && !this.inventory.open) this.arcade.play(id);
@@ -210,10 +213,11 @@ export class Game {
       },
       tokens: () => this.tokens.tokens,
       onBuy: (entry) => this._buy(entry),
-      // The live binding for [E], so the key that opened the counter also
-      // closes it — and does it with an activation the browser will accept a
-      // pointer-lock request under (see ShopUI._wire and _reclaimPointer).
-      interactCode: () => this.input.bindings.interact,
+      // The live bindings for [E] — both slots — so whichever key opened the
+      // counter also closes it, and does it with an activation the browser
+      // will accept a pointer-lock request under (see ShopUI._wire and
+      // _reclaimPointer).
+      interactCodes: () => this.input.codesFor('interact'),
     });
     this.events.on('shop:open', () => this.shop.openShop());
 
@@ -440,6 +444,10 @@ export class Game {
     this.tokens.restore({ tokens: 0, earned: 0, spent: 0 });
     this.sentries.reset();
     this.shop.resetStock();
+    // The cabinets go back to attract too: high scores and half-finished runs
+    // belong to the run that set them.
+    this.arcade.resetRun();
+    this._arcadePaid = null;
     this.checkpoint = {
       wave: 0, score: this.score.snapshot(), weapons: this.weapons.snapshotAmmo(),
       tokens: this.tokens.snapshot(), sentries: this.sentries.snapshot(),
@@ -465,6 +473,11 @@ export class Game {
       // earned and did not spend, so a resumed session that forgot them would
       // be quietly taking money off the table.
       this.tokens.restore(s.tokens ?? { tokens: 0, earned: 0, spent: 0 });
+      // ...and so do the cabinet high scores, along with which machines have
+      // already paid out, so a resumed session cannot farm the coin tray by
+      // clearing BRICKFALL a second time.
+      this.arcade.restore(s.arcade);
+      this._arcadePaid = new Set((s.arcade?.paid || []).filter((id) => MACHINE_IDS.includes(id)));
       const wave = Math.max(1, s.wave | 0);
       this.world.zones.syncTo(this.score.kills);
       this.waves.restartAtWave(wave);
@@ -490,6 +503,11 @@ export class Game {
       // The purse rides along with the run, so a saved session comes back with
       // what it had banked (see TokenSystem.snapshot / resumeSession).
       tokens: this.tokens.snapshot(),
+      // So do the cabinet high scores. A score nobody can see again the next
+      // time they sit down is not a high score, it is a number that was on
+      // screen once. `paid` is which machines have already dropped something
+      // in the tray, so the reward stays a first-clear reward.
+      arcade: { ...this.arcade.snapshot(), paid: [...(this._arcadePaid || [])] },
       wave,
       secretsFound: this.world.secrets.found.size,
       secretsTotal: this.world.secrets.total,

@@ -324,7 +324,7 @@ const shop = await page.evaluate(async () => {
   // grants none — so the button, the backdrop and the interact key are the
   // exits that always recapture the mouse on the spot.
   const open = () => { g.events.emit('shop:open', {}); return g.shop.open; };
-  out.byInteract = (open(), key(g.input.bindings.interact), !g.shop.open);
+  out.byInteract = (open(), key(g.input.codesFor("interact")[0]), !g.shop.open);
   out.byButton = (open(), g.shop.closeBtn.dispatchEvent(new MouseEvent('click', { bubbles: true })), !g.shop.open);
   out.byBackdrop = (open(), g.shop.el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })), !g.shop.open);
   // clicking the case itself is not a way out
@@ -332,7 +332,7 @@ const shop = await page.evaluate(async () => {
   g.shop.el.querySelector('.shop-case').dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
   out.caseHolds = g.shop.open;
   // an auto-repeat of the key that opened it must not close it again
-  key(g.input.bindings.interact, { repeat: true });
+  key(g.input.codesFor("interact")[0], { repeat: true });
   out.survivesRepeat = g.shop.open;
   // Tab belongs to the satchel, and the satchel declines to open here — so at
   // the counter it does nothing at all rather than doing both things at once

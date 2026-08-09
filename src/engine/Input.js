@@ -1,4 +1,4 @@
-import { DEFAULT_BINDINGS } from './KeyBindings.js';
+import { DEFAULT_BINDINGS, normalizeBindings } from './KeyBindings.js';
 
 /**
  * Keyboard + mouse input with pointer lock.
@@ -94,10 +94,11 @@ export class Input {
     this._settledTimer = null;
     this.onPointerLockChange = null;
     this.suppressed = false; // true while the dev console owns the keyboard
-    // Live action → code map (rebindable in Settings). Seeded with the defaults
-    // so movement works before any saved settings are applied.
-    this.bindings = { ...DEFAULT_BINDINGS };
-    this._boundCodes = new Set(Object.values(this.bindings));
+    // Live action → codes map (rebindable in Settings). Each action holds one
+    // or two codes and either fires it. Seeded with the defaults so movement
+    // works before any saved settings are applied.
+    this.bindings = normalizeBindings(DEFAULT_BINDINGS);
+    this._boundCodes = new Set(Object.values(this.bindings).flat());
 
     /**
      * Note every Escape the page actually receives — capture phase, and first,
@@ -288,12 +289,12 @@ export class Input {
     }
   }
 
-  /** Replace the action → code map (from Settings). Unknown actions are ignored;
+  /** Replace the action → codes map (from Settings). Unknown actions are ignored;
    *  missing ones keep their default so the player is never left unable to move. */
   setBindings(bindings) {
     if (!bindings) return;
-    this.bindings = { ...DEFAULT_BINDINGS, ...bindings };
-    this._boundCodes = new Set(Object.values(this.bindings));
+    this.bindings = normalizeBindings(bindings);
+    this._boundCodes = new Set(Object.values(this.bindings).flat());
   }
 
   isDown(code) { return this.keys.has(code); }
@@ -301,20 +302,23 @@ export class Input {
   wasClicked(button) { return this.mousePressed[button]; }
   isMouseDown(button) { return this.mouseDown[button]; }
 
-  /** Level state of a bound action (its code may be a key or a mouse button). */
+  /** The codes bound to an action, primary first. */
+  codesFor(action) { return this.bindings[action] || []; }
+
+  /** Level state of a bound action — EITHER of its codes, key or mouse button. */
   isActionDown(action) {
-    const code = this.bindings[action];
-    if (!code) return false;
-    if (code.startsWith('Mouse')) return !!this.mouseDown[+code.slice(5)];
-    return this.keys.has(code);
+    for (const code of this.codesFor(action)) {
+      if (code.startsWith('Mouse') ? this.mouseDown[+code.slice(5)] : this.keys.has(code)) return true;
+    }
+    return false;
   }
 
-  /** Edge-triggered press of a bound action this frame. */
+  /** Edge-triggered press of a bound action this frame, on either of its codes. */
   wasActionPressed(action) {
-    const code = this.bindings[action];
-    if (!code) return false;
-    if (code.startsWith('Mouse')) return !!this.mousePressed[+code.slice(5)];
-    return this.pressed.has(code);
+    for (const code of this.codesFor(action)) {
+      if (code.startsWith('Mouse') ? this.mousePressed[+code.slice(5)] : this.pressed.has(code)) return true;
+    }
+    return false;
   }
 
   /** Consume per-frame deltas; call once at the end of each update. */

@@ -70,7 +70,7 @@ the desktop shell.
 
 | Input | Action |
 | --- | --- |
-| WASD | Move |
+| WASD / arrows | Move |
 | Mouse | Look / primary fire (LMB) |
 | RMB | Secondary fire (per weapon — see Arsenal) |
 | Shift | Sprint |
@@ -82,12 +82,25 @@ the desktop shell.
 | E | Interact (talk to the vendor, pack up a deployed sentry) |
 | Tab | Satchel — click a sentry there to take it in hand (not at the counter) |
 | LMB / RMB (sentry in hand) | Set it down / put it back in the satchel |
-| Esc | Pause / resume — or, at an arcade cabinet or the vendor's pitch, step away from it |
+| Esc / E | At an arcade cabinet or the vendor's pitch, step away from it |
+| Esc | Otherwise: pause / resume |
 | ` / ~ | Dev console |
 
 The weapon menu is hidden during play; a number key or a mouse-wheel scroll
 fades it in at the top of the screen, and it fades back out after a couple of
 seconds (or the instant you fire).
+
+**Every action takes two keys.** Settings gives each row a primary and an
+alternate slot, and either one fires the action — Shift *and* the mouse's thumb
+button can both be SPRINT, which is how most people who use a thumb button
+actually want it. Click a slot, press the key or button; BKSP clears a slot
+(refused when it is the action's last one), ESC cancels the capture. A code
+lives in exactly one slot, so binding one that is already in use moves it:
+where there is something to swap the two exchange places, and where there is
+not the code is simply taken and the slot it left shows a dash. Settings saved
+before the second slot existed load unchanged, with the action's default
+alternate restored unless the player has since put it somewhere else
+(`src/engine/KeyBindings.js`, `normalizeBindings`).
 
 **Pausing always gives the mouse back.** Resuming asks the browser for the
 pointer, and a browser refuses that request outright for about a second after
@@ -345,7 +358,16 @@ There is deliberately no command that touches the kill counter — the
   **tube itself is alive** under the pose: a retrace band drifting down the
   screen, scanlines that crawl rather than sit, a slow breath in the phosphor
   glow, and a rare sync tick that snaps the picture sideways and flares as it
-  recovers — all faint enough never to obscure the face. Flanking
+  recovers — all faint enough never to obscure the face. The heads are art
+  shot against a flat green field, so **the same un-matting the sprite sheets
+  get is applied to them** (`unmatteFringe`, shared out of
+  `src/rendering/TextureLib.js`): clearing the pixels that read as green leaves
+  the tail of the blend standing, and on the tube's dark ground those washed
+  texels were the pale outline that used to run round the hair and shoulders.
+  The key is read from the border ring rather than a corner pixel, and the
+  fill requires green to LEAD the other two channels rather than merely to sit
+  near the key — a plain RGB box is wide enough to swallow lit skin, which
+  punched holes in the face. Flanking
   it sit two **field-device side HUDs** — the same radiused olive-steel
   housings with corner screws, coloured **bar meters**, round **icon lamps**
   and an aged-ivory **analog needle gauge** behind glass. The left unit is the
@@ -358,10 +380,10 @@ There is deliberately no command that touches the kill counter — the
   mechanical odometer, the needle and teal bar sweeping toward 250,000, a red
   bar through the current 1,000, a blue accuracy bar, lamps that blip on each
   kill and flash at every 1,000-kill milestone, and a REMAINING nameplate. Run
-  stats live on the **pause screen**, not on the HUD — seven instruments, each
-  with its supporting figure permanently on screen. The bays are readouts, not
-  controls, so **nothing in them moves under the pointer**; the action row is
-  where the pointer means something, and that still responds.
+  stats live on the **pause screen**, not on the HUD — seven instruments, and
+  no captions restating them. The bays are readouts, not controls, so
+  **nothing in them moves under the pointer**; the action row is where the
+  pointer means something, and that still responds.
 - **The arcade works.** Four cabinets in the Downtown arcade, and each one is
   a MACHINE rather than a coloured box: **BRICKFALL**, **VERMIN**, **SIEGE**
   and **RALLY**, each with its own marquee, its own palette, **printed side
@@ -372,10 +394,19 @@ There is deliberately no command that touches the kill counter — the
   than a lit still. Walk up and press [E] and you are playing
   it, on a 320x240 tube in a gunmetal cabinet with its own scanlines. The town
   is HELD while you play — the world clock does not advance, so nothing on the
-  street can reach you at the machine — and **Escape steps away from the
+  street can reach you at the machine — and **Escape or [E] steps away from the
   cabinet straight back into the street**, never into the pause menu, with the
-  pointer already back in the game. Clearing
-  a machine for the first time leaves something in the coin tray.
+  pointer already back in the game. ([E] is there for a reason: a browser only
+  grants pointer lock to a document holding transient user activation, and
+  **Escape grants none**, so an Escape exit alone left the mouse loose until
+  some later gesture redeemed it. An ordinary key press carries activation.
+  Clicking the room around the cabinet is a third exit, and the strongest.)
+  **Stepping away does not throw the run away**: each machine keeps its game —
+  score, lives, the ball where it was — and comes back PAUSED with the board
+  as you left it, playing on when you ask. The **best score on each cabinet
+  rides along in the game save**, as does which machines have already paid
+  out, so clearing one twice cannot farm the tray. Clearing a machine for the
+  first time leaves something in the coin tray.
 - **The pause screen is the same case, opened on the bench.** Seven readouts
   and seven DIFFERENT instruments, because a panel of identical rings makes
   you read every one of them from scratch every time — health is a **graduated
@@ -387,8 +418,13 @@ There is deliberately no command that touches the kill counter — the
   the number, and time is a **split-flap board**. It powers on rather than
   appearing: the case flashes up, the bays come in one by one, the needle
   sweeps and overshoots, the cell fills, the tape's read head seeks the count,
-  the lamps light in sequence and the flaps drop. Hovering an instrument lifts
-  it and gives up a second readout it otherwise keeps back. Each of the four
+  the lamps light in sequence and the flaps drop. Each instrument says its
+  thing ONCE: there is no stencilled title over the case, no stamp, no
+  property-of notice under it, and no green caption row beneath each bay
+  restating in words the number the instrument is already showing. A red hold
+  lamp on a rule is the whole header — the frozen game behind the case is the
+  rest of the message. The one figure that was not on an instrument, the
+  wave's cleared-of-quota, moved onto the tube bank. Each of the four
   actions has its own mechanism — RESUME wipes green across, SAVE RUN runs
   punched tape over its face, SETTINGS turns a driver slot, QUIT lifts hazard
   stripes — and the row can be walked with the arrow keys.
@@ -501,7 +537,12 @@ There is deliberately no command that touches the kill counter — the
   maintenance room in the back. The east flats hold working farmland —
   crop-row fields, an orchard planted in ranks, and a windmill that turns
   without wind. Old Town keeps a market morning that never ended, and North
-  Ave holds an abandoned checkpoint.
+  Ave holds an abandoned checkpoint. The **clocktower**'s dial is live (its
+  hands track the sky's day cycle) and is now set out from the WALL FACE in a
+  stone surround rather than pinned at a fixed offset from the building's
+  centreline — the tower's belt courses stand ten centimetres proud, one of
+  them lands at 11.35 m, and the old dial stood only five, so a stone band ran
+  straight across the middle of the clock.
   The **z=-120 street wall** carries five enterable shops and a firehouse,
   with four **service alleys** between them feeding a lane behind the row —
   the flanking routes that make the grid worth learning. **Founders Square**
@@ -530,7 +571,11 @@ There is deliberately no command that touches the kill counter — the
   approach, and windows are laid out **bay by bay between the interior walls**,
   so no pane ever has a partition down the middle of it and every room has its
   own light. Beyond the houses: a **community hall** (the one clear span in the
-  district, and the only Eastgate interior worth fighting a wave inside), a
+  district, and the only Eastgate interior worth fighting a wave inside — with
+  a **piano on the stage you can play**: the key bank goes down several times
+  over the length of the phrase, softer each time, and the two candlesticks on
+  the lid **catch while it plays**, each wick on its own beat and its own lean
+  so they never flicker in lockstep), a
   church with its graveyard, a corner shop, a filling station at the gate, a
   glasshouse still growing, a playground, and **Eastgate Green** — the open
   field inside the Wend Loop that nothing is ever planted on, kept clear so
@@ -890,7 +935,15 @@ unlocks, and the exact-250,000 victory (no win at 249,999; stats screen at
 claims at once: the town is HELD while the machine runs (world clock and
 health both frozen, so nothing on the street can reach a player at a cabinet),
 the machine itself is running, and Escape steps away from it into the STREET
-rather than into the pause menu. It plays the reported pause/resume dead end
+rather than into the pause menu. It then walks away from a cabinet mid-run and
+comes back to it: the score has to be the score it left, the board has to have
+stood still while the cabinet was shut, and the machine has to wait to be asked
+before it plays on — and the best score has to survive a trip through
+`captureSession`. Key bindings get the same treatment: an action's ALTERNATE
+slot is bound to a mouse button and the action has to fire off either slot, the
+form has to offer somewhere to put the second key, and a code bound twice has
+to end up in exactly one place with nothing left unbound. It plays the reported
+pause/resume dead end
 back at the game with the
 harness's pointer-lock bypass switched OFF and the browser made to refuse the
 first few requests — the one path that decides whether a player can carry on
