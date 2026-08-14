@@ -2008,97 +2008,196 @@ body.in-play, body.in-play * { cursor: none !important; }
 }
 
 /* ===================================================================
-   THE ORDER DIAL — the escort's radial command menu
+   THE ORDER DIAL — the adjutant's radial command instrument
    ------------------------------------------------------------------
-   Cut from the same plate as the rest of the interface: scratched
-   gunmetal ground, amber stencil, and a green CRT hub. The two halves
-   of the ring MEAN different things — posture on the right, rules on
-   the left — and they are tinted accordingly, which is what lets you
-   read your own orders back off it at a glance.
+   Cut from the same stock as the console and housed the same way: a
+   painted steel case with the keyline and four fixing screws, eight
+   WELLS sunk into it (recess = near-black, per rule 1), amber stencil
+   for the lettering, and a green CRT in the bore carrying her name and
+   her standing orders.
+
+   The two halves of the ring MEAN different things — posture on the
+   right, rules on the left, the way out at the foot — and each is
+   tinted a shade of the same darkness, which is what lets you read
+   your own orders back off it at a glance. Lit green is what she is
+   holding, lit amber is what the cursor is over.
+
+   The stencil is small on purpose: a dial is read by compass point,
+   and type sized to be shouted spills over the webs between the wells.
+   Every animation here is transform + opacity on four elements, plus a
+   fill flash on one path when an order lands.
    =================================================================== */
 #radial {
   position: absolute; inset: 0; z-index: 58;
   display: none; align-items: center; justify-content: center;
-  background: radial-gradient(ellipse at center, rgba(4,8,6,0.55), rgba(3,5,4,0.88) 70%);
+  background: radial-gradient(ellipse at center, rgba(4,8,6,0.5), rgba(3,5,4,0.9) 70%);
   pointer-events: auto;
 }
 .rad-dial {
   position: relative;
-  width: min(460px, 78vmin); height: min(460px, 78vmin);
+  width: min(420px, 62vmin); height: min(420px, 62vmin);
   display: flex; align-items: center; justify-content: center;
+  /* Ride above centre: the tip line lives under the dial and the
+     instrument dock owns the bottom of the window. */
+  margin-bottom: min(96px, 15vmin);
 }
-/* it spins up rather than appearing */
-.rad-dial.armed .rad-svg { animation: radIn 0.24s cubic-bezier(0.2, 1.3, 0.4, 1) both; }
-.rad-dial.armed .rad-hub { animation: radHub 0.3s ease-out 0.08s both; }
-@keyframes radIn {
-  0% { opacity: 0; transform: scale(0.82) rotate(-14deg); }
-  100% { opacity: 1; transform: none; }
+
+/* ---- the case: one circular plate of the same painted steel -------- */
+.rad-case {
+  position: absolute; inset: 0; border-radius: 50%;
+  background-color: var(--fo-steel); background-image: var(--tex-steel);
+  border: 1px solid var(--fo-steel-lo);
+  box-shadow: var(--bev-out), var(--deco-key), 0 10px 26px rgba(0,0,0,0.75);
+  image-rendering: pixelated;
 }
-@keyframes radHub { 0% { opacity: 0; transform: scale(0.7); } 100% { opacity: 1; transform: none; } }
+/* four fixing screws on the diagonals, each seated at its own angle */
+.rad-screw { image-rendering: auto; }
+.rad-screw.s1 { top: 15.2%; left: 15.2%; transform: rotate(38deg); }
+.rad-screw.s2 { top: 15.2%; right: 15.2%; transform: rotate(-56deg); }
+.rad-screw.s3 { bottom: 15.2%; left: 15.2%; transform: rotate(-15deg); }
+.rad-screw.s4 { bottom: 15.2%; right: 15.2%; transform: rotate(71deg); }
 
 .rad-svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
-.rad-plate {
-  fill: var(--fo-steel-deep);
-  stroke: var(--fo-steel-lo); stroke-width: 2;
-  filter: drop-shadow(0 8px 22px rgba(0,0,0,0.7));
-}
-.rad-hub-ring { fill: var(--fo-recess); stroke: var(--fo-steel-lo); stroke-width: 2; }
 
+/* the stepped collar around the rim and around the bore: black rebate,
+   bright hairline set inside it — the same edge as every window in the
+   chassis, at the only scale a circle allows */
+.rad-rebate { fill: none; stroke: rgba(0,0,0,0.6); stroke-width: 4; }
+.rad-keyline { fill: none; stroke: rgba(190,188,150,0.2); stroke-width: 1; }
+
+/* ---- the eight wells ----------------------------------------------
+   Each half of the ring keeps its OWN pair of lit colours in variables,
+   and the three states below just say which pair is in force. Written
+   the obvious way — a fill per state per half — the compound selectors
+   outrank the plain ones and an order she is already holding refuses to
+   light up under the cursor, which is the one place a dial must not go
+   quiet. Here every state rule carries the same weight and the last one
+   that applies wins: held, then hovered, then landed. */
 .rad-wedge {
-  fill: #2c3128; stroke: #11140f; stroke-width: 1.5;
-  cursor: pointer; transition: fill 0.1s, stroke 0.1s;
+  --well: #0e1109;            /* the well as cut */
+  --edge: #000;
+  --well-on: #16301a;         /* ...when she is holding this order */
+  --well-hot: #34290a;        /* ...and when the cursor is over it */
+  --edge-hot: var(--fo-amber);
+  fill: var(--well); stroke: var(--edge); stroke-width: 1.4;
+  cursor: pointer; transition: fill 0.09s linear, stroke 0.09s linear;
 }
 /* posture on the right of the dial, rules on the left, the exit at the foot */
-.rad-wedge.rad-posture { fill: #2f3428; }
-.rad-wedge.rad-rules { fill: #2a3030; }
-.rad-wedge.rad-exit { fill: #34291f; }
-.rad-wedge.on { fill: #4a5a34; stroke: var(--fo-green); }
-.rad-wedge.rad-rules.on { fill: #2f5045; stroke: var(--fo-green); }
-.rad-wedge.hot { fill: #6d5a1e; stroke: var(--fo-amber); }
-.rad-wedge.rad-exit.hot { fill: #6b3a24; stroke: #e08a5a; }
+.rad-wedge.rad-posture { --well: #12160c; }
+.rad-wedge.rad-rules { --well: #0d1312; --well-on: #113028; }
+.rad-wedge.rad-exit { --well: #170f09; --well-hot: #37190e; --edge-hot: #e08a5a; }
+/* what she is holding: phosphor. What the cursor is over: amber. */
+.rad-wedge.on { --well: var(--well-on); --edge: var(--fo-green-dim); }
+.rad-wedge.hot { --well: var(--well-hot); --edge: var(--edge-hot); }
+.rad-wedge.ping { --well: #d8ab4a; --edge: #ffe7a0; transition: none; }
 
 .rad-label {
-  font-family: 'Courier New', monospace; font-size: 11px; font-weight: bold;
-  letter-spacing: 1.5px; fill: var(--fo-tan); text-anchor: middle;
+  font-family: 'Courier New', monospace; font-size: 7.2px; font-weight: bold;
+  letter-spacing: 0.7px; fill: var(--fo-tan); text-anchor: middle;
   pointer-events: none; paint-order: stroke;
-  stroke: rgba(0,0,0,0.85); stroke-width: 3px;
+  stroke: rgba(0,0,0,0.9); stroke-width: 1.8px;
+  transition: fill 0.09s linear;
 }
-.rad-label.on { fill: #d8ffd8; }
+.rad-label.on { fill: #b8f5b8; }
 .rad-label.hot { fill: #ffe7a0; }
+.rad-label.ping { fill: #2a2006; stroke: transparent; transition: none; }
 
-.rad-hub {
-  position: relative; z-index: 2; width: 32%; height: 32%;
-  display: flex; flex-direction: column; align-items: center; justify-content: center;
-  gap: 4px; text-align: center; pointer-events: none;
-  border-radius: 50%;
-  background:
-    radial-gradient(ellipse at 50% 38%, rgba(40,90,50,0.4), transparent 66%),
-    var(--fo-recess);
-  box-shadow: var(--bev-in), inset 0 0 18px rgba(0,0,0,0.7);
+/* the detent numbers out by the rim, the way a rotary switch carries them */
+.rad-key {
+  font-family: 'Courier New', monospace; font-size: 5px; font-weight: bold;
+  letter-spacing: 0.5px; fill: var(--fo-tan-dim); text-anchor: middle;
+  opacity: 0.6; pointer-events: none;
+  transition: fill 0.09s linear, opacity 0.09s linear;
 }
-.rad-hub-title {
-  font-size: 10px; letter-spacing: 3px; color: var(--fo-amber);
-  text-shadow: 0 0 7px rgba(240,160,32,0.4);
+.rad-key.on { fill: var(--fo-green); opacity: 1; }
+.rad-key.hot { fill: var(--fo-amber); opacity: 1; }
+.rad-key.ping { fill: #2a2006; opacity: 1; transition: none; }
+
+/* ---- the CRT in the bore ------------------------------------------ */
+.rad-hub {
+  position: relative; z-index: 2; width: 33%; height: 33%;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 3px; text-align: center; pointer-events: none;
+  border-radius: 50%; overflow: hidden;
+  background-color: var(--fo-recess);
+  /* a tube that is switched on: the phosphor blooms off the top of the glass */
+  background-image:
+    radial-gradient(ellipse at 50% 36%, rgba(40,96,52,0.42), transparent 68%),
+    var(--tex-recess);
+  box-shadow: var(--bev-in), inset 0 0 0 2px rgba(0,0,0,0.5),
+    inset 0 0 0 3px rgba(190,188,150,0.14), inset 0 0 20px rgba(0,0,0,0.8);
+}
+.rad-hub::after {   /* the phosphor's scanlines, as on every tube here */
+  content: ''; position: absolute; inset: 0; pointer-events: none;
+  background: repeating-linear-gradient(0deg, rgba(0,0,0,0.28) 0 1px, transparent 1px 3px);
+}
+.rad-hub-name {
+  font-size: 12px; letter-spacing: 4px; color: var(--fo-amber);
+  text-shadow: 0 0 8px rgba(240,160,32,0.45);
+}
+.rad-hub-rule {    /* the scored line under the nameplate */
+  width: 54%; height: 1px; background: rgba(190,188,150,0.22);
+  box-shadow: 0 1px 0 rgba(0,0,0,0.8);
 }
 .rad-hub-state {
-  font-size: 8px; letter-spacing: 1.5px; color: var(--fo-green);
-  text-shadow: 0 0 7px rgba(64,240,64,0.35);
-  padding: 0 8px; line-height: 1.4;
+  font-size: 8.5px; letter-spacing: 1.4px; color: var(--fo-green);
+  text-shadow: 0 0 7px rgba(64,240,64,0.4);
+  padding: 0 6px; line-height: 1.4;
 }
-/* The hovered order's meaning sits under the dial, and the standing
-   instruction above it — one either side, so neither ends up behind the
-   instrument dock on a short window. */
+
+/* ---- the two plates, above and below ------------------------------ */
+/* The instrument's own nameplate sits over it and the hovered order's
+   meaning under it, so neither ends up behind the dock on a short window.
+   Both rows are full-width and centre their contents, which keeps the
+   open animation on translate alone. */
+.rad-plate-row, .rad-tip-row {
+  position: absolute; left: -10%; right: -10%; text-align: center;
+  pointer-events: none;
+}
+.rad-plate-row { top: -30px; }
+.rad-tip-row { bottom: -30px; }
+/* etched nameplate, same stock as the ones along the bottom of the dock */
+.rad-plate {
+  display: inline-block; padding: 3px 12px 4px;
+  font-size: 8px; letter-spacing: 3px; color: var(--fo-tan);
+  text-shadow: 0 1px 0 rgba(0,0,0,0.9);
+  background-color: var(--fo-steel-deep); background-image: var(--tex-plate);
+  border: 1px solid #000; border-radius: var(--rad-well);
+  box-shadow: var(--bev-thin), 0 2px 4px rgba(0,0,0,0.6);
+}
 .rad-tip {
-  position: absolute; left: 50%; bottom: -24px; transform: translateX(-50%);
-  font-family: 'Courier New', monospace;
-  font-size: 10px; letter-spacing: 2px; color: var(--fo-amber);
-  text-shadow: 0 1px 0 rgba(0,0,0,0.9);
-  white-space: nowrap; pointer-events: none;
+  display: inline-flex; align-items: baseline; gap: 8px;
+  font-size: 10px; letter-spacing: 1.5px;
+  text-shadow: 0 1px 0 rgba(0,0,0,0.95);
+  white-space: nowrap; max-width: 100%; overflow: hidden;
 }
-.rad-foot {
-  position: absolute; left: 50%; top: -30px; transform: translateX(-50%);
-  font-family: 'Courier New', monospace;
-  font-size: 8px; letter-spacing: 3px; color: var(--fo-tan-dim);
-  text-shadow: 0 1px 0 rgba(0,0,0,0.9);
-  white-space: nowrap; pointer-events: none;
+.rad-tip b { color: var(--fo-amber); }
+.rad-tip span { color: var(--fo-tan-dim); }
+
+/* ---- coming up ------------------------------------------------------
+   Four animated elements, transform and opacity only. The case swells,
+   the ring turns onto its stop a hair after it, the CRT strikes, and the
+   two plates drop in — a fifth of a second, over before the hand that
+   opened it has left the key. */
+#radial.armed { animation: radVeil 0.14s ease-out both; }
+#radial.armed .rad-case { animation: radCase 0.2s cubic-bezier(0.2, 1.1, 0.35, 1) both; }
+#radial.armed .rad-svg { animation: radRing 0.24s cubic-bezier(0.2, 1.15, 0.35, 1) both; }
+#radial.armed .rad-hub { animation: radHub 0.18s ease-out 0.07s both; }
+#radial.armed .rad-plate-row { animation: radSlab 0.2s ease-out 0.06s both; }
+#radial.armed .rad-tip-row { animation: radSlabUp 0.2s ease-out 0.06s both; }
+@keyframes radVeil { from { opacity: 0; } to { opacity: 1; } }
+@keyframes radCase { from { opacity: 0; transform: scale(0.9); } to { opacity: 1; transform: none; } }
+@keyframes radRing {
+  from { opacity: 0; transform: scale(0.93) rotate(-7deg); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes radHub { from { opacity: 0; transform: scale(0.78); } to { opacity: 1; transform: none; } }
+@keyframes radSlab { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@keyframes radSlabUp { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+
+@media (prefers-reduced-motion: reduce) {
+  #radial.armed, #radial.armed .rad-case, #radial.armed .rad-svg,
+  #radial.armed .rad-hub, #radial.armed .rad-plate-row, #radial.armed .rad-tip-row {
+    animation-duration: 0.01s; animation-delay: 0s;
+  }
 }

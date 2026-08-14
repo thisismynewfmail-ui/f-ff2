@@ -302,13 +302,13 @@ const shop = await page.evaluate(async () => {
   out.stocked = g.shop.remaining(sentry);
   out.carrying = g.sentries.stored;
 
-  // The escort: one only, five hundred, and she lands in the satchel folded.
-  const escort = SHOP_STOCK.find((s) => s.id === 'companion');
-  out.escortPrice = escort.price;
-  out.escortStock = escort.stock;
-  out.escortBought = g._buy(escort);
-  out.escortSecond = g._buy(escort) === false;      // there is only ever one
-  out.escortStored = g.companions.stored;
+  // The adjutant: one only, five hundred, and she lands in the satchel folded.
+  const adjutant = SHOP_STOCK.find((s) => s.id === 'companion');
+  out.adjutantPrice = adjutant.price;
+  out.adjutantStock = adjutant.stock;
+  out.adjutantBought = g._buy(adjutant);
+  out.adjutantSecond = g._buy(adjutant) === false;      // there is only ever one
+  out.adjutantStored = g.companions.stored;
 
   const rifle = SHOP_STOCK.find((s) => s.id === 'ammo_rifle');
   const w = g.weapons.weapons.find((x) => x.config.id === 'rifle');
@@ -321,7 +321,7 @@ const shop = await page.evaluate(async () => {
   /* Every line on the shelf has to be drawn as the thing it sells. _drawIcon
    * is a chain of id tests ending in an ELSE that draws pistol rounds, so any
    * line nobody wrote art for silently ships as a tray of ammunition — which
-   * is exactly what the escort was doing. Hash the pixels of each icon and
+   * is exactly what the adjutant was doing. Hash the pixels of each icon and
    * require them all distinct: a duplicate here means a fall-through. */
   const icons = {};
   for (const s of SHOP_STOCK) {
@@ -390,7 +390,7 @@ const stockOf = (id) => shop.lines.find((l) => l.id === id);
 check('the counter lists the sentry at 100 with six in stock',
   stockOf('sentry').price === 100 && stockOf('sentry').stock === 6,
   `${stockOf('sentry').price} tokens, ${stockOf('sentry').stock} on the shelf`);
-check('...and the escort at 500, one only',
+check('...and the adjutant at 500, one only',
   stockOf('companion').price === 500 && stockOf('companion').stock === 1,
   `${stockOf('companion')?.price} tokens, ${stockOf('companion')?.stock} on the shelf`);
 check('every ammunition type is listed separately at 10',
@@ -405,17 +405,17 @@ check('every line on the shelf is drawn as the thing it sells',
   && shop.icons.companion.hash !== shop.icons.ammo_pistol.hash
   && shop.icons.companion.ink > 300,
   iconHashes.size === iconIds.length
-    ? `${iconIds.length} distinct icons, the escort in ${shop.icons.companion.ink} px of ink`
+    ? `${iconIds.length} distinct icons, the adjutant in ${shop.icons.companion.ink} px of ink`
     : `only ${iconHashes.size} distinct icons across ${iconIds.length} lines`);
 check('[E] opens the counter and freezes the street', shop.opened && shop.frozen);
 check('an empty purse buys nothing', shop.brokeRefused);
 check('the whole shelf of sentries can be bought, and no more than that',
   shop.boughtAll && shop.stocked === 0 && shop.carrying === shop.sentryStock,
   `${shop.carrying} carried, ${shop.stocked} left of ${shop.sentryStock}`);
-check('and the escort is sold once, at five hundred',
-  shop.escortBought && shop.escortSecond && shop.escortStored === 1,
-  `bought ${shop.escortBought}, refused a second ${shop.escortSecond},`
-  + ` stored ${shop.escortStored}`);
+check('and the adjutant is sold once, at five hundred',
+  shop.adjutantBought && shop.adjutantSecond && shop.adjutantStored === 1,
+  `bought ${shop.adjutantBought}, refused a second ${shop.adjutantSecond},`
+  + ` stored ${shop.adjutantStored}`);
 check('ammunition costs 10 and reaches the gun',
   shop.ammoBought && shop.ammoCost === 10 && shop.ammoGained === 30,
   `${shop.ammoGained} rounds for ${shop.ammoCost}`);
@@ -597,15 +597,15 @@ check('...including noticing you standing in front of it',
   tricks.salutes, `saluted ${tricks.salutes}`);
 
 /* ------------------------------------------------------------------ */
-/* 7. the escort                                                       */
+/* 7. the adjutant                                                     */
 /* ------------------------------------------------------------------ */
-const escort = await page.evaluate(async () => {
+const adjutant = await page.evaluate(async () => {
   const { ANDROID_HEIGHT } = await import('/src/rendering/AndroidModel.js');
   const { ORDERS } = await import('/src/rendering/RadialMenu.js');
   const g = window.__game;
   const out = { declared: ANDROID_HEIGHT, playerHeight: g.player.height };
   g.companions.reset();
-  g.events.emit('pickup', { type: 'companion', amount: 1, label: 'Escort Unit' });
+  g.events.emit('pickup', { type: 'companion', amount: 1, label: 'Adjutant Unit' });
   out.stored = g.companions.stored;
 
   const THREE = await import('/lib/three.module.js');
@@ -696,6 +696,59 @@ const escort = await page.evaluate(async () => {
   g.world.hasLineOfSight = realLos;
   c.order('follow'); c.order('passive');
 
+  /* BOTH ARMS THE SAME WAY ROUND. Her poses are written body-relative — a
+   * positive roll is away from the torso on either side — and mirrored ONCE,
+   * in CompanionAnimator._apply. Say it in the pose as well and the mirror is
+   * applied twice: one arm braces out and the other swings through her ribs,
+   * which is invisible to every check above and glaring from two metres away.
+   * So: hold a pose, and require the two hands to land as mirror images with
+   * neither of them inside the body. */
+  const handsX = () => {
+    c.mesh.updateWorldMatrix(true, true);
+    const chest = c.rig.parts.chest;
+    return c.rig.parts.arms.map((a) => {
+      const v = new THREE.Vector3();
+      a.hand.getWorldPosition(v);
+      return +chest.worldToLocal(v).x.toFixed(3);
+    });
+  };
+  const hold = (state, t = null, frames = 90) => {
+    c.anim.setState('idle'); c.anim.setState(state);
+    for (let i = 0; i < frames; i++) {
+      if (t !== null) c.anim.stateT = t;                 // pin one instant of a cycle
+      c.anim.update(1 / 60, { speed: state === 'walk' ? 2 : 0 });
+    }
+    return handsX();
+  };
+  out.symmetry = ['alert', 'ranged', 'sit', 'walk'].map((s) => {
+    const [l, r] = hold(s);
+    return { s, l, r, ok: Math.abs(l + r) < 0.03 && l < -0.15 && r > 0.15 };
+  });
+  // The melee combo alternates which arm swings, so its two beats are not
+  // symmetric in themselves — they are mirrors of EACH OTHER, and were not.
+  const beatA = hold('melee', 0.4);
+  const beatB = hold('melee', 1.3);
+  out.combo = { beatA, beatB,
+    ok: Math.abs(beatA[0] + beatB[1]) < 0.03 && Math.abs(beatA[1] + beatB[0]) < 0.03 };
+
+  /* THE DIAL ITSELF. Eight wells cut into the plate, the two orders she is
+   * holding lit, an order taken off it landing on her and relighting — and the
+   * flash it lands with put out behind it, because a class left on a wedge is
+   * still lit the next time she is asked for orders. */
+  c.order('follow'); c.order('attack');
+  g.radial.openOn(c);
+  const litNow = () => [...document.querySelectorAll('#radial .rad-wedge.on')]
+    .map((w) => w.dataset.cmd).sort().join('+');
+  out.dial = { wells: document.querySelectorAll('#radial .rad-wedge').length, lit: litNow() };
+  document.querySelector('#radial .rad-wedge[data-cmd="stay"]')
+    .dispatchEvent(new MouseEvent('click', { bubbles: true }));
+  out.dial.took = c.posture === 'stay';
+  out.dial.hub = document.querySelector('#radial .rad-hub-state').textContent;
+  out.dial.relit = litNow();
+  g.radial.close();
+  out.dial.clean = !g.radial.open && document.querySelectorAll('#radial .ping').length === 0;
+  c.order('follow');
+
   // the horde must not know she is there
   out.onFriendlyRoster = g.friendlies.includes(c);
   out.tagged = [...c.tags];
@@ -706,34 +759,46 @@ const escort = await page.evaluate(async () => {
   g.companions.reset();
   return out;
 });
-check('the escort stands shorter than the player',
-  escort.shorter && Math.abs(escort.measured - escort.declared) < 0.06,
-  `${escort.measured.toFixed(2)}m vs player ${escort.playerHeight}m (declared ${escort.declared})`);
+check('the adjutant stands shorter than the player',
+  adjutant.shorter && Math.abs(adjutant.measured - adjutant.declared) < 0.06,
+  `${adjutant.measured.toFixed(2)}m vs player ${adjutant.playerHeight}m (declared ${adjutant.declared})`);
 check('she unfolds out of the satchel and stands up',
-  escort.stored === 1 && escort.deployed && escort.stoodUp, `state after unfolding: ${escort.stoodUp}`);
+  adjutant.stored === 1 && adjutant.deployed && adjutant.stoodUp, `state after unfolding: ${adjutant.stoodUp}`);
 check('every order on the dial is one she answers to',
-  escort.wedges === 8 && escort.everyOrderTakes && escort.describes === 'HOLDING · ARC',
-  `${escort.wedges} orders, "${escort.describes}"`);
-check('STAY pins her post to where she is standing', escort.postAtStay);
+  adjutant.wedges === 8 && adjutant.everyOrderTakes && adjutant.describes === 'HOLDING · ARC',
+  `${adjutant.wedges} orders, "${adjutant.describes}"`);
+check('STAY pins her post to where she is standing', adjutant.postAtStay);
 check('told to follow, she walks — and runs when she is behind',
-  escort.walked > 6 && escort.gaits.includes('walk') && escort.gaits.includes('run'),
-  `${escort.walked.toFixed(1)}m covered, gaits ${escort.gaits.join('/')}`);
+  adjutant.walked > 6 && adjutant.gaits.includes('walk') && adjutant.gaits.includes('run'),
+  `${adjutant.walked.toFixed(1)}m covered, gaits ${adjutant.gaits.join('/')}`);
 check('her weapons are built in, and come out only when they are allowed',
-  escort.gunParts === 0 && escort.bladesOut && escort.hitIt && escort.podsOut && escort.standsDown,
-  `gun parts ${escort.gunParts}, blades ${escort.bladesOut}, hit ${escort.hitIt},`
-  + ` pods ${escort.podsOut}, stood down ${escort.standsDown}`);
+  adjutant.gunParts === 0 && adjutant.bladesOut && adjutant.hitIt && adjutant.podsOut && adjutant.standsDown,
+  `gun parts ${adjutant.gunParts}, blades ${adjutant.bladesOut}, hit ${adjutant.hitIt},`
+  + ` pods ${adjutant.podsOut}, stood down ${adjutant.standsDown}`);
+check('the dial cuts eight wells, lights the two she holds, and takes an order',
+  adjutant.dial.wells === 8 && adjutant.dial.lit === 'attack+follow'
+  && adjutant.dial.took && adjutant.dial.relit === 'attack+stay'
+  && adjutant.dial.hub === 'HOLDING · FREE' && adjutant.dial.clean,
+  `${adjutant.dial.wells} wells, lit ${adjutant.dial.lit} → ${adjutant.dial.relit},`
+  + ` hub "${adjutant.dial.hub}", left clean ${adjutant.dial.clean}`);
+check('both arms are posed as mirrors, with neither hand inside her',
+  adjutant.symmetry.every((p) => p.ok),
+  adjutant.symmetry.map((p) => `${p.s} ${p.l}/${p.r}`).join(', '));
+check('...and the blade combo reads the same on the backhand as the forehand',
+  adjutant.combo.ok,
+  `beats ${adjutant.combo.beatA.join('/')} then ${adjutant.combo.beatB.join('/')}`);
 check('her arc reaches well past the sentry\'s, and she fires without closing',
-  escort.long.arcs > 0 && escort.long.hit > 0 && escort.long.moved < 0.6,
-  `${escort.long.arcs} bolts at 18 m, ${escort.long.hit} hits, moved ${escort.long.moved.toFixed(2)}m`);
+  adjutant.long.arcs > 0 && adjutant.long.hit > 0 && adjutant.long.moved < 0.6,
+  `${adjutant.long.arcs} bolts at 18 m, ${adjutant.long.hit} hits, moved ${adjutant.long.moved.toFixed(2)}m`);
 check('...and the longer reach did not turn her into a melee unit',
-  escort.mid.arcs > 0 && escort.mid.blades < 0.5,
-  `at 8 m on ATTACK: ${escort.mid.arcs} bolts, blades ${escort.mid.blades.toFixed(2)}`);
+  adjutant.mid.arcs > 0 && adjutant.mid.blades < 0.5,
+  `at 8 m on ATTACK: ${adjutant.mid.arcs} bolts, blades ${adjutant.mid.blades.toFixed(2)}`);
 check('...and a guard shoots what she can see, not just what she would chase',
-  escort.guard.arcs > 0 && escort.guard.moved < 1.2,
-  `${escort.guard.arcs} bolts at 15 m from post, moved ${escort.guard.moved.toFixed(2)}m`);
+  adjutant.guard.arcs > 0 && adjutant.guard.moved < 1.2,
+  `${adjutant.guard.arcs} bolts at 15 m from post, moved ${adjutant.guard.moved.toFixed(2)}m`);
 check('and the horde has no idea she exists',
-  !escort.onFriendlyRoster && !escort.tagged.includes('friendly'), escort.tagged.join('/'));
-check('PACK UP folds her back into the satchel', escort.packed);
+  !adjutant.onFriendlyRoster && !adjutant.tagged.includes('friendly'), adjutant.tagged.join('/'));
+check('PACK UP folds her back into the satchel', adjutant.packed);
 
 
 check('no console errors across the run', errors.length === 0, errors.slice(0, 3).join(' | '));

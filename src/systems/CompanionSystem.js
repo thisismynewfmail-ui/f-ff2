@@ -2,7 +2,7 @@ import * as THREE from '../../lib/three.module.js';
 import { Companion } from '../entities/Companion.js';
 
 /**
- * Owns the escort: the folded one in the satchel, the one standing in the
+ * Owns the adjutant: the folded one in the satchel, the one standing in the
  * street, and the bolt of arc she throws when she uses her shoulder pods.
  *
  * The loop is the sentry's loop, deliberately — one item, one contract, learnt
@@ -49,7 +49,7 @@ export class CompanionSystem {
    */
   _syncSatchel() {
     this.events.emit('inventory:sync', {
-      type: 'companion', label: 'Escort Unit', count: this.stored,
+      type: 'companion', label: 'Adjutant Unit', count: this.stored,
     });
   }
 
@@ -75,7 +75,7 @@ export class CompanionSystem {
     this.unit = new Companion(this.events, this.world, this.texLib, { x, z, yaw: p.yaw });
     this.scene.add(this.unit.mesh);
     this.events.emit('subtitle', {
-      text: 'The escort unfolds, finds her feet, and looks at you for orders. [E] to give them.',
+      text: 'The adjutant unfolds, finds her feet, and looks at you for orders. [E] to give them.',
     });
     return this.unit;
   }

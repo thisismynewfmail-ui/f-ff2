@@ -101,7 +101,7 @@ export class Game {
     this.sentries = new SentrySystem(
       this.events, this.world, this.texLib, this.renderer.scene, this.player);
     this.checkpoint.sentries = this.sentries.snapshot();
-    // The escort: folded in the satchel, or standing in the street taking
+    // The adjutant: folded in the satchel, or standing in the street taking
     // orders. Owned the same way the sentries are, for the same reasons.
     this.companions = new CompanionSystem(
       this.events, this.world, this.texLib, this.renderer.scene, this.player);
@@ -231,7 +231,7 @@ export class Game {
     this.events.on('shop:open', () => this.shop.openShop());
 
     /**
-     * The escort's order dial. Same contract as the counter and the cabinets:
+     * The adjutant's order dial. Same contract as the counter and the cabinets:
      * it freezes the street while it is up, and Escape or [E] puts the player
      * straight back with the pointer rather than in front of the pause menu.
      */
@@ -546,7 +546,7 @@ export class Game {
       // in the tray, so the reward stays a first-clear reward.
       arcade: { ...this.arcade.snapshot(), paid: [...(this._arcadePaid || [])] },
       // The hardware you bought rides with the run: the sentries you have not
-      // used up, and the escort — folded or standing, with her orders.
+      // used up, and the adjutant — folded or standing, with her orders.
       sentries: this.sentries.snapshot(),
       companion: this.companions.snapshot(),
       wave,
@@ -779,7 +779,7 @@ export class Game {
     // The sentries shoot from the same zombie list the horde is stepped with,
     // and the held one reads the mouse for its placement click.
     this.sentries.update(dt, ctx, this.input, this.radial?.open || this.shop?.open);
-    // ...and the escort walks, fights and takes her orders off the same list.
+    // ...and the adjutant walks, fights and takes her orders off the same list.
     this.companions.update(dt, ctx);
 
     // x-ray cheat: run this AFTER the spawner (so any zombies streamed in this

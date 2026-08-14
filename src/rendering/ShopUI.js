@@ -50,9 +50,9 @@ export const SHOP_STOCK = [
     buy: (events) => events.emit('pickup', { type: 'sentry', amount: 1, label: 'Portable Sentry' }),
   },
   {
-    id: 'companion', name: 'ESCORT UNIT "NEKO"', price: 500, stock: 1, bay: 'hardware',
+    id: 'companion', name: 'ADJUTANT UNIT "NEKO"', price: 500, stock: 1, bay: 'hardware',
     blurb: 'Refurbished companion android. Walks, follows, and has opinions about doorways.',
-    buy: (events) => events.emit('pickup', { type: 'companion', amount: 1, label: 'Escort Unit' }),
+    buy: (events) => events.emit('pickup', { type: 'companion', amount: 1, label: 'Adjutant Unit' }),
   },
   ...AMMO_LINES.map((a) => ({
     id: a.id, name: a.name, price: AMMO_PRICE, stock: Infinity, bay: 'ammo',

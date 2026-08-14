@@ -1,7 +1,7 @@
 import * as THREE from '../../lib/three.module.js';
 
 /**
- * THE ESCORT UNIT — a refurbished companion android, and the only thing in
+ * THE ADJUTANT — a refurbished companion android, and the only thing in
  * this town that walks beside you on purpose.
  *
  * She is built as a MACHINE SHAPED LIKE A PERSON, not as a person: enamel
@@ -135,7 +135,7 @@ export function buildAndroidModel(texLib = null) {
   const joint = M(0x3a3f46);        // the exposed articulation
   const steel = M(0x8f97a0);
   const oil = M(0x1a1c20);
-  const trim = M(0x7a3f5a);         // the plum the county painted its escorts
+  const trim = M(0x7a3f5a);         // the plum the county painted its adjutants
   const trimLit = M(0x9c5474);
   const brass = texLib
     ? new THREE.MeshLambertMaterial({ map: texLib.get('vendorBrass') })
@@ -556,8 +556,10 @@ export class CompanionAnimator {
     o.spinePitch = 0.85;
     o.headPitch = 0.55;
     o.earPitch = -1.1;
-    o.armL = { pitch: 1.5, roll: 0.5, elbow: -2.2, wrist: 0 };
-    o.armR = { pitch: 1.5, roll: -0.5, elbow: -2.2, wrist: 0 };
+    // tucked in against the knees — negative roll is toward the chest, and
+    // both arms take the same number because _apply mirrors it
+    o.armL = { pitch: 1.5, roll: -0.25, elbow: -2.2, wrist: 0 };
+    o.armR = { pitch: 1.5, roll: -0.25, elbow: -2.2, wrist: 0 };
     o.legL = { hip: -1.7, knee: 2.3, ankle: 0.5 };
     o.legR = { hip: -1.7, knee: 2.3, ankle: 0.5 };
     o.tail = { curl: 1.5, sway: 0, lift: -0.2 };
@@ -578,13 +580,14 @@ export class CompanionAnimator {
     o.chestPitch = -stretch * 0.14;
     o.headPitch = lerp(0.55, 0, k) - stretch * 0.35;
     o.earPitch = lerp(-1.1, 0, k) - stretch * 0.7;
-    const armK = (a) => ({
+    // out of the tuck and then thrown wide for the stretch, both arms alike
+    const armK = {
       pitch: lerp(1.5, 0.06, k) - stretch * 1.9,
-      roll: lerp(a * 0.5, a * 0.10, k) + stretch * a * 0.35,
+      roll: lerp(-0.25, 0.10, k) + stretch * 0.35,
       elbow: lerp(-2.2, -0.22, k) + stretch * 0.6,
       wrist: 0,
-    });
-    o.armL = armK(1); o.armR = armK(-1);
+    };
+    o.armL = { ...armK }; o.armR = { ...armK };
     const legK = { hip: lerp(-1.7, 0, k), knee: lerp(2.3, 0, k), ankle: lerp(0.5, 0, k) };
     o.legL = { ...legK }; o.legR = { ...legK };
     o.tail = { curl: lerp(1.5, 0.30, k) - stretch * 0.5, sway: Math.sin(f * 9) * 0.2 * stretch, lift: lerp(-0.2, 0.12, k) + stretch * 0.5 };
@@ -613,6 +616,8 @@ export class CompanionAnimator {
         break;
       }
       case 'groom': {                        // cleans the back of a hand. Cat.
+        // The one pose that is meant to be one-sided: the negative roll takes
+        // that hand ACROSS to her face, and only that arm is written.
         const s = Math.sin(this.idleT * 4.2);
         o.armR = { pitch: 1.75 * k + 0.06, roll: -0.55 * k, elbow: -1.85 * k - 0.22, wrist: s * 0.3 * k };
         o.headPitch += 0.42 * k;
@@ -628,7 +633,7 @@ export class CompanionAnimator {
         o.headPitch -= 0.40 * s;
         o.earPitch = -0.85 * s;
         o.armL = { pitch: -1.6 * s + 0.06, roll: 0.4 * s, elbow: -0.3, wrist: 0 };
-        o.armR = { pitch: -1.6 * s + 0.06, roll: -0.4 * s, elbow: -0.3, wrist: 0 };
+        o.armR = { pitch: -1.6 * s + 0.06, roll: 0.4 * s, elbow: -0.3, wrist: 0 };
         o.tail.lift += 0.7 * s;
         o.hipY += 0.02 * s;
         break;
@@ -701,15 +706,16 @@ export class CompanionAnimator {
     };
     o.legL = leg(0);
     o.legR = leg(Math.PI);
-    // arms swing opposite their leg
-    const arm = (ph, side) => ({
+    // arms swing opposite their leg, and both stand a little further off the
+    // ribs the faster she is going, so the elbows never brush the torso
+    const arm = (ph) => ({
       pitch: 0.06 - Math.sin(s + ph) * 0.55 * amp,
-      roll: 0.10 + side * 0.04 * amp,
+      roll: 0.10 + 0.04 * amp,
       elbow: -0.22 - Math.max(0, Math.sin(s + ph)) * 0.45 * amp,
       wrist: 0,
     });
-    o.armL = arm(Math.PI, 1);
-    o.armR = arm(0, -1);
+    o.armL = arm(Math.PI);
+    o.armR = arm(0);
     // and the tail counterweights the hips, a beat behind them
     o.tail.sway = -Math.sin(s - 0.7) * 0.42 * amp;
     o.tail.lift = 0.12 + Math.abs(Math.sin(s)) * 0.18 * amp;
@@ -742,7 +748,7 @@ export class CompanionAnimator {
     o.legL = { hip: 0.22, knee: -0.55, ankle: 0.30 };
     o.legR = { hip: -0.12, knee: -0.45, ankle: 0.22 };
     o.armL = { pitch: 0.45, roll: 0.35, elbow: -1.15, wrist: 0 };
-    o.armR = { pitch: 0.45, roll: -0.35, elbow: -1.15, wrist: 0 };
+    o.armR = { pitch: 0.45, roll: 0.35, elbow: -1.15, wrist: 0 };
     o.tail.sway = l * 0.65;                   // the lash: fast, wide, unhappy
     o.tail.lift = 0.55 + l * 0.12;
     o.tail.curl = 0.10;
@@ -750,8 +756,9 @@ export class CompanionAnimator {
   }
 
   /**
-   * MELEE — a two-beat combo on the blades: right hand across, left hand back,
-   * with the hips leading each swing because that is where the power is.
+   * MELEE — a two-beat combo on the blades: one hand across and the other held
+   * back out of the way, the two swapping on the second beat, with the hips
+   * leading each swing because that is where the power is.
    */
   _pose_melee(o) {
     const f = (this.stateT % 0.9) / 0.9;
@@ -765,8 +772,11 @@ export class CompanionAnimator {
     o.headYaw += dir * 0.25 * k;
     o.earPitch = -0.55;
     o.earSpread = 0.25;
-    const swing = { pitch: 1.15 * k + 0.06, roll: -dir * 0.85 * k, elbow: -0.35 - 0.8 * (1 - k), wrist: dir * 0.6 * k };
-    const guard = { pitch: 0.55 * k + 0.06, roll: dir * 0.5 * k, elbow: -1.5, wrist: 0 };
+    // The swinging arm crosses the chest and the other one is held out of the
+    // way, whichever arm is which this beat — body-relative, so the pair reads
+    // the same on the backhand as on the forehand.
+    const swing = { pitch: 1.15 * k + 0.06, roll: -0.85 * k, elbow: -0.35 - 0.8 * (1 - k), wrist: 0.6 * k };
+    const guard = { pitch: 0.55 * k + 0.06, roll: 0.5 * k, elbow: -1.5, wrist: 0 };
     if (first) { o.armR = swing; o.armL = guard; } else { o.armL = swing; o.armR = guard; }
     o.legL = { hip: 0.30 * dir, knee: -0.5, ankle: 0.25 };
     o.legR = { hip: -0.30 * dir, knee: -0.4, ankle: 0.2 };
@@ -790,7 +800,7 @@ export class CompanionAnimator {
     o.earPitch = 0.15 - fire * 0.6;
     o.earSpread = 0.22;
     o.armL = { pitch: 0.30, roll: 0.55 + fire * 0.2, elbow: -0.9, wrist: 0 };
-    o.armR = { pitch: 0.30, roll: -0.55 - fire * 0.2, elbow: -0.9, wrist: 0 };
+    o.armR = { pitch: 0.30, roll: 0.55 + fire * 0.2, elbow: -0.9, wrist: 0 };
     o.legL = { hip: 0.26, knee: -0.42, ankle: 0.20 };
     o.legR = { hip: -0.26, knee: -0.42, ankle: 0.20 };
     o.tail.lift = 0.35 + charge * 0.4;
@@ -810,7 +820,7 @@ export class CompanionAnimator {
     o.legR = { hip: -1.15 * k, knee: 1.85 * k, ankle: -0.5 * k };
     o.spinePitch = 0.02 + 0.06 * k;
     o.armL = { pitch: 0.10, roll: 0.18 * k, elbow: -0.35, wrist: 0 };
-    o.armR = { pitch: 0.10, roll: -0.18 * k, elbow: -0.35, wrist: 0 };
+    o.armR = { pitch: 0.10, roll: 0.18 * k, elbow: -0.35, wrist: 0 };
     o.tail.curl = 0.30 + 0.75 * k;
     o.tail.sway = Math.sin(this.t * 0.9) * 0.18;
     o.tail.lift = 0.12 - 0.10 * k;
@@ -879,10 +889,20 @@ export class CompanionAnimator {
     }
 
     // --- arms
+    //
+    // ROLL AND WRIST ARE WRITTEN BODY-RELATIVE, AND MIRRORED HERE. Positive is
+    // AWAY from the torso on either side; negative crosses the chest. A pose
+    // therefore states what BOTH arms are doing with the same number, and the
+    // `a.side` below is the only place the two sides are ever told apart.
+    //
+    // Say it in the pose as well and you mirror twice: the arm on +x lands on
+    // side × (−roll) and swings INTO the ribs while its opposite number swings
+    // out, which is what a companion clipping her own elbow through her chest
+    // in every braced pose looks like from the outside.
     const armFrom = (src, key, a) => {
       a.shoulder.rotation.set(sm(key + 'p', src.pitch, 9), 0, a.side * sm(key + 'r', src.roll, 9));
       a.elbow.rotation.x = sm(key + 'e', src.elbow, 9);
-      a.wrist.rotation.z = sm(key + 'w', src.wrist ?? 0, 10);
+      a.wrist.rotation.z = a.side * sm(key + 'w', src.wrist ?? 0, 10);
     };
     armFrom(o.armL, 'aL', p.arms[0]);
     armFrom(o.armR, 'aR', p.arms[1]);

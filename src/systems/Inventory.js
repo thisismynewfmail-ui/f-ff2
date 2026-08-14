@@ -29,7 +29,7 @@ const SLOTS = 20;
 // (see below), because that system also has to answer for the one in your
 // hands and the ones standing in the street.
 const STORABLE = new Set(['key', 'companionCube']);
-// Click to take it back out. The escort is here for the same reason the sentry
+// Click to take it back out. The adjutant is here for the same reason the sentry
 // is and is owned the same way — CompanionSystem answers for whether she is
 // folded up or standing in the street, and states the count through
 // 'inventory:sync'.

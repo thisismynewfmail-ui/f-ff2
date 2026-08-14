@@ -5,7 +5,7 @@ import { turnToward } from '../ai/Steering.js';
 import { buildAndroidModel, CompanionAnimator, ANDROID_HEIGHT } from '../rendering/AndroidModel.js';
 
 /**
- * THE ESCORT UNIT — the android companion, once she is standing in the world.
+ * THE ADJUTANT — the android companion, once she is standing in the world.
  *
  * She is the only thing in this game that takes ORDERS. Everything else either
  * hunts you, ignores you, or sits where it was put; she is told what to do and
@@ -112,7 +112,7 @@ export class Companion extends Entity {
 
     this.interactable = world.addInteractable({
       x, z, y, radius: 2.2,
-      prompt: 'Give the escort an order [E]',
+      prompt: 'Give the adjutant an order [E]',
       enabled: () => !this.toRemove && this.state !== 'unfold',
       onInteract: () => this.events.emit('companion:orders', { companion: this }),
     });
