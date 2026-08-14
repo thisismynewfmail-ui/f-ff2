@@ -83,8 +83,8 @@ the desktop shell.
 | Tab | Satchel — click a sentry to take it in hand, or the adjutant to unfold her |
 | R (sentry in hand) | Swing its arc 25° |
 | LMB / RMB (sentry in hand) | Set it down / put it back in the satchel |
-| Esc / E | At an arcade cabinet or the vendor's pitch, step away from it |
-| Esc | Otherwise: pause / resume |
+| E / click outside | At an arcade cabinet, the vendor's pitch or the order dial, step away from it |
+| Esc | Pause. It does not un-pause, and it does not close a menu |
 | ` / ~ | Dev console |
 
 The weapon menu is hidden during play; a number key or a mouse-wheel scroll
@@ -111,20 +111,25 @@ to un-pause into a state with no mouse look, no cursor and no key that did
 anything about it, since Escape only ever paused by dropping a lock there was
 no longer any of. The request is a standing intent now: `src/engine/Input.js`
 keeps asking a few times a second until it lands, and retries on the spot
-whenever the player presses or clicks anything. Escape closes the pause screen
-as well as opening it, and pausing cancels any outstanding request (so the
-retry cannot reach around the menu and take the pointer back under it).
+whenever the player presses or clicks anything. Escape OPENS the pause screen
+and never closes it — that one is left on its buttons, so a stray press of the
+key that put it up cannot drop you back into a wave you were not looking at —
+and pausing cancels any outstanding request (so the retry cannot reach around
+the menu and take the pointer back under it).
 
-**Leaving a menu on Escape is silent, and so is the moment after it.** There is
-no "click to take the mouse back" plate any more. It existed because the
-recapture genuinely can fail, and the reason it can is worth stating exactly:
-**a browser only grants pointer lock to a page holding transient user
-activation, and the HTML spec forbids Escape from granting any** — deliberately,
-so a page cannot trap you by re-locking on the very key you press to escape it.
-Every overlay in this game closes on Escape. So the request made inside that
-keypress has nothing behind it, and whether it lands is the browser's call.
-(This is why the same menus close *instantly and perfectly* on their button, on
-a click off the case, and on [E] — every one of those carries activation.)
+**No menu closes on Escape, and that is deliberate twice over.** The first
+reason is the player's: Escape is the key you hit by reflex to mean "not
+that", and a counter, a cabinet or an order dial you walked up to and opened
+on purpose should not fall over when you do. The second is the browser's, and
+it is worth stating exactly: **a browser only grants pointer lock to a page
+holding transient user activation, and the HTML spec forbids Escape from
+granting any** — deliberately, so a page cannot trap you by re-locking on the
+very key you press to escape it. A menu closed on Escape therefore cannot hand
+the mouse back reliably, which is the whole reason there used to be a "click to
+take the mouse back" plate. Every overlay now closes on its button, on a click
+off the case, or on [E] — every one of those carries activation, so every one
+of them gets the pointer back on the spot. Escape is swallowed where an overlay
+is open (so it can never reach the pause screen either) and otherwise pauses.
 
 What the game does about it: it stops asking the player to fix it, and it stops
 waiting on the answer. The prompt is gone; the **system cursor is hidden for the
@@ -354,7 +359,8 @@ There is deliberately no command that touches the kill counter — the
   `time <0-24>` in the dev console jumps the clock; the cockroach reads
   day/night from it.
 - **Inventory (Tab):** a themed satchel for quest items such as keys. Opening
-  frees the mouse for the UI and freezes the world; Tab (or Esc) closes it and
+  frees the mouse for the UI and freezes the world; Tab (or a click outside the
+  panel) closes it and
   hands the mouse straight back to the game.
 - **One material, one palette, one bevel.** Every interface in the game — the
   HUD dock, the pause case, the satchel, the arcade cabinet, the title rail,
@@ -438,9 +444,10 @@ There is deliberately no command that touches the kill counter — the
   than a lit still. Walk up and press [E] and you are playing
   it, on a 320x240 tube in a gunmetal cabinet with its own scanlines. The town
   is HELD while you play — the world clock does not advance, so nothing on the
-  street can reach you at the machine — and **Escape or [E] steps away from the
-  cabinet straight back into the street**, never into the pause menu, with the
-  pointer already back in the game. ([E] is there for a reason: a browser only
+  street can reach you at the machine — and **[E], or a click on the room
+  around the cabinet, steps away from it straight back into the street**, never
+  into the pause menu, with the pointer already back in the game. Escape is
+  swallowed at a machine you are playing and does nothing at all. ([E] is there for a reason: a browser only
   grants pointer lock to a document holding transient user activation, and
   **Escape grants none**, so an Escape exit alone left the mouse loose until
   some later gesture redeemed it. An ordinary key press carries activation.
@@ -1111,8 +1118,9 @@ unlocks, and the exact-250,000 victory (no win at 249,999; stats screen at
 250,000). It walks up to an arcade cabinet and plays it, which is three
 claims at once: the town is HELD while the machine runs (world clock and
 health both frozen, so nothing on the street can reach a player at a cabinet),
-the machine itself is running, and Escape steps away from it into the STREET
-rather than into the pause menu. It then walks away from a cabinet mid-run and
+the machine itself is running, and [E] steps away from it into the STREET
+rather than into the pause menu — while Escape, at a cabinet or in any other
+overlay, does nothing at all. It then walks away from a cabinet mid-run and
 comes back to it: the score has to be the score it left, the board has to have
 stood still while the cabinet was shut, and the machine has to wait to be asked
 before it plays on — and the best score has to survive a trip through

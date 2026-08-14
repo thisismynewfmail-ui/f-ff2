@@ -17,12 +17,13 @@ import { buildVendorModel, VendorAnimator, HEIGHT as VENDOR_H } from './VendorMo
  * down to which idle it happens to be playing. It only draws while the shop is
  * open, so it costs nothing the rest of the run.
  *
- * ESCAPE IS THE WHOLE POINT OF THE PLUMBING. Leaving a shop means going back
- * to the street with the mouse captured — never the pause menu. The handler
- * runs in the capture phase and stops the event dead, exactly the way the
- * arcade cabinets do (see rendering/Arcade.js and the pointer notes in
- * engine/Game.js): the game's own Escape handler and the pause screen never
- * see it, and the host takes the pointer back on the next frame.
+ * LEAVING IS THE WHOLE POINT OF THE PLUMBING. It means going back to the
+ * street with the mouse captured — never the pause menu — and it happens on
+ * [E] or on a click outside the counter. Escape is swallowed in the capture
+ * phase and acted on by nobody, exactly the way the arcade cabinets handle it
+ * (see rendering/Arcade.js and the pointer notes in engine/Game.js): the
+ * game's own Escape handler and the pause screen never see it, and the host
+ * takes the pointer back on the next frame.
  *
  * The catalogue is data (SHOP_STOCK), so adding a line is adding an object.
  * Every entry declares its price, how many the machine has, and what buying it
@@ -107,7 +108,7 @@ export class ShopUI {
         <div class="shop-foot">
           <span class="shop-till">TOKENS <b>0</b></span>
           <span class="shop-hint">CLICK TO BUY</span>
-          <button type="button" class="shop-close">STEP BACK &nbsp;[ESC]</button>
+          <button type="button" class="shop-close">STEP BACK &nbsp;[E]</button>
         </div>
       </div>`;
     root.appendChild(this.el);
@@ -413,7 +414,17 @@ export class ShopUI {
       // Tab here meant the one keypress opened the satchel AND shut the shop,
       // leaving the player in an inventory they never asked for. The satchel
       // simply declines to open at the counter instead (see Game.load).
-      if (e.code === 'Escape' || this.cb.interactCodes?.().includes(e.code)) {
+      // ...and Escape is NOT one of them. It is swallowed here rather than
+      // acted on: a reflex key should not close a counter the player walked
+      // up to and opened on purpose, and stopping it dead keeps it off the
+      // pause screen as well. [E] and a click on the ground outside are the
+      // ways out.
+      if (e.code === 'Escape') {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        return;
+      }
+      if (this.cb.interactCodes?.().includes(e.code)) {
         e.preventDefault();
         e.stopImmediatePropagation();
         this.close();

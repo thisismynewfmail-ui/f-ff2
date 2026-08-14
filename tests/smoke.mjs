@@ -1303,10 +1303,14 @@ const arc = await page.evaluate(async () => {
   out.played = g.arcade.game.rows.length < before || g.arcade.game.score > 0;
   out.scoreShown = document.querySelector('.arc-score b').textContent;
 
-  // Escape leaves the machine and drops the player back into the street. It
-  // must NOT reach the pause handler: a player stepping away from a cabinet
-  // wants the street, not a stats panel they did not ask for.
+  // Escape does NOT leave the machine — a reflex key must not switch off a run
+  // you are in the middle of — and it must not reach the pause handler either.
   document.dispatchEvent(new KeyboardEvent('keydown', { code: 'Escape', key: 'Escape', bubbles: true }));
+  out.escHeld = g.arcade.open;
+  out.escPause = getComputedStyle(document.getElementById('screen-pause')).display;
+  // A click on the room around the cabinet is the way out, and it is the one
+  // that always hands the pointer back: a click is user activation.
+  document.getElementById('arcade').dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
   out.closed = !g.arcade.open && getComputedStyle(document.getElementById('arcade')).display === 'none';
   out.stillPlaying = g.state.state;
   out.pauseShown = getComputedStyle(document.getElementById('screen-pause')).display;
@@ -1325,7 +1329,9 @@ check('walking up to one starts it', arc.opened && arc.suppressed,
 check('the town is held while you play', arc.worldHeld,
   'world clock and health both frozen');
 check('and the machine itself runs', arc.played, `score readout ${arc.scoreShown}`);
-check('Escape steps away from the machine, not into the pause menu',
+check('Escape does nothing at a machine you are playing',
+  arc.escHeld && arc.escPause === 'none', `still open ${arc.escHeld}, pause ${arc.escPause}`);
+check('a click off the cabinet steps away from it, not into the pause menu',
   arc.closed && arc.stillPlaying === 'playing' && arc.pauseShown === 'none' && arc.handedBack,
   `closed ${arc.closed}, state ${arc.stillPlaying}, pause ${arc.pauseShown}, input back ${arc.handedBack}`);
 check('and the town starts moving again', arc.worldResumed);
@@ -1434,11 +1440,14 @@ const lockFix = await page.evaluate(async () => {
   out.paused1 = g.state.state;
   out.wantsNothingWhilePaused = g.input.lockWanted === false;
 
-  // Escape must close the pause screen. It used not to: the handler was gated
-  // on test mode, so in a real run the only thing that ever left this screen
-  // was the RESUME button.
+  // ESCAPE MUST NOT CLOSE THE PAUSE SCREEN. It is what put the screen up, and
+  // a stray press of it cannot be allowed to drop the player back into a wave
+  // they are not looking at — this screen is left on its buttons, on purpose.
   esc();
-  out.escResumed = g.state.state;
+  out.escHeldPause = g.state.state;
+  // RESUME is the way out, and it has to leave ASKING for the pointer.
+  document.getElementById('btn-resume').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+  out.resumed = g.state.state;
   out.wantsPointer = g.input.lockWanted === true;
   const askedAtResume = asked;
 
@@ -1503,10 +1512,13 @@ const lockFix = await page.evaluate(async () => {
   out.lateGrantReturned = !document.pointerLockElement && !g.input.pointerLocked;
   out.stillPaused = g.state.state;
 
-  // and Escape gets back out of it a second time, which is the exact sequence
-  // in the report: pause, resume, pause, and then stuck.
+  // ...and RESUME gets back out of it a second time, which is the exact
+  // sequence in the report: pause, resume, pause, and then stuck. Escape is
+  // tried again first, and must again do nothing.
   esc();
-  out.escResumed2 = g.state.state;
+  out.escHeldPause2 = g.state.state;
+  document.getElementById('btn-resume').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+  out.resumed2 = g.state.state;
 
   // The RESUME button is the other way out, and it has to ask for the pointer
   // the same way — it was reported stuck too.
@@ -1543,8 +1555,12 @@ const lockFix = await page.evaluate(async () => {
   g.state.state = 'playing';
   return out;
 });
-check('Escape closes the pause screen', lockFix.escResumed === 'playing' && lockFix.escResumed2 === 'playing',
-  `first ${lockFix.escResumed}, after a second pause ${lockFix.escResumed2}`);
+check('Escape opens the pause screen and never closes it',
+  lockFix.escHeldPause === 'paused' && lockFix.escHeldPause2 === 'paused',
+  `held ${lockFix.escHeldPause} / ${lockFix.escHeldPause2}`);
+check('RESUME closes it, twice over',
+  lockFix.resumed === 'playing' && lockFix.resumed2 === 'playing',
+  `first ${lockFix.resumed}, after a second pause ${lockFix.resumed2}`);
 check('resuming asks for the pointer, and keeps asking when refused',
   lockFix.wantsPointer && lockFix.retried >= 2,
   `wanted ${lockFix.wantsPointer}, ${lockFix.retried} retries after the refusal`);

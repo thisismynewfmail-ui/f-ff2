@@ -18,10 +18,12 @@
  *   onClose()  hand the mouse back and carry on
  *   onScore(id, score, best)  a run finished; the world may do as it likes
  *
- * Escape closes the machine and drops the player straight back into the game.
- * It never reaches the pause menu: the handler runs in the capture phase and
- * stops the event dead, because a player leaving Asteroids wants to be back in
- * the street, not looking at a stats panel.
+ * [E] closes the machine and drops the player straight back into the game, and
+ * so does a click on the ground outside the cabinet. ESCAPE DOES NEITHER: it is
+ * swallowed in the capture phase and acted on by nobody, because a reflex press
+ * should not switch off a machine you are mid-run on — and because a player
+ * leaving Asteroids wants to be back in the street, never looking at a stats
+ * panel they did not ask for.
  *
  * Stepping away does not throw the game away. Each machine keeps its run —
  * score, lives, the ball where it was — and comes back PAUSED with the board
@@ -536,7 +538,7 @@ export class Arcade {
           <span class="arc-how"></span>
           <span class="arc-best">BEST <b>0</b></span>
         </div>
-        <div class="arc-coin">ESC — STEP AWAY FROM THE MACHINE</div>
+        <div class="arc-coin">CLICK OUTSIDE — STEP AWAY FROM THE MACHINE</div>
       </div>`;
     root.appendChild(this.el);
     this.canvas = this.el.querySelector('.arc-screen');
@@ -566,7 +568,16 @@ export class Arcade {
       // seconds later" report. An ordinary key press carries activation, so
       // leaving on [E] gets the mouse back on the spot. Same fix, same reason,
       // as the vendor's counter.
-      if (e.code === 'Escape' || (this._exitCode && e.code === this._exitCode)) {
+      // Escape is swallowed rather than obeyed: a machine you are playing is
+      // not something a reflex key should switch off mid-game, and stopping it
+      // dead here keeps it off the pause screen too. [E] and a click outside
+      // the cabinet are the ways out.
+      if (e.code === 'Escape') {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        return;
+      }
+      if (this._exitCode && e.code === this._exitCode) {
         e.preventDefault();
         e.stopImmediatePropagation();
         this.close();
@@ -629,8 +640,8 @@ export class Arcade {
     this.game.beep = (kind) => this.callbacks.onBeep?.(kind, id);
     this._exitCode = this._pickExitCode();
     this.coinEl.textContent = this._exitCode
-      ? `ESC OR ${codeLabel(this._exitCode)} — STEP AWAY FROM THE MACHINE`
-      : 'ESC — STEP AWAY FROM THE MACHINE';
+      ? `${codeLabel(this._exitCode)} OR CLICK OUTSIDE — STEP AWAY FROM THE MACHINE`
+      : 'CLICK OUTSIDE — STEP AWAY FROM THE MACHINE';
     if (!held || held.over) this._start();
     else this._hold();          // a run left in progress: back on the board, frozen
     this.callbacks.onOpen?.(id);
