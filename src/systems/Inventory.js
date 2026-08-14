@@ -33,7 +33,10 @@ const STORABLE = new Set(['key', 'companionCube']);
 // is and is owned the same way — CompanionSystem answers for whether she is
 // folded up or standing in the street, and states the count through
 // 'inventory:sync'.
-const DROPPABLE = new Set(['companionCube', 'sentry', 'companion']);
+// Exported because it is a CONTRACT as much as a list: everything a player can
+// put out into the world is something a death has to be able to fetch back
+// (Game.respawn), and the suite holds the two lists against each other.
+export const DROPPABLE = new Set(['companionCube', 'sentry', 'companion']);
 const ACTION_LABEL = { companionCube: 'DROP', sentry: 'DEPLOY', companion: 'UNFOLD' };
 const ACTION_HINT = {
   companionCube: 'Click to set it down',

@@ -536,7 +536,12 @@ There is deliberately no command that touches the kill counter — the
   checkpoint — kills, score and wave all restored — then that wave respawns from
   scratch (die at wave 45 → back to 40). The district barriers re-seal to match
   the rolled-back kill count, so any sections you'd opened stand again and must
-  be re-earned.
+  be re-earned. **The hardware does not roll back.** Dying costs you the wave,
+  not the kit you paid tokens for: every sentry folds up — the ones bolted to
+  the pavement and the one in your hands — the adjutant folds up, and the
+  Companion Cube comes back from wherever you set it down, all of it stowed in
+  the satchel and none of it left across town from where you respawn. Whatever
+  was already in the satchel is untouched.
 - **Progression:** six districts unlock at kill milestones — Old Town
   (start), Eastgate Residential (50), Downtown (150), Hollow Park
   (2,500), Southside Industrial (4,500), Chapel Ridge (7,000). Barricades
@@ -840,8 +845,8 @@ There is deliberately no command that touches the kill counter — the
   config, so it is never better than the gun in your hand, just a second one
   that never looks away. Nothing targets it: it is off the friendly roster too.
   Press [E] on a deployed one and it folds back into the satchel. Sentries roll
-  back with a checkpoint, standing again where they stood, and `spawn sentry` in
-  the console stands one up a foot in front of you — the ordinary machine, not a
+  come home to the satchel when you die rather than being left standing, and
+  `spawn sentry` in the console stands one up a foot in front of you — the ordinary machine, not a
   special one, so it packs into the satchel like a bought one.
 
   **It is built as a mechanism, not as the shape of one.** Every joint that

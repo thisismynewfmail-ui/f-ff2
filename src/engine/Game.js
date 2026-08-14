@@ -100,12 +100,10 @@ export class Game {
     // frame from the same shared AI context the horde is stepped with.
     this.sentries = new SentrySystem(
       this.events, this.world, this.texLib, this.renderer.scene, this.player);
-    this.checkpoint.sentries = this.sentries.snapshot();
     // The adjutant: folded in the satchel, or standing in the street taking
     // orders. Owned the same way the sentries are, for the same reasons.
     this.companions = new CompanionSystem(
       this.events, this.world, this.texLib, this.renderer.scene, this.player);
-    this.checkpoint.companion = this.companions.snapshot();
     this.npc = new NPC(this.events, this.world, this.texLib.get('npcPeaceful'));
     this.renderer.scene.add(this.npc.mesh);
     // Friendlies zombies may fall back to hunting, and the roster the NPCs
@@ -403,8 +401,7 @@ export class Game {
       if (wave % 10 === 0) {
         this.checkpoint = {
           wave, score: this.score.snapshot(), weapons: this.weapons.snapshotAmmo(),
-          tokens: this.tokens.snapshot(), sentries: this.sentries.snapshot(),
-      companion: this.companions.snapshot(),
+          tokens: this.tokens.snapshot(),
         };
       }
     });
@@ -483,8 +480,7 @@ export class Game {
     this._arcadePaid = null;
     this.checkpoint = {
       wave: 0, score: this.score.snapshot(), weapons: this.weapons.snapshotAmmo(),
-      tokens: this.tokens.snapshot(), sentries: this.sentries.snapshot(),
-      companion: this.companions.snapshot(),
+      tokens: this.tokens.snapshot(),
     };
     this.player.respawn();
     this.startPlaying();
@@ -519,8 +515,7 @@ export class Game {
       this.waves.restartAtWave(wave);
       this.checkpoint = {
         wave, score: this.score.snapshot(), weapons: this.weapons.snapshotAmmo(),
-        tokens: this.tokens.snapshot(), sentries: this.sentries.snapshot(),
-      companion: this.companions.snapshot(),
+        tokens: this.tokens.snapshot(),
       };
     }
     this.startPlaying();
@@ -654,11 +649,34 @@ export class Game {
     // Reapply the ammo the player held at the checkpoint — dying no longer means
     // crawling back out with the empty magazines you died on.
     this.weapons.restoreAmmo(cp.weapons);
-    // ...and the purse and the hardware with it: the tokens they had banked,
-    // and their sentries standing back where the checkpoint left them.
+    // ...and the purse with it: the tokens they had banked at the checkpoint.
     this.tokens.restore(cp.tokens);
-    this.sentries.restore(cp.sentries);
-    this.companions.restore(cp.companion);
+    /**
+     * THE HARDWARE COMES HOME, ALL OF IT, INTO THE SATCHEL.
+     *
+     * Dying costs the player the wave they were on. It does not cost them kit
+     * they paid tokens for, and it must not leave that kit where they died —
+     * a respawn puts them back at the spawn point, and a rollback used to put
+     * their sentries back wherever the CHECKPOINT had them, which is a
+     * different place again and usually a long walk from either.
+     *
+     * So: every sentry folds up (the ones bolted down and the one in their
+     * hands), the adjutant folds up, and the cube comes back from wherever it
+     * was set down — all of it stowed, none of it destroyed, and whatever was
+     * already in the satchel left exactly where it was. The one thing that
+     * cannot come back is the cube nobody has found yet: it is not the
+     * player's until they have found it once.
+     *
+     * These three ARE the satchel's droppables (Inventory's DROPPABLE), which
+     * is the invariant to keep: anything the satchel can put out into the
+     * world is something this has to be able to fetch back.
+     */
+    const recovered = this.sentries.recallAll()
+      + (this.companions.recall({ quiet: true }) ? 1 : 0)
+      + (this.world.companionCube?.recall() ? 1 : 0);
+    if (recovered > 0) {
+      this.events.emit('subtitle', { text: 'Everything you had out in the field is back in the satchel.' });
+    }
     // Re-seal the districts that the rolled-back kill count no longer clears, so
     // the section walls stand again (and reopen as the player re-earns them).
     this.world.zones.syncTo(cp.score.kills);

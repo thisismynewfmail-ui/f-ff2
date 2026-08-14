@@ -28,6 +28,7 @@ export class CompanionCube {
   constructor(world) {
     this.world = world;
     this.taken = false;
+    this.found = false;       // has the player ever had their hands on it
     this._fallVy = 0;
     this._falling = false;
     const b = world.built.get('meridianTower');
@@ -62,12 +63,40 @@ export class CompanionCube {
 
   _take() {
     if (this.taken) return;
-    this.taken = true;
-    this.world.group.remove(this.mesh);
-    this.world.collision.remove(this._colliderId);
+    this.found = true;
+    this._stow();
     this.world.events.emit('pickup', { type: 'companionCube', amount: 1, label: 'Companion Cube' });
     this.world.events.emit('subtitle', { text: 'The cube is warm. It seems glad you came.' });
     this.world.events.emit('whisper', { intensity: 0.4 });
+  }
+
+  /** Off the ground and out of the collision set. */
+  _stow() {
+    this.taken = true;
+    this._falling = false;
+    this.world.group.remove(this.mesh);
+    this.world.collision.remove(this._colliderId);
+  }
+
+  /**
+   * Take it back without walking to it — what a death does.
+   *
+   * Only ever from somewhere the PLAYER put it down: `found` is what separates
+   * a cube set down in the street from one still sitting in the dark of the
+   * maintenance room, which is nobody's until it has been found once.
+   *
+   * The count is STATED rather than added to, the way the satchel's other
+   * owning systems state theirs (see Inventory's 'inventory:sync'). There is
+   * exactly one of this thing in the world, so the only honest number a
+   * recall can report is one, whatever the satchel believed a moment ago.
+   */
+  recall() {
+    if (this.taken || !this.found || !this.mesh) return false;
+    this._stow();
+    this.world.events.emit('inventory:sync', {
+      type: 'companionCube', label: 'Companion Cube', count: 1,
+    });
+    return true;
   }
 
   /**

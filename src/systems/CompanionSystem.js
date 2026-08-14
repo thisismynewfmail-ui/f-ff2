@@ -80,8 +80,14 @@ export class CompanionSystem {
     return this.unit;
   }
 
-  /** Fold her back up — the PACK UP order on the dial. */
-  recall() {
+  /**
+   * Fold her back up — the PACK UP order on the dial.
+   *
+   * `quiet` is for the times she is not being ASKED: a respawn packs her up
+   * along with everything else the player owns, and a fold chirp and a line of
+   * subtitle over the death screen would be reporting an order nobody gave.
+   */
+  recall({ quiet = false } = {}) {
     if (!this.unit) return false;
     this.scene.remove(this.unit.mesh);
     this.unit.toRemove = true;
@@ -89,8 +95,10 @@ export class CompanionSystem {
     this.unit = null;
     this.stored++;
     this._syncSatchel();
-    this.events.emit('companion:recalled', {});
-    this.events.emit('subtitle', { text: 'She folds down small and goes back in the satchel.' });
+    if (!quiet) {
+      this.events.emit('companion:recalled', {});
+      this.events.emit('subtitle', { text: 'She folds down small and goes back in the satchel.' });
+    }
     return true;
   }
 

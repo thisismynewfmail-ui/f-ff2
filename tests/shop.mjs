@@ -185,8 +185,40 @@ const vendor = await page.evaluate(async () => {
     return Math.hypot(p.x - k.position.x, p.z - k.position.z);
   };
   const side = k.yaw + Math.PI / 2;
+
+  /* BOTH ARMS ON THEIR OWN SIDE OF THE WAISTCOAT. Arm roll is written
+   * body-relative and mirrored once, in VendorAnimator._apply. A pose that
+   * mirrors it a SECOND time cancels on one arm and doubles on the other, and
+   * the doubled one swings through the chest — invisible to every check here
+   * and plain from the front. The chest is 0.34 across, so a hand inside
+   * ±0.17 of the spine is inside the machine. */
+  const a = k.anim;
+  const handsX = () => {
+    k.mesh.updateWorldMatrix(true, true);
+    return k.rig.parts.arms.map((arm) => {
+      const v = new THREE.Vector3();
+      arm.hand.getWorldPosition(v);
+      return +(k.rig.parts.torso.worldToLocal(v).x / k.mesh.scale.x).toFixed(3);
+    });
+  };
+  const hold = (state, idleSet = null) => {
+    a.state = state === 'idle' ? 'sleep' : 'idle';
+    a.setState(state);
+    if (idleSet) a.idleSet = idleSet;
+    a.wake = 1;
+    for (let i = 0; i < 60; i++) { a.stateT = 0.8; a.idleT = 1.8; a.update(1 / 60, {}); }
+    const [L, R] = handsX();
+    return { pose: idleSet || state, L, R, clear: L < -0.17 && R > 0.17 };
+  };
+  const armPoses = [
+    ...['sleep', 'greet', 'deal', 'sale', 'refuse'].map((s) => hold(s)),
+    ...['survey', 'polish', 'wind', 'drum', 'doze'].map((s) => hold('idle', s)),
+  ];
+  a.setState('idle');
+
   return {
     declared: HEIGHT,
+    armPoses,
     measured: box.max.y - box.min.y,
     playerHeight: g.player.height,
     zone: zone.name,
@@ -209,6 +241,10 @@ const vendor = await page.evaluate(async () => {
 });
 check('the vendor stands at the trading post counter, in Eastgate',
   vendor.atCounter && vendor.zone === 'Eastgate Residential', `${vendor.zone}`);
+check('...and never puts a hand through its own waistcoat, in any state it has',
+  vendor.armPoses.every((p) => p.clear),
+  vendor.armPoses.filter((p) => !p.clear).map((p) => `${p.pose} ${p.L}/${p.R}`).join(', ')
+  || `${vendor.armPoses.length} poses, hands out to ±0.17+`);
 check('...a short walk from where the run starts', vendor.fromSpawn < 90, `${vendor.fromSpawn.toFixed(0)}m from spawn`);
 // The hard constraint on the machine, and the only one: cabinet and figure
 // together must come in UNDER the player, by enough that you are plainly
@@ -800,6 +836,80 @@ check('and the horde has no idea she exists',
   !adjutant.onFriendlyRoster && !adjutant.tagged.includes('friendly'), adjutant.tagged.join('/'));
 check('PACK UP folds her back into the satchel', adjutant.packed);
 
+/* ------------------------------------------------------------------ */
+/* 8. dying hands the kit back                                          */
+/* ------------------------------------------------------------------ */
+/* A death rolls the run back a wave. It does not confiscate hardware the
+ * player paid tokens for, and it must not leave that hardware where they
+ * died — the respawn point is somewhere else entirely. So: everything they
+ * own comes back STOWED, and everything already in the satchel stays. */
+const death = await page.evaluate(async () => {
+  const { DROPPABLE } = await import('/src/systems/Inventory.js');
+  const g = window.__game;
+  // Everything the satchel lets you put OUT is something a death has to fetch
+  // back. If a fourth droppable ever lands here, Game.respawn needs to know
+  // about it, and this is where that gets noticed.
+  const out = { droppable: [...DROPPABLE].sort().join(',') };
+  g.sentries.reset(); g.companions.reset();
+  const s = g.world.playerSpawn;
+  g.player.teleport(s.x, g.world.groundHeightFor(s.x, s.z, 1e9), s.z);
+  const cube = g.world.companionCube;
+
+  // A cube nobody has found is not the player's yet, and a death must not
+  // reach into the maintenance room and hand it over.
+  out.unfoundStays = cube.recall() === false && !cube.taken;
+
+  // three sentries: one stowed, one in the hands, one bolted to the pavement
+  for (let i = 0; i < 3; i++) g.events.emit('pickup', { type: 'sentry', amount: 1 });
+  g.sentries.takeToHand(); g.sentries.place();
+  g.sentries.takeToHand();
+  // the adjutant, standing in the street
+  g.events.emit('pickup', { type: 'companion', amount: 1 });
+  g.companions.deploy();
+  // the cube, found and then set back down out in the world — through the
+  // satchel, the way a player does it, so the drop wiring is under test too
+  cube._take();
+  [...g.inventory.gridEl.querySelectorAll('.inv-slot.droppable')]
+    .find((el) => el.dataset.label === 'Companion Cube')
+    ?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+  // and a key, which was in the satchel the whole time and must still be
+  g.events.emit('pickup', { type: 'key', amount: 1, label: 'Brass Key' });
+
+  const slot = (k) => g.inventory.items.get(k)?.count ?? 0;
+  const state = () => ({
+    stowed: slot('Portable Sentry'), placed: g.sentries.deployed.length,
+    holding: g.sentries.holding, adjutant: slot('Adjutant Unit'),
+    standing: !!g.companions.unit, cube: slot('Companion Cube'),
+    cubeDown: !cube.taken, key: slot('Brass Key'),
+  });
+  out.before = state();
+
+  g.events.emit('player:died');
+  out.died = g.state.state === 'dead';
+  g.respawn();
+  out.after = state();
+  out.playing = g.state.state === 'playing';
+
+  g.sentries.reset(); g.companions.reset();
+  return out;
+});
+check('before dying: one sentry stowed, one held, one placed, and the rest out in the world',
+  death.before.stowed === 1 && death.before.holding && death.before.placed === 1
+  && death.before.standing && death.before.cubeDown && death.before.cube === 0
+  && death.before.key === 1,
+  `stowed ${death.before.stowed}, held ${death.before.holding}, placed ${death.before.placed},`
+  + ` adjutant standing ${death.before.standing}, cube down ${death.before.cubeDown}`);
+check('dying hands every piece of it back, stowed',
+  death.died && death.playing && death.after.stowed === 3 && death.after.placed === 0
+  && !death.after.holding && death.after.adjutant === 1 && !death.after.standing
+  && death.after.cube === 1 && !death.after.cubeDown,
+  `sentries ${death.after.stowed} stowed / ${death.after.placed} placed / held ${death.after.holding},`
+  + ` adjutant ${death.after.adjutant} stowed (standing ${death.after.standing}), cube ${death.after.cube}`);
+check('...and what was already in the satchel is untouched',
+  death.after.key === 1, `key ${death.after.key}`);
+check('...while a cube nobody has found stays where it is hidden', death.unfoundStays);
+check('...and those three are everything the satchel can put out in the first place',
+  death.droppable === 'companion,companionCube,sentry', death.droppable);
 
 check('no console errors across the run', errors.length === 0, errors.slice(0, 3).join(' | '));
 
