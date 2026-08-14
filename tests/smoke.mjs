@@ -1622,7 +1622,14 @@ const freeLook = await page.evaluate(async () => {
   await frame(); await frame();
   out.menuLookFrozen = g.player.yaw === yawInMenu;
 
+  // Leave the counter the way the game actually leaves one: Escape is inert in
+  // every overlay now, so this is [E] — which is also the exit that carries the
+  // user activation a re-lock needs. Escape is tried first and must do nothing.
   document.dispatchEvent(new KeyboardEvent('keydown', { code: 'Escape', key: 'Escape', bubbles: true }));
+  await frame();
+  out.escInert = g.shop.open;
+  document.dispatchEvent(new KeyboardEvent('keydown',
+    { code: g.input.codesFor('interact')[0], key: 'e', bubbles: true }));
   await frame(); await frame();
   out.closed = !g.shop.open;
   out.refusedAndAsking = !locked && g.input.lockPending;
@@ -1660,7 +1667,9 @@ const freeLook = await page.evaluate(async () => {
   return out;
 });
 check('the world does not turn under an open menu',
-  freeLook.menuLookFrozen && freeLook.closed, `frozen ${freeLook.menuLookFrozen}`);
+  freeLook.menuLookFrozen && freeLook.escInert && freeLook.closed,
+  `frozen ${freeLook.menuLookFrozen}, escape inert ${freeLook.escInert},`
+  + ` left on [E] ${freeLook.closed}`);
 check('and you can look around in the gap before the pointer comes back',
   freeLook.refusedAndAsking && Math.abs(freeLook.yawMoved) > 0.05 && Math.abs(freeLook.pitchMoved) > 0.01,
   `still refused ${freeLook.refusedAndAsking}, yaw ${freeLook.yawMoved.toFixed(3)},`
