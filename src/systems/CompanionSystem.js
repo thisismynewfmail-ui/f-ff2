@@ -2,7 +2,7 @@ import * as THREE from '../../lib/three.module.js';
 import { Companion } from '../entities/Companion.js';
 
 /**
- * Owns the escort: the folded one in the satchel, the one standing in the
+ * Owns the adjutant: the folded one in the satchel, the one standing in the
  * street, and the bolt of arc she throws when she uses her shoulder pods.
  *
  * The loop is the sentry's loop, deliberately — one item, one contract, learnt
@@ -49,7 +49,7 @@ export class CompanionSystem {
    */
   _syncSatchel() {
     this.events.emit('inventory:sync', {
-      type: 'companion', label: 'Escort Unit', count: this.stored,
+      type: 'companion', label: 'Adjutant Unit', count: this.stored,
     });
   }
 
@@ -75,13 +75,19 @@ export class CompanionSystem {
     this.unit = new Companion(this.events, this.world, this.texLib, { x, z, yaw: p.yaw });
     this.scene.add(this.unit.mesh);
     this.events.emit('subtitle', {
-      text: 'The escort unfolds, finds her feet, and looks at you for orders. [E] to give them.',
+      text: 'The adjutant unfolds, finds her feet, and looks at you for orders. [E] to give them.',
     });
     return this.unit;
   }
 
-  /** Fold her back up — the PACK UP order on the dial. */
-  recall() {
+  /**
+   * Fold her back up — the PACK UP order on the dial.
+   *
+   * `quiet` is for the times she is not being ASKED: a respawn packs her up
+   * along with everything else the player owns, and a fold chirp and a line of
+   * subtitle over the death screen would be reporting an order nobody gave.
+   */
+  recall({ quiet = false } = {}) {
     if (!this.unit) return false;
     this.scene.remove(this.unit.mesh);
     this.unit.toRemove = true;
@@ -89,8 +95,10 @@ export class CompanionSystem {
     this.unit = null;
     this.stored++;
     this._syncSatchel();
-    this.events.emit('companion:recalled', {});
-    this.events.emit('subtitle', { text: 'She folds down small and goes back in the satchel.' });
+    if (!quiet) {
+      this.events.emit('companion:recalled', {});
+      this.events.emit('subtitle', { text: 'She folds down small and goes back in the satchel.' });
+    }
     return true;
   }
 

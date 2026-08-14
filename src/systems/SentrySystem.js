@@ -456,6 +456,23 @@ export class SentrySystem {
     this._syncSatchel();
   }
 
+  /**
+   * Fold EVERY sentry back into the satchel — the ones bolted to the pavement
+   * and the one in the player's hands — without losing a single one of them.
+   *
+   * This is what dying does. A death costs the player the wave they were on;
+   * it does not cost them hardware they paid tokens for, and it must not leave
+   * it standing on the far side of town from a respawn point. Returns how many
+   * came home, so the caller can say so.
+   */
+  recallAll() {
+    const back = this.deployed.length + (this.holding ? 1 : 0);
+    this.reset({ keepStored: true });
+    this.stored += back;
+    this._syncSatchel();
+    return back;
+  }
+
   /** Freeze the hardware for a checkpoint / the save. */
   snapshot() {
     return {

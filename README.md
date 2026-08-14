@@ -79,8 +79,8 @@ the desktop shell.
 | 1–6 | Pistol / Shotgun / Assault Rifle / Sniper / Bat / Alien Blaster (once found) |
 | Mouse wheel | Cycle weapons (also reveals the weapon menu) |
 | R | Reload |
-| E | Interact (talk to the vendor, order the escort, pack up a deployed sentry) |
-| Tab | Satchel — click a sentry to take it in hand, or the escort to unfold her |
+| E | Interact (talk to the vendor, order the adjutant, pack up a deployed sentry) |
+| Tab | Satchel — click a sentry to take it in hand, or the adjutant to unfold her |
 | R (sentry in hand) | Swing its arc 25° |
 | LMB / RMB (sentry in hand) | Set it down / put it back in the satchel |
 | Esc / E | At an arcade cabinet or the vendor's pitch, step away from it |
@@ -536,7 +536,12 @@ There is deliberately no command that touches the kill counter — the
   checkpoint — kills, score and wave all restored — then that wave respawns from
   scratch (die at wave 45 → back to 40). The district barriers re-seal to match
   the rolled-back kill count, so any sections you'd opened stand again and must
-  be re-earned.
+  be re-earned. **The hardware does not roll back.** Dying costs you the wave,
+  not the kit you paid tokens for: every sentry folds up — the ones bolted to
+  the pavement and the one in your hands — the adjutant folds up, and the
+  Companion Cube comes back from wherever you set it down, all of it stowed in
+  the satchel and none of it left across town from where you respawn. Whatever
+  was already in the satchel is untouched.
 - **Progression:** six districts unlock at kill milestones — Old Town
   (start), Eastgate Residential (50), Downtown (150), Hollow Park
   (2,500), Southside Industrial (4,500), Chapel Ridge (7,000). Barricades
@@ -821,7 +826,7 @@ There is deliberately no command that touches the kill counter — the
   with. The fourth is Escape, which by specification grants none — so that one
   exit leans on the silent recapture described under Controls rather than on a
   plate telling the player to go and click something. It sells a
-  **Portable Sentry at 100 tokens, six of them**; the **escort android at
+  **Portable Sentry at 100 tokens, six of them**; the **adjutant android at
   500, one only**; **every ammunition type separately at 10** a crate; and
   carries one dead bay at the bottom for whatever has not arrived yet.
 - **Portable Sentry:** a tripod auto-pistol that stows in the satchel. Click it
@@ -840,8 +845,8 @@ There is deliberately no command that touches the kill counter — the
   config, so it is never better than the gun in your hand, just a second one
   that never looks away. Nothing targets it: it is off the friendly roster too.
   Press [E] on a deployed one and it folds back into the satchel. Sentries roll
-  back with a checkpoint, standing again where they stood, and `spawn sentry` in
-  the console stands one up a foot in front of you — the ordinary machine, not a
+  come home to the satchel when you die rather than being left standing, and
+  `spawn sentry` in the console stands one up a foot in front of you — the ordinary machine, not a
   special one, so it packs into the satchel like a bought one.
 
   **It is built as a mechanism, not as the shape of one.** Every joint that
@@ -864,7 +869,7 @@ There is deliberately no command that touches the kill counter — the
   vertical, hold it, and put it back down**. Every twenty-fifth kill it taps the
   barrel twice, like a gunner notching a stock. Pick one up and set it down
   three times inside twenty seconds and it deploys with a shake of the head.
-- **The escort — "NEKO", 500 tokens, one only.** A refurbished companion
+- **The adjutant — "NEKO", 500 tokens, one only.** A refurbished companion
   android, and the only thing in this town that walks beside you on purpose.
   She stows in the satchel folded into a ball; click her and she unfolds on the
   ground, finds her feet, and stretches. **[E] on her opens the ORDER DIAL** — a
@@ -874,7 +879,16 @@ There is deliberately no command that touches the kill counter — the
   times and both are lit on the dial, so it doubles as the readout for what she
   is currently doing. Every command sits at a fixed compass point, so after the
   second time your hand knows where GUARD is without your eyes going near the
-  labels. 1–8 work too.
+  labels. 1–8 work too, and each well carries its number at the rim the way a
+  rotary switch carries its detents.
+
+  **The dial is built as another instrument off the same rack**, not as a menu
+  laid over the game: a painted steel case with a keyline and four fixing
+  screws, eight wells sunk into the plate rather than eight buttons sitting on
+  it, a stepped collar around the bore, and a green CRT in the middle with her
+  name on it. It comes up in a fifth of a second — the case swells, the ring
+  turns onto its stop, the tube strikes — and an order that lands flashes its
+  own well.
 
   **She carries no gun**, and that is a rule rather than an oversight — there is
   nowhere on her to put one. What she has is folded away until she needs it: a
@@ -935,7 +949,7 @@ src/ai/             NPC AI: senses (360° ring + memory), context steering,
                     shared navigator, behaviour arbiter, opt-in flag registry
 src/entities/       player, zombies, exploder, spitter, NPC, savable citizen,
                     cockroach, shopkeeper (the vendor animatronic), the
-                    escort android (Companion.js) and the sentry, the
+                    adjutant android (Companion.js) and the sentry, the
                     deployable sentry, pickups (ammo, health, keys, coins)
 src/weapons/        weapon configs + firing/ammo/hit resolution
 src/rendering/      renderer, texture pipeline, billboards, HUD (console bar +

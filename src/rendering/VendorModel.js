@@ -312,17 +312,30 @@ export function buildVendorModel(texLib = null) {
   head.add(jaw);
   jaw.add(at(box(0.13, 0.045, 0.10, flat(0xb59d76)), 0, -0.022, 0.02));
   parts.jaw = jaw;
-  // the pipe, clamped in the corner of that jaw
-  const pipe = at(cyl(0.011, 0.011, 0.13, leather, 8), 0.075, -0.03, 0.075);
-  pipe.rotation.set(-0.5, 0, -0.35);
+  /* The pipe, clamped in the corner of that jaw.
+   *
+   * ONE ASSEMBLY, AIMED ONCE. The stem, the bowl and the ember used to be
+   * three loose pieces each turned by its own hand-picked angles, and they
+   * did not agree: the stem was pitched BACK into the head while the bowl sat
+   * forward of it, so what you saw from the front was a stick lying flat
+   * across the cheek with a lump floating off the end of it. Now the stem runs
+   * along the assembly's +z from the mouth to the bowl and the whole thing is
+   * pointed with one rotation — out past the moustache, forward, and up.
+   * The bowl takes that pitch back out again so it stands upright wherever the
+   * stem is aimed, and the ember rides in the top of it. */
+  const pipe = at(new THREE.Group(), 0.062, -0.030, 0.060);
+  pipe.rotation.set(-0.34, 0.62, 0);
   jaw.add(pipe);
-  const bowl = at(cyl(0.026, 0.021, 0.045, leather, 9), 0.115, 0.015, 0.135);
-  bowl.rotation.z = -0.35;
-  jaw.add(bowl);
+  const STEM = 0.115;
+  pipe.add(at(cyl(0.010, 0.010, STEM, leather, 8), 0, 0, STEM / 2).rotateX(Math.PI / 2));
+  const bowl = at(new THREE.Group(), 0, 0.004, STEM + 0.006);
+  bowl.rotation.x = 0.34;
+  pipe.add(bowl);
+  bowl.add(at(cyl(0.026, 0.021, 0.048, leather, 9), 0, 0.024, 0));
   parts.emberLight = at(new THREE.Mesh(new THREE.CircleGeometry(0.019, 10),
-    new THREE.MeshBasicMaterial({ color: 0xff7a28, transparent: true, opacity: 0.5 })), 0.117, 0.037, 0.135);
+    new THREE.MeshBasicMaterial({ color: 0xff7a28, transparent: true, opacity: 0.5 })), 0, 0.049, 0);
   parts.emberLight.rotation.x = -Math.PI / 2;
-  jaw.add(parts.emberLight);
+  bowl.add(parts.emberLight);
 
   // the hat: a low crown and a wide brim, which is most of the silhouette
   const hat = at(new THREE.Group(), 0, headH - 0.005, 0);
@@ -504,7 +517,10 @@ export class VendorAnimator {
       }
       case 'wind': {            // winds the key in its own side, twice
         const s = (this.idleT * 2.6) % TAU;
-        o.armL = { pitch: 0.85 * k + 0.05, roll: -0.55 * k + 0.12, elbow: -1.25 * k - 0.2 };
+        // The reach is the SHOULDER going back, not the arm swinging in: the
+        // key is on its flank, and its flank is only 0.03 inboard of where the
+        // hand already hangs. Rolling in to find it puts the hand in the works.
+        o.armL = { pitch: 0.85 * k + 0.05, roll: 0.12 + 0.06 * k, elbow: -1.25 * k - 0.2 };
         o.torsoYaw += -0.16 * k;
         o.headPitch += 0.26 * k;
         o.headYaw += -0.24 * k;
@@ -537,21 +553,24 @@ export class VendorAnimator {
     o.torsoLift = 0.02 * k;
     o.torsoPitch = -0.06 * k;
     o.headPitch -= 0.10 * k;
-    // both hands come up onto the counter
+    // both hands come up onto the counter — the same number for both, because
+    // _apply is what mirrors them
     const arm = { pitch: 1.15 * k + 0.05, roll: 0.30 * k + 0.12, elbow: -1.0 * k - 0.2 };
-    o.armL = { ...arm, roll: -arm.roll };
-    o.armR = arm;
+    o.armL = { ...arm };
+    o.armR = { ...arm };
     o.jaw = Math.max(0, Math.sin(this.stateT * 9)) * 0.30 * (1 - f * 0.5);
     o.headYaw += Math.sin(this.stateT * 1.6) * 0.06;
   }
 
   _poseDeal(o) {
     const s = Math.sin(this.t * 1.5), s2 = Math.sin(this.t * 0.9 + 2.0);
-    // Hands turned out over the goods, alternating which one presents. The
-    // roll is kept small on purpose: past about a fifth of a radian the arms
-    // stop reading as presenting and start reading as a scarecrow.
-    o.armL = { pitch: 1.05 + s * 0.16, roll: -0.20 - s2 * 0.07, elbow: -0.95 + s2 * 0.14 };
-    o.armR = { pitch: 1.05 - s * 0.16, roll: 0.20 + s2 * 0.07, elbow: -0.95 - s2 * 0.14 };
+    // Hands turned out over the goods, alternating which one presents — the
+    // alternation is in the numbers, not in their signs, since a negative roll
+    // here means a hand crossing its own chest. The roll is kept small on
+    // purpose: past about a fifth of a radian the arms stop reading as
+    // presenting and start reading as a scarecrow.
+    o.armL = { pitch: 1.05 + s * 0.16, roll: 0.20 + s2 * 0.07, elbow: -0.95 + s2 * 0.14 };
+    o.armR = { pitch: 1.05 - s * 0.16, roll: 0.20 - s2 * 0.07, elbow: -0.95 - s2 * 0.14 };
     o.torsoPitch = -0.05 + s2 * 0.02;
     o.torsoYaw = s2 * 0.06;
     o.headPitch += 0.06;
@@ -561,9 +580,9 @@ export class VendorAnimator {
   _poseSale(o) {
     const f = Math.min(1, this.stateT / 1.4);
     const k = pulse(f, 0.22, 0.3);
-    // the right hand dives to the tray and comes back up
+    // the right hand dives to the tray, the left stands clear of it
     o.armR = { pitch: 1.55 * k + 0.05, roll: 0.16, elbow: -1.5 * k - 0.2 };
-    o.armL = { pitch: 0.75 * k + 0.05, roll: -0.30, elbow: -0.6 * k - 0.2 };
+    o.armL = { pitch: 0.75 * k + 0.05, roll: 0.30, elbow: -0.6 * k - 0.2 };
     o.torsoPitch = 0.16 * k;
     o.headPitch += 0.26 * k;
     o.jaw = Math.max(0, Math.sin(this.stateT * 8)) * 0.28 * k;
@@ -592,6 +611,13 @@ export class VendorAnimator {
     }
     if (p.head) p.head.rotation.set(o.headPitch, o.headYaw, o.headRoll);
     if (p.jaw) p.jaw.rotation.x = o.jaw;
+    // ROLL IS WRITTEN BODY-RELATIVE, AND MIRRORED HERE. Positive is AWAY from
+    // the chest on either side; negative crosses it. A pose says what BOTH
+    // arms are doing with the same number and `a.side` is the only place the
+    // two are ever told apart — say it in the pose as well and the arm on +x
+    // lands on side × (−roll) and swings INTO the waistcoat while its opposite
+    // number swings out. The chest is 0.34 across, the shoulders 0.40, so a
+    // hand pulled inside ±0.17 is inside the machine.
     for (const a of p.arms ?? []) {
       const src = a.side < 0 ? o.armL : o.armR;
       a.shoulder.rotation.set(src.pitch, 0, a.side * src.roll);

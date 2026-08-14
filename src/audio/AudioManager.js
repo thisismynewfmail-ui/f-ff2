@@ -45,7 +45,7 @@ export class AudioManager {
     on('sentry:deployed', ({ pos }) => this.sentryDeploy(pos));
     on('sentry:salute', ({ pos }) => this.sentrySalute(pos));
     on('sentry:wake', ({ pos }) => this.sentryWake(pos));
-    // The escort's voice. Everything she says goes through one door.
+    // The adjutant's voice. Everything she says goes through one door.
     on('companion:deployed', ({ pos }) => this.companionVoice('wake', pos));
     on('companion:ack', ({ cmd, pos }) => this.companionVoice(cmd === 'passive' ? 'no' : 'ack', pos));
     on('companion:blade', ({ pos }) => this.companionVoice('blade', pos));
@@ -725,7 +725,7 @@ export class AudioManager {
     this._tone('triangle', 2093, 1.2, 0.12, seq.length * 0.16);
   }
 
-  /* ---------------- the sentry and the escort ---------------- */
+  /* ---------------- the sentry and the adjutant ---------------- */
 
   /**
    * The sentry noticing you and putting its barrel up.
@@ -752,7 +752,7 @@ export class AudioManager {
   }
 
   /**
-   * THE ESCORT'S VOICE.
+   * THE ADJUTANT'S VOICE.
    *
    * She does not speak — she was refurbished out of a machine that never
    * could — so everything she says is a two- or three-note synth phrase off
