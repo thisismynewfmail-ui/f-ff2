@@ -50,6 +50,13 @@ export class AudioManager {
     on('sentry:handshake', ({ pos }) => this.sentrySalute(pos));
     on('sentry:salute', ({ pos }) => this.sentrySalute(pos));
     on('sentry:wake', ({ pos }) => this.sentryWake(pos));
+    // ...and the Mk II's other half: the sixteen beats of its deploy, the
+    // heartbeat of the thing in its jar, the plumbing that keeps it alive, and
+    // the field-telephone earpiece it talks through.
+    on('sentry:deploy:beat', ({ pos, beat }) => this.wardenBeat(pos, beat));
+    on('sentry:pulse', ({ pos, rate, strength }) => this.wardenPulse(pos, rate, strength));
+    on('sentry:vessel', ({ pos, kind }) => this.wardenVessel(pos, kind));
+    on('sentry:voice', ({ pos, phrase }) => this.wardenVoice(pos, phrase));
     // The adjutant's voice. Everything she says goes through one door.
     on('companion:deployed', ({ pos }) => this.companionVoice('wake', pos));
     on('companion:ack', ({ cmd, pos }) => this.companionVoice(cmd === 'passive' ? 'no' : 'ack', pos));
@@ -616,19 +623,18 @@ export class AudioManager {
   /**
    * The sentry setting itself up: legs locking out and a bell on the end of it.
    *
-   * The Mk II gets the same sequence played HEAVIER and one beat longer, with
-   * the spade going in at the end of it — the audio equivalent of the extra
-   * half-second it takes to stand up.
+   * That is the whole Mk I. The Mk II only gets the THUMP of being set down
+   * here; its deploy is scored beat by beat in wardenBeat() below.
    */
   sentryDeploy(pos, kind) {
     const s = this._spatial(pos, kind === 'sentryTwo' ? 40 : 30);
     if (!s) return;
     if (kind === 'sentryTwo') {
-      this._noise(0.16, 'bandpass', 620, 2, 0.17 * s.vol, 0, s.pan);       // the legs
-      this._tone('square', 120, 0.10, 0.10 * s.vol, 0.18, s.pan, 180);     // jacks screwing down
-      this._punch(150, 46, 0.09, 0.22 * s.vol, 0.62, s.pan, 'triangle');   // the SPADE going in
-      this._noise(0.09, 'lowpass', 380, 1, 0.13 * s.vol, 0.62, s.pan);
-      this._tone('square', 420, 0.06, 0.05 * s.vol, 0.95, s.pan);          // bolt home
+      // Only the weight of the case landing. Everything after this — sixteen
+      // separate events over two seconds — is wardenBeat(), because a machine
+      // whose whole deploy is one cue cannot have sixteen beats.
+      this._punch(120, 52, 0.10, 0.16 * s.vol, 0, s.pan, 'sine');
+      this._noise(0.10, 'lowpass', 420, 1, 0.10 * s.vol, 0, s.pan);
       return;
     }
     this._noise(0.12, 'bandpass', 900, 2, 0.14 * s.vol, 0, s.pan);
@@ -683,6 +689,278 @@ export class AudioManager {
       this._noise(0.045, 'bandpass', 2900 + i * 260, 6, 0.055 * s.vol, 0.30 + i * 0.13, s.pan, 1700);
     }
     this._tone('sawtooth', 300, 0.18, 0.028 * s.vol, 0.78, s.pan, 130);   // and coming home
+  }
+
+  /* ------------- THE WARDEN: sixteen beats and a heartbeat ------------- */
+
+  /**
+   * ONE BEAT OF THE MK II'S DEPLOY.
+   *
+   * The Mk I's deploy is one sound. This is SIXTEEN, one per named beat in
+   * SentryTwo's BEATS table, and the whole reason the sequence is worth
+   * watching is that every visible motion has a noise arriving with it — you
+   * can shut your eyes and still follow what it is doing.
+   *
+   * They are written to a deliberate arc. The first eleven are DRY: metal,
+   * pneumatics, screw threads, a spade in dirt — a piece of county equipment
+   * doing county equipment things, and nothing about it suggests anything is
+   * inside. Then the doors go (beat 11) on a seal breaking, and the last five
+   * are WET: a pump priming, fluid moving, six contacts seating on something
+   * soft, and a heartbeat. That turn is the entire reveal, and it is carried
+   * by the sound before it is carried by anything on screen.
+   */
+  wardenBeat(pos, beat) {
+    const s = this._spatial(pos, 42);
+    if (!s) return;
+    const v = s.vol, pan = s.pan;
+    switch (beat) {
+      case 'latch':      // four over-centre latches, snapping in a scatter
+        for (let i = 0; i < 4; i++) {
+          this._noise(0.018, 'bandpass', 3000 + i * 340, 6, 0.10 * v, i * 0.019, pan + (i % 2 ? 0.1 : -0.1));
+        }
+        this._noise(0.13, 'highpass', 4200, 0.7, 0.07 * v, 0.03, pan);      // the pressure going
+        break;
+      case 'clamp':      // two heavier hooks letting go and swinging out
+        this._tone('square', 300, 0.035, 0.07 * v, 0, pan - 0.18, 190);
+        this._tone('square', 275, 0.035, 0.07 * v, 0.055, pan + 0.18, 175);
+        this._noise(0.10, 'bandpass', 900, 3, 0.05 * v, 0.06, pan);
+        break;
+      case 'splay':      // the quadrupod opening: a gear train under load
+        this._tone('sawtooth', 58, 0.30, 0.075 * v, 0, pan, 128);
+        this._noise(0.30, 'bandpass', 640, 2.2, 0.11 * v, 0, pan, 1150);
+        for (let i = 0; i < 5; i++) {                                        // the ratchet
+          this._noise(0.012, 'highpass', 2700, 2, 0.045 * v, 0.04 + i * 0.045, pan);
+        }
+        break;
+      case 'knee':       // four knees hitting their stops, not quite together
+        for (let i = 0; i < 4; i++) {
+          this._punch(190 - i * 8, 64, 0.045, 0.10 * v, i * 0.036, pan + (i - 1.5) * 0.12, 'triangle');
+        }
+        break;
+      case 'jack':       // screw threads: a tick per turn, slowing as they load
+        for (let i = 0; i < 9; i++) {
+          this._noise(0.014, 'bandpass', 2100, 5, 0.05 * v, i * (0.017 + i * 0.0026), pan);
+        }
+        this._tone('sawtooth', 96, 0.28, 0.05 * v, 0.02, pan, 62);           // taking the weight
+        break;
+      case 'level':      // two jacks arguing, and the hull creaking about it
+        this._noise(0.09, 'highpass', 3400, 1, 0.05 * v, 0, pan - 0.3);
+        this._noise(0.09, 'highpass', 3100, 1, 0.05 * v, 0.07, pan + 0.3);
+        this._tone('sawtooth', 150, 0.20, 0.035 * v, 0.05, pan, 108);
+        break;
+      case 'spade':      // THE THUMP: the loudest single event in the sequence
+        this._punch(140, 40, 0.11, 0.30 * v, 0, pan, 'triangle');
+        this._punch(58, 26, 0.26, 0.20 * v, 0, pan, 'sine');
+        this._noise(0.14, 'lowpass', 340, 1, 0.19 * v, 0, pan);              // earth
+        this._noise(0.06, 'bandpass', 1700, 3, 0.07 * v, 0.01, pan);         // steel on grit
+        this._tone('sine', 780, 0.16, 0.030 * v, 0.02, pan, 420);            // the blade ringing
+        break;
+      case 'rise':       // the twin posts standing the deck up, and locking
+        this._tone('sawtooth', 74, 0.26, 0.085 * v, 0, pan, 190);
+        this._noise(0.24, 'lowpass', 800, 1.4, 0.07 * v, 0, pan, 1500);
+        this._tone('square', 420, 0.03, 0.06 * v, 0.24, pan - 0.15);         // collar
+        this._tone('square', 396, 0.03, 0.06 * v, 0.27, pan + 0.15);         // collar
+        break;
+      case 'battery':    // the whole gun running out on its rails and slamming
+        this._noise(0.16, 'bandpass', 520, 1.6, 0.13 * v, 0, pan, 1500);
+        this._punch(210, 70, 0.06, 0.19 * v, 0.15, pan, 'square');
+        this._tone('sine', 1500, 0.09, 0.030 * v, 0.16, pan, 900);
+        break;
+      case 'wings':      // two shield plates, and the ready rack dropping
+        this._noise(0.09, 'bandpass', 1500, 2, 0.055 * v, 0, pan - 0.2);
+        this._noise(0.09, 'bandpass', 1350, 2, 0.055 * v, 0.05, pan + 0.2);
+        this._punch(160, 62, 0.05, 0.10 * v, 0.11, pan, 'triangle');         // the rack
+        break;
+      case 'shutter':    // THE DOORS, and the first thing on it that is not dry
+        this._tone('square', 240, 0.04, 0.08 * v, 0, pan, 150);              // bolt
+        this._tone('square', 228, 0.04, 0.08 * v, 0.035, pan, 142);          // bolt
+        this._noise(0.34, 'highpass', 2600, 0.6, 0.10 * v, 0.07, pan, 900);  // the seal letting go
+        this._tone('sawtooth', 132, 0.42, 0.055 * v, 0.10, pan, 74);         // dry hinges
+        this._noise(0.30, 'lowpass', 240, 1.6, 0.055 * v, 0.16, pan);        // and something wet
+        break;
+      case 'perfuse':    // the pump priming, and then the first beat
+        for (let i = 0; i < 3; i++) {                                        // three strokes
+          this._noise(0.09, 'lowpass', 300 + i * 60, 2.2, 0.09 * v, i * 0.10, pan);
+          this._tone('sine', 120 + i * 14, 0.09, 0.05 * v, i * 0.10, pan, 74);
+        }
+        this._noise(0.22, 'bandpass', 420, 1.1, 0.055 * v, 0.14, pan, 1250); // fluid climbing
+        this.wardenPulse(pos, 1.0, 1.35, 0.34);                              // and there it is
+        break;
+      case 'cortex':     // six contacts seating on something that is not metal
+        for (let i = 0; i < 6; i++) {
+          this._tone('square', 2400 + i * 190, 0.012, 0.030 * v, i * 0.014, pan);
+        }
+        this._tone('sawtooth', 300, 0.22, 0.045 * v, 0.06, pan, 1500);       // the rail coming up
+        this._noise(0.10, 'highpass', 5200, 1.4, 0.035 * v, 0.10, pan, 2600); // the needle, on paper
+        break;
+      case 'range':      // the bar telescoping, and two caps flipping off
+        for (let i = 0; i < 7; i++) {
+          this._noise(0.010, 'bandpass', 3300, 6, 0.032 * v, i * 0.020, pan);
+        }
+        this._tone('square', 1300, 0.02, 0.035 * v, 0.16, pan - 0.25);
+        this._tone('square', 1180, 0.02, 0.035 * v, 0.19, pan + 0.25);
+        break;
+      case 'charge':     // drawn, and let go
+        this._noise(0.07, 'bandpass', 1250, 2.4, 0.11 * v, 0, pan, 700);
+        this._punch(250, 92, 0.045, 0.15 * v, 0.075, pan, 'square');
+        break;
+      case 'ready':      // lamps run, and the chimney cowl starts turning.
+        // The two-note "on station" is NOT played here: the entity emits it as
+        // a sentry:voice of its own on the same beat, and playing it from both
+        // ends is how you get a machine that stutters its own name.
+        this._noise(0.05, 'bandpass', 1800, 4, 0.035 * v, 0, pan);
+        this._noise(0.55, 'bandpass', 520, 1.1, 0.028 * v, 0.10, pan, 760);
+        break;
+      default: break;
+    }
+  }
+
+  /**
+   * ONE HEARTBEAT, THROUGH THE HULL OF A GUN.
+   *
+   * The single most important sound on this machine, and the one it would be
+   * easiest to get wrong by making it loud. It is not a jump scare and it is
+   * not a soundtrack cue — it is a thing you notice standing near a turret and
+   * then cannot stop noticing, so it is quiet, it is almost entirely below
+   * 200 Hz, and it dies at sixteen metres.
+   *
+   * Lub and dub, a fifth of a second apart, each a sine dropping fast, with a
+   * skin of low-passed noise over them for the muffle of a steel drum and a
+   * jar of fluid in the way. `rate` is the live rate in Hz, which tightens the
+   * gap between the two thumps the faster it goes — a racing heart is not just
+   * a faster heart, it is a TIGHTER one, and that is the tell that tells a
+   * player something is frightened long before they work out what.
+   */
+  wardenPulse(pos, rate = 1, strength = 1, when = 0) {
+    const s = this._spatial(pos, 16);
+    if (!s) return;
+    const v = s.vol * s.vol * strength, pan = s.pan;      // squared: falls away fast
+    if (v < 0.02) return;
+    const gap = Math.max(0.10, 0.20 - (rate - 1) * 0.035);
+    this._tone('sine', 74, 0.13, 0.115 * v, when, pan, 40);
+    this._noise(0.09, 'lowpass', 210, 1.2, 0.055 * v, when, pan);
+    this._tone('sine', 62, 0.11, 0.065 * v, when + gap, pan, 36);
+    this._noise(0.07, 'lowpass', 180, 1.2, 0.030 * v, when + gap, pan);
+  }
+
+  /**
+   * The plumbing, the glass, and the thing behind it.
+   *
+   * All of these are close-range only: the perfusion plant is a bottle and a
+   * piston on the side of a machine, and if you can hear it you are standing
+   * near enough to read the plate.
+   */
+  wardenVessel(pos, kind) {
+    const s = this._spatial(pos, kind === 'startle' ? 22 : 11);
+    if (!s) return;
+    const v = s.vol, pan = s.pan;
+    switch (kind) {
+      case 'prime':      // the circuit filling for the first time
+        this._noise(0.5, 'bandpass', 380, 1.0, 0.06 * v, 0, pan, 1100);
+        this._tone('sine', 96, 0.35, 0.045 * v, 0.05, pan, 58);
+        break;
+      case 'tap':        // two knuckles on a bottle you do not trust
+        for (let i = 0; i < 2; i++) {
+          this._tone('sine', 1760, 0.10, 0.055 * v, i * 0.17, pan, 1180);
+          this._noise(0.012, 'highpass', 5000, 3, 0.030 * v, i * 0.17, pan);
+        }
+        this._noise(0.26, 'lowpass', 260, 2.0, 0.040 * v, 0.18, pan);        // the level settling
+        break;
+      case 'turn':       // it is moving in there, against the pins
+        this._noise(0.85, 'lowpass', 240, 1.8, 0.075 * v, 0, pan, 120);
+        this._tone('sine', 44, 0.9, 0.055 * v, 0, pan, 33);
+        this._tone('sawtooth', 1900, 0.30, 0.016 * v, 0.12, pan, 2450);      // glass, complaining
+        break;
+      case 'startle':    // a surge through the whole circuit, all at once
+        this._noise(0.20, 'lowpass', 420, 1.4, 0.11 * v, 0, pan, 130);
+        this._tone('sine', 88, 0.22, 0.085 * v, 0, pan, 44);
+        this._noise(0.09, 'highpass', 3600, 1, 0.05 * v, 0.02, pan);
+        break;
+      default: break;
+    }
+  }
+
+  /**
+   * THE TALKBACK — a field telephone's earpiece, wired backwards.
+   *
+   * The Mk II has no voice and was never given one. Everything it says is two
+   * notes through a horn speaker, bracketed by the click of a carrier opening
+   * and closing, and the vocabulary is deliberately tiny so a player learns it
+   * without being taught.
+   *
+   * Except for 'dream'. That one is not two notes: it is a pair of detuned
+   * saws dragged through a bandpass along a vowel path — the shape of a word
+   * without any of the consonants, arriving out of a machine that cannot make
+   * words. It is the quietest thing in this file and the only one anybody will
+   * remember.
+   */
+  wardenVoice(pos, phrase) {
+    const s = this._spatial(pos, phrase === 'dream' ? 15 : 26);
+    if (!s || !this.ctx) return;
+    const v = s.vol, pan = s.pan;
+    const click = (when, gain = 0.035) => this._noise(0.010, 'highpass', 2800, 2, gain * v, when, pan);
+    const say = (f, when, dur = 0.06, gain = 0.055) => this._tone('square', f, dur, gain * v, when, pan);
+    switch (phrase) {
+      case 'station':    // on station, and nothing more to add
+        click(0);
+        say(523, 0.03); say(784, 0.11, 0.10);
+        click(0.24, 0.025);
+        break;
+      case 'ack':
+        click(0); say(784, 0.02, 0.05); say(988, 0.08, 0.07); click(0.18, 0.02);
+        break;
+      case 'greet':      // two of them, on the same corner, in lamps and tones
+        click(0); say(659, 0.02, 0.05); say(880, 0.08, 0.05); say(659, 0.15, 0.08);
+        click(0.26, 0.02);
+        break;
+      /**
+       * QUERY — what it says when it stops and looks at you.
+       *
+       * One note, held far too long, and it WAVERS: two oscillators a couple
+       * of cents apart so the tone beats against itself and never quite
+       * settles. And then the carrier stays open for another half-second with
+       * nothing on it, which is the part that does the work — the machine
+       * opened its mouth, made one sound, and then just left the line up.
+       */
+      case 'query':
+        click(0);
+        this._tone('square', 392, 0.62, 0.040 * v, 0.03, pan);
+        this._tone('square', 394.6, 0.62, 0.032 * v, 0.03, pan);
+        this._noise(0.55, 'bandpass', 1500, 0.8, 0.014 * v, 0.14, pan, 900);  // an open line
+        click(0.78, 0.03);
+        break;
+      case 'grief':      // two notes down, through something soft
+        click(0);
+        this._tone('triangle', 330, 0.16, 0.045 * v, 0.03, pan);
+        this._tone('triangle', 247, 0.26, 0.045 * v, 0.16, pan, 208);
+        this._noise(0.20, 'lowpass', 620, 1.2, 0.020 * v, 0.16, pan);
+        click(0.44, 0.02);
+        break;
+      case 'warn':
+        this._tone('sawtooth', 138, 0.30, 0.045 * v, 0, pan, 104);
+        this._tone('square', 277, 0.10, 0.030 * v, 0.06, pan);
+        break;
+      /**
+       * DREAM — the sound the machine is not supposed to be able to make.
+       *
+       * Two saws a whisker apart, run through a narrow bandpass that walks a
+       * vowel path (open, closed, open) over about half a second, with a
+       * breath of noise under it. No note, no interval, no acknowledgement:
+       * just the shape of somebody saying something, arriving through a
+       * speaker that was only ever meant to beep.
+       */
+      case 'dream': {
+        const g = 0.030 * v;
+        this._tone('sawtooth', 128, 0.52, g, 0, pan, 108);
+        this._tone('sawtooth', 131.5, 0.52, g * 0.8, 0.01, pan, 111);
+        this._noise(0.44, 'bandpass', 700, 4.5, 0.055 * v, 0.02, pan, 1450);  // vowel, opening
+        this._noise(0.26, 'bandpass', 1450, 5.5, 0.038 * v, 0.24, pan, 480);  // ...and closing
+        this._noise(0.30, 'lowpass', 340, 0.8, 0.022 * v, 0, pan);            // the breath under it
+        click(0.56, 0.018);
+        break;
+      }
+      default: break;
+    }
   }
 
   /** It folding itself back into the satchel. */

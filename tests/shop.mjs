@@ -881,6 +881,163 @@ check('...and the ready rack empties over two drums and comes back full',
   life.reloaded && life.rack.join('/') === '2/1/0/2', life.rack.join('/'));
 
 /* ------------------------------------------------------------------ */
+/* 5c. the Mk II's computing section                                    */
+/* ------------------------------------------------------------------ */
+/* The bottom half of the Warden, which is a person in a jar, and the deploy
+ * sequence that opens it up. Everything checked here is a promise the feature
+ * makes that would break silently: a deploy defined as exactly twice the Mk
+ * I's, sixteen beats that each fire once and in order, a spade that actually
+ * reaches the ground, a brain that is life-size and at chest height, a pulse
+ * that responds to what the machine is doing, and doors that stay shut until
+ * the machine is standing. */
+const warden = await page.evaluate(async () => {
+  const THREE = await import('/lib/three.module.js');
+  const { TWO_SCALE, TWO_BRAIN_Y, subjectFor } = await import('/src/rendering/SentryTwoModel.js');
+  const { SENTRY_DEPLOY_TIME } = await import('/src/entities/Sentry.js');
+  const g = window.__game, p = g.player, out = {};
+  g.sentries.reset();
+  const yaw = p.yaw + Math.PI;
+  const x = p.position.x + Math.sin(yaw) * 6, z = p.position.z + Math.cos(yaw) * 6;
+  const beats = [], pulses = [];
+  const offB = g.events.on('sentry:deploy:beat', ({ beat }) => beats.push(beat));
+  const offP = g.events.on('sentry:pulse', () => pulses.push(1));
+
+  const two = g.sentries._stand(x, z, yaw, 'sentryTwo');
+  const idle = { zombies: [], player: { alive: false, position: { x: 1e6, y: 0, z: 1e6 } } };
+  // DOORS SHUT while it is still standing up, and the pulse has not started.
+  const step = (n) => { for (let i = 0; i < n; i++) two.update(1 / 60, idle); };
+  step(1);
+  out.doorsShutAtStart = Math.abs(two.rig.parts.doors.L.rotation.y) < 0.01;
+  step(70);                                          // ~1.18 s: over half way
+  out.doorsStillShut = Math.abs(two.rig.parts.doors.L.rotation.y) < 0.01;
+  out.stillDeploying = two.state === 'deploy';
+  step(70);                                          // past 2.10 s
+  out.deployTime = 2 * SENTRY_DEPLOY_TIME;
+  out.stoodUp = two.state !== 'deploy';
+  out.doorsOpen = Math.abs(two.rig.parts.doors.L.rotation.y) > 1.5
+    && Math.abs(two.rig.parts.doors.R.rotation.y) > 1.5;
+  out.beats = beats.join(',');
+  out.beatCount = beats.length;
+  out.beatsUnique = new Set(beats).size === beats.length;
+
+  // THE SPADE REACHES THE GROUND. It could not, before: it was a blade on an
+  // arm too short to touch the turf at any angle in its travel.
+  two.mesh.updateMatrixWorld(true);
+  const sb = new THREE.Box3().setFromObject(two.rig.parts.spade);
+  out.spadeUnder = +(two.position.y - sb.min.y).toFixed(3);
+
+  // THE BRAIN IS LIFE-SIZE, and at the height of a person's chest.
+  const bb = new THREE.Box3().setFromObject(two.rig.parts.brain);
+  out.brainSize = [bb.max.x - bb.min.x, bb.max.y - bb.min.y, bb.max.z - bb.min.z]
+    .map((n) => +n.toFixed(3));
+  out.brainY = +(TWO_BRAIN_Y).toFixed(3);
+  out.brainInJar = out.brainSize[0] < 0.070 * 2 * TWO_SCALE;   // inside the glass
+
+  // IT HAS A PULSE, and the pulse answers what the machine is doing.
+  step(120);
+  out.restRate = +two.pulseRate.toFixed(2);
+  out.beatingAtRest = pulses.length > 0;
+  const los = g.world.hasLineOfSight;
+  g.world.hasLineOfSight = () => true;
+  const dummy = { state: 'walk', height: 1.8, takeDamage() {},
+    position: { x: x + Math.sin(yaw) * 14, y: two.position.y, z: z + Math.cos(yaw) * 14 } };
+  for (let i = 0; i < 200; i++) two.update(1 / 60, { zombies: [dummy], player: p });
+  out.fightRate = +two.pulseRate.toFixed(2);
+  g.world.hasLineOfSight = los;
+
+  // THE PERFUSATE runs down, and the arm tops it up rather than letting it.
+  two.routine = null; two.quiet = 30; two.perfusion = 0.2;
+  const taps = [];
+  const offV = g.events.on('sentry:vessel', ({ kind }) => taps.push(kind));
+  for (let i = 0; i < 400; i++) two.update(1 / 60, idle);
+  out.serviced = taps.includes('tap') && two.perfusion > 0.5;
+
+  // A WHISPER STARTLES IT — the town's cosmic-horror layer reaches the gun.
+  two.routine = null; two.startleReady = 0; two.quiet = 8;
+  p.position.x = two.position.x + 3; p.position.z = two.position.z;
+  g.events.emit('whisper', { intensity: 0.6 });
+  let startled = false;
+  for (let i = 0; i < 90; i++) {
+    two.update(1 / 60, { zombies: [], player: p });
+    if (two.routine === 'startle') startled = true;
+  }
+  out.startled = startled;
+
+  // LOOK INTO THE GLASS and the thing in it turns to face you.
+  //
+  // The machine only accumulates "somebody is peering in at me" while it has
+  // nothing else on, so the self-test and the polish are pushed out of the way
+  // for this one check — otherwise what is under test is the routine SCHEDULER
+  // rather than the routine, and the run time depends on which housekeeping
+  // job happened to come due.
+  two.routine = null; two.quiet = 20; two.stareReady = 0; two.regardReady = 999;
+  two.nextSelfTest = 1e6; two.nextPolish = 1e6; two.perfusion = 1;
+  const vp = two.vesselPoint();
+  // IN FRONT of it. Entities face (+sin yaw, +cos yaw), so standing "in front"
+  // is adding along that vector; subtracting puts the observer round the back,
+  // where the machine cannot see them and none of this fires.
+  const eye = { x: vp.x + Math.sin(two.yaw) * 1.9, y: two.position.y, z: vp.z + Math.cos(two.yaw) * 1.9 };
+  const dx = vp.x - eye.x, dy = vp.y - (eye.y + 1.6), dz = vp.z - eye.z;
+  const L = Math.hypot(dx, dy, dz);
+  const peering = { zombies: [], player: {
+    alive: true, eyeHeight: 1.6, position: eye,
+    lookDirection: () => ({ x: dx / L, y: dy / L, z: dz / L }) } };
+  // The swing is what matters, not the angle: the organ sits off-axis at rest,
+  // so "it turned to face you" is a CHANGE from where it was sitting.
+  const restYaw = two.brainYaw;
+  let turned = 0;
+  for (let i = 0; i < 60 * 9; i++) {
+    two.update(1 / 60, peering);
+    if (two.routine === 'stare') turned = Math.max(turned, Math.abs(two.brainYaw - restYaw));
+  }
+  out.brainTurned = +turned.toFixed(3);
+  out.brainOffAxis = Math.abs(two.brainRest) > 0.05;
+
+  // WHO IS IN IT is stable for a spot, and is not the same person every time.
+  out.sameSpot = subjectFor(x, z).no === two.subject.no;
+  const names = new Set();
+  for (let i = 0; i < 24; i++) names.add(subjectFor(i * 7.3, i * -3.1).no);
+  out.distinctSubjects = names.size;
+  // ...and the copy in your hands keeps its doors SHUT, so the reveal is the
+  // deploy rather than the moment you open the satchel.
+  out.carryDoorsShut = Math.abs(g.viewModel.heldRigs.sentryTwo.parts.doors.L.rotation.y) < 0.01;
+
+  offB(); offP(); offV();
+  g.sentries.reset();
+  return out;
+});
+const BEAT_ORDER = 'latch,clamp,splay,knee,jack,level,spade,rise,battery,wings,'
+  + 'shutter,perfuse,cortex,range,charge,ready';
+check('the Mk II takes exactly twice as long to stand up as the Mk I',
+  Math.abs(warden.deployTime - 2.1) < 1e-9 && warden.stoodUp && warden.stillDeploying,
+  `${warden.deployTime.toFixed(2)}s, still deploying at 1.2s ${warden.stillDeploying}`);
+check('...in sixteen beats, each fired once, in order',
+  warden.beatCount === 16 && warden.beatsUnique && warden.beats === BEAT_ORDER,
+  `${warden.beatCount} beats: ${warden.beats}`);
+check('...and the ground spade actually reaches the ground',
+  warden.spadeUnder > 0.02, `teeth ${warden.spadeUnder} m below its own feet`);
+check('the armoured doors stay shut until the gun is up, then open',
+  warden.doorsShutAtStart && warden.doorsStillShut && warden.doorsOpen && warden.carryDoorsShut,
+  `shut on the ground ${warden.doorsShutAtStart}, shut mid-deploy ${warden.doorsStillShut}, `
+  + `open when ready ${warden.doorsOpen}, shut in the hands ${warden.carryDoorsShut}`);
+check('there is a life-size brain behind the glass, at chest height',
+  Math.abs(warden.brainSize[0] - 0.14) < 0.035 && Math.abs(warden.brainSize[2] - 0.167) < 0.035
+  && warden.brainInJar && Math.abs(warden.brainY - 0.77) < 0.06,
+  `${warden.brainSize.join(' × ')} m at ${warden.brainY} m`);
+check('...and it has a pulse, which is faster in a fight than at rest',
+  warden.beatingAtRest && warden.fightRate > warden.restRate * 1.3,
+  `${warden.restRate} Hz at rest, ${warden.fightRate} Hz fighting`);
+check('...which the machine keeps alive itself when the perfusate runs low',
+  warden.serviced);
+check('a whisper in the town startles it, and it looks at nothing', warden.startled);
+check('...and looking into the glass turns the thing inside it toward you',
+  warden.brainOffAxis && warden.brainTurned > 0.1,
+  `rests off-axis ${warden.brainOffAxis}, swung ${warden.brainTurned} rad`);
+check('every Warden is somebody, the same somebody every time you set it down',
+  warden.sameSpot && warden.distinctSubjects > 3,
+  `stable ${warden.sameSpot}, ${warden.distinctSubjects} distinct across 24 spots`);
+
+/* ------------------------------------------------------------------ */
 /* 6. the sentry's new tricks                                          */
 /* ------------------------------------------------------------------ */
 // Three things the machine gained: it can be spawned from the console as an

@@ -2,7 +2,7 @@ import * as THREE from '../../lib/three.module.js';
 import { buildWeaponModel } from '../weapons/WeaponModels.js';
 import { WEAPON_CONFIGS } from '../weapons/WeaponConfigs.js';
 import { buildSentryModel } from './SentryModel.js';
-import { buildSentryTwoModel } from './SentryTwoModel.js';
+import { buildSentryTwoModel, poseTwoFolded } from './SentryTwoModel.js';
 
 /**
  * First-person 3D weapon viewmodel.
@@ -278,23 +278,19 @@ export class WeaponView {
       parts.mastStage.position.y = 0.09;
       parts.body.position.y = 0.10;
     });
-    // The Mk II folds tighter still: legs in, jacks screwed up, spade stowed
-    // along the case and the rangefinder bar telescoped down to a stub, which
-    // is the only way a bar that wide goes in a satchel at all.
-    carry('sentryTwo', buildSentryTwoModel(texLib), 0.155, -0.155, (parts) => {
-      for (const leg of parts.legs) {
-        leg.hip.rotation.x = -0.05;          // out, not back: see SentryTwoModel
-        leg.knee.rotation.x = 0;
-        leg.pad.rotation.x = 0.05;
-        leg.ram.position.y = -0.122;
-        leg.ram.scale.y = 1;
-        leg.jack.position.y = -0.120;        // screwed all the way up
-      }
-      parts.spade.rotation.x = -0.15;
-      parts.mastStage.position.y = 0.135;
-      parts.body.position.y = parts.deckFold;
-      parts.rf.bar.scale.x = 0.35;
-    });
+    /**
+     * The Mk II folds tighter still: legs in, jacks screwed up, spade drawn
+     * right up its guide, the gun pulled back off battery, the rangefinder
+     * telescoped down to a stub — and, the part that matters, THE DOORS SHUT.
+     * What is in the front of this machine is not something the player is
+     * shown while they are carrying it; they find it when they set it down and
+     * watch it open itself.
+     *
+     * The pose is the rig's own, imported rather than transcribed, so the
+     * thing in your hands and the thing the deploy animation starts from are
+     * the same shape by construction.
+     */
+    carry('sentryTwo', buildSentryTwoModel(texLib), 0.140, -0.160, poseTwoFolded);
     this.heldRig = this.heldRigs.sentry;
     this.heldRigs.sentry.group.visible = true;
     // Rest pose, and it has to be INSIDE the frustum: the overlay camera is a
