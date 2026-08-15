@@ -889,6 +889,58 @@ check('...and the ready rack empties over two drums and comes back full',
   life.reloaded && life.rack.join('/') === '2/1/0/2', life.rack.join('/'));
 
 /* ------------------------------------------------------------------ */
+/* 5b-ii. which ear a sound comes out of                                */
+/* ------------------------------------------------------------------ */
+/* Every positional sound in the game is panned by one function, and it had
+ * the sign inverted — so a car alarm on your right pulled you left, for every
+ * source, consistently, with nothing to compare it against. Checked against
+ * the player's own look direction rather than against a remembered formula:
+ * put a source where the player's RIGHT vector points and the pan has to come
+ * back positive. */
+const ears = await page.evaluate(() => {
+  const g = window.__game, a = g.audio, p = g.player;
+  const out = {};
+  for (const yaw of [0, Math.PI / 2, Math.PI, -2.3]) {
+    p.yaw = yaw;
+    a.listener.x = p.position.x; a.listener.z = p.position.z; a.listener.yaw = yaw;
+    // the camera looks down local -Z, so right is (cos yaw, -sin yaw)
+    const rx = Math.cos(yaw), rz = -Math.sin(yaw);
+    const fwd = p.lookDirection();
+    const right = a._spatial({ x: p.position.x + rx * 8, z: p.position.z + rz * 8 }, 60);
+    const left = a._spatial({ x: p.position.x - rx * 8, z: p.position.z - rz * 8 }, 60);
+    const ahead = a._spatial({ x: p.position.x + fwd.x * 8, z: p.position.z + fwd.z * 8 }, 60);
+    out[yaw.toFixed(2)] = {
+      right: +right.pan.toFixed(2), left: +left.pan.toFixed(2), ahead: +ahead.pan.toFixed(2),
+    };
+  }
+  return out;
+});
+const earsOK = Object.values(ears).every((e) => e.right > 0.5 && e.left < -0.5 && Math.abs(e.ahead) < 0.05);
+check('a sound on your right comes out of the right speaker',
+  earsOK, Object.entries(ears).map(([y, e]) => `yaw ${y}: R${e.right} L${e.left} F${e.ahead}`).join('  '));
+
+/* ...and the one exception stays an exception. The phone booth is written to
+ * ring from the wrong side of the street on purpose, and it does that by
+ * negating the pan itself — so while _spatial was inverted the two minuses
+ * cancelled and the only thing in town meant to sound wrong was the only thing
+ * that sounded right. Pinned, so a future "cleanup" of that minus sign has to
+ * argue with a test. */
+const booth = await page.evaluate(() => {
+  const g = window.__game, a = g.audio, p = g.player;
+  p.yaw = 0; a.listener.x = p.position.x; a.listener.z = p.position.z; a.listener.yaw = 0;
+  const at = { x: p.position.x + 8, z: p.position.z };     // 8 m to the player's right
+  const panned = [];
+  const real = a._tone.bind(a);
+  a._tone = (type, f, d, gn, w, pan) => panned.push(pan);
+  a.phoneRing(at);
+  a._tone = real;
+  return { truePan: a._spatial(at, 70).pan, heardAt: panned[0] ?? null };
+});
+check('...except the phone booth, which rings from the wrong side on purpose',
+  booth.truePan > 0.5 && booth.heardAt < -0.5,
+  `booth is at pan ${booth.truePan?.toFixed(2)}, rings at ${booth.heardAt?.toFixed(2)}`);
+
+/* ------------------------------------------------------------------ */
 /* 5c. the Mk II's computing section                                    */
 /* ------------------------------------------------------------------ */
 /* The bottom half of the Warden, which is a person in a jar, and the deploy
@@ -911,19 +963,26 @@ const warden = await page.evaluate(async () => {
   const offP = g.events.on('sentry:pulse', () => pulses.push(1));
 
   const two = g.sentries._stand(x, z, yaw, 'sentryTwo');
+  const P = two.rig.parts;
   const idle = { zombies: [], player: { alive: false, position: { x: 1e6, y: 0, z: 1e6 } } };
-  // DOORS SHUT while it is still standing up, and the pulse has not started.
+  // THE VESSEL IS STRUCK DOWN and laid on its back while it is still standing
+  // up, and the pulse has not started.
   const step = (n) => { for (let i = 0; i < n; i++) two.update(1 / 60, idle); };
+  const vesselAt = () => (P.vesselLift.position.y - P.vesselDown) / (P.vesselUp - P.vesselDown);
   step(1);
-  out.doorsShutAtStart = Math.abs(two.rig.parts.doors.L.rotation.y) < 0.01;
+  out.vesselDownAtStart = vesselAt() < 0.02 && Math.abs(P.vesselTiltNode.rotation.x) > 1;
   step(70);                                          // ~1.18 s: over half way
-  out.doorsStillShut = Math.abs(two.rig.parts.doors.L.rotation.y) < 0.01;
+  out.vesselStillDown = vesselAt() < 0.02;
   out.stillDeploying = two.state === 'deploy';
   step(70);                                          // past 2.10 s
   out.deployTime = 2 * SENTRY_DEPLOY_TIME;
   out.stoodUp = two.state !== 'deploy';
-  out.doorsOpen = Math.abs(two.rig.parts.doors.L.rotation.y) > 1.5
-    && Math.abs(two.rig.parts.doors.R.rotation.y) > 1.5;
+  // ...and by the end it is up, upright, and latched into its gimbal
+  out.vesselPresented = vesselAt() > 0.99 && Math.abs(P.vesselTiltNode.rotation.x) < 0.01
+    && Math.abs(P.latchL.rotation.z) < 0.01;
+  // the hoses came up with it rather than staying where they were laid
+  const hoseTop = Math.max(...P.hoses[0].segs.map((sg) => sg.position.y));
+  out.hosesFollowed = hoseTop > P.vesselUp - 0.06;
   out.beats = beats.join(',');
   out.beatCount = beats.length;
   out.beatsUnique = new Set(beats).size === beats.length;
@@ -935,7 +994,21 @@ const warden = await page.evaluate(async () => {
   out.spadeUnder = +(two.position.y - sb.min.y).toFixed(3);
 
   // THE BRAIN IS LIFE-SIZE, and at the height of a person's chest.
-  const bb = new THREE.Box3().setFromObject(two.rig.parts.brain);
+  //
+  // Measured with the MACHINE's yaw and the organ's own turn both zeroed. A
+  // world-space bounding box on a turret standing at some arbitrary bearing,
+  // holding an organ that drifts a few degrees either way, trades width for
+  // length by however far the pair of them happen to be facing — so the check
+  // reads a different size every run and passes or fails on where the player
+  // was standing when it was set down.
+  const spin = two.mesh.rotation.y;
+  const turn = P.brainTurn.rotation.y;
+  two.mesh.rotation.y = 0;
+  P.brainTurn.rotation.y = 0;
+  two.mesh.updateMatrixWorld(true);
+  const bb = new THREE.Box3().setFromObject(P.brain);
+  two.mesh.rotation.y = spin;
+  P.brainTurn.rotation.y = turn;
   out.brainSize = [bb.max.x - bb.min.x, bb.max.y - bb.min.y, bb.max.z - bb.min.z]
     .map((n) => +n.toFixed(3));
   out.brainY = +(TWO_BRAIN_Y).toFixed(3);
@@ -1006,16 +1079,17 @@ const warden = await page.evaluate(async () => {
   const names = new Set();
   for (let i = 0; i < 24; i++) names.add(subjectFor(i * 7.3, i * -3.1).no);
   out.distinctSubjects = names.size;
-  // ...and the copy in your hands keeps its doors SHUT, so the reveal is the
-  // deploy rather than the moment you open the satchel.
-  out.carryDoorsShut = Math.abs(g.viewModel.heldRigs.sentryTwo.parts.doors.L.rotation.y) < 0.01;
+  // ...and the copy in your hands keeps the vessel struck down, so the reveal
+  // is the deploy rather than the moment you open the satchel.
+  const carry = g.viewModel.heldRigs.sentryTwo.parts;
+  out.carryStowed = Math.abs(carry.vesselLift.position.y - carry.vesselDown) < 1e-6;
 
   offB(); offP(); offV();
   g.sentries.reset();
   return out;
 });
 const BEAT_ORDER = 'latch,clamp,splay,knee,jack,level,spade,rise,battery,wings,'
-  + 'shutter,perfuse,cortex,range,charge,ready';
+  + 'present,perfuse,cortex,range,charge,ready';
 check('the Mk II takes exactly twice as long to stand up as the Mk I',
   Math.abs(warden.deployTime - 2.1) < 1e-9 && warden.stoodUp && warden.stillDeploying,
   `${warden.deployTime.toFixed(2)}s, still deploying at 1.2s ${warden.stillDeploying}`);
@@ -1024,10 +1098,12 @@ check('...in sixteen beats, each fired once, in order',
   `${warden.beatCount} beats: ${warden.beats}`);
 check('...and the ground spade actually reaches the ground',
   warden.spadeUnder > 0.02, `teeth ${warden.spadeUnder} m below its own feet`);
-check('the armoured doors stay shut until the gun is up, then open',
-  warden.doorsShutAtStart && warden.doorsStillShut && warden.doorsOpen && warden.carryDoorsShut,
-  `shut on the ground ${warden.doorsShutAtStart}, shut mid-deploy ${warden.doorsStillShut}, `
-  + `open when ready ${warden.doorsOpen}, shut in the hands ${warden.carryDoorsShut}`);
+check('the vessel stays struck down until the gun is up, then it is presented',
+  warden.vesselDownAtStart && warden.vesselStillDown && warden.vesselPresented
+  && warden.carryStowed && warden.hosesFollowed,
+  `down on the ground ${warden.vesselDownAtStart}, down mid-deploy ${warden.vesselStillDown}, `
+  + `up and latched ${warden.vesselPresented}, stowed in the hands ${warden.carryStowed}, `
+  + `hoses dragged up ${warden.hosesFollowed}`);
 check('there is a life-size brain behind the glass, at chest height',
   Math.abs(warden.brainSize[0] - 0.14) < 0.035 && Math.abs(warden.brainSize[2] - 0.167) < 0.035
   && warden.brainInJar && Math.abs(warden.brainY - 0.77) < 0.06,

@@ -150,13 +150,33 @@ export class AudioManager {
     o.stop(this.t + when + dur + 0.05);
   }
 
-  /** Stereo pan + attenuation for a world position. */
+  /**
+   * Stereo pan + attenuation for a world position.
+   *
+   * THE SIGN HERE IS THE WHOLE THING, and it was backwards: every positional
+   * sound in the game came out of the opposite ear. A car alarm on your right
+   * pulled you left, a zombie growling off your left shoulder read as being on
+   * your right, and because it was consistently wrong across every source
+   * there was nothing to compare it against — it just made the town feel
+   * subtly untrustworthy to move around in.
+   *
+   * The derivation, so it cannot drift again. The camera looks down local −Z,
+   * so at yaw `y` the player's forward is (−sin y, −cos y) and their RIGHT is
+   * (cos y, −sin y). For an offset d = (dx, dz) at distance r:
+   *
+   *     ang      = atan2(dx, dz) − y
+   *     sin(ang) = (dx·cos y − dz·sin y) / r  =  (d · right) / r
+   *
+   * So sin(ang) is ALREADY "how far to the right of the listener this is",
+   * which is exactly what a StereoPanner wants as a positive value. The
+   * leading minus was flipping it.
+   */
   _spatial(pos, maxDist = 60) {
     const dx = pos.x - this.listener.x, dz = pos.z - this.listener.z;
     const dist = Math.hypot(dx, dz);
     if (dist > maxDist) return null;
     const ang = Math.atan2(dx, dz) - this.listener.yaw;
-    return { pan: Math.max(-1, Math.min(1, -Math.sin(ang) * 0.8)), vol: 1 - dist / maxDist };
+    return { pan: Math.max(-1, Math.min(1, Math.sin(ang) * 0.8)), vol: 1 - dist / maxDist };
   }
 
   /* ---------------- weapons ---------------- */
@@ -526,11 +546,23 @@ export class AudioManager {
   }
 
   /** The booth phone rings — panned to the wrong side of the street. */
+  /**
+   * THE ONE SOUND IN THE GAME THAT IS SUPPOSED TO COME FROM THE WRONG SIDE.
+   *
+   * The booth rings from across the street and it rings out of the WRONG EAR,
+   * on purpose, which is the whole point of it — see the wrongness layer in
+   * Anomalies.js. That is what the explicit negation below is.
+   *
+   * It is also, incidentally, how you could have caught the bug in _spatial:
+   * while the global pan was inverted these two minus signs cancelled, and the
+   * only object in the town that was meant to sound wrong was the only one
+   * that sounded right.
+   */
   phoneRing(pos) {
     if (!this.ctx) return;
     const s = this._spatial(pos, 70);
     if (!s) return;
-    const pan = -s.pan;
+    const pan = -s.pan;                      // deliberate. Do not "fix" this.
     for (const w of [0, 0.55]) {
       for (let i = 0; i < 8; i++) {
         this._tone('square', i % 2 ? 440 : 480, 0.05, 0.05 * s.vol, w + i * 0.05, pan);
