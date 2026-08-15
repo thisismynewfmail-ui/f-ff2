@@ -2,6 +2,7 @@ import * as THREE from '../../lib/three.module.js';
 import { buildWeaponModel } from '../weapons/WeaponModels.js';
 import { WEAPON_CONFIGS } from '../weapons/WeaponConfigs.js';
 import { buildSentryModel } from './SentryModel.js';
+import { buildSentryTwoModel } from './SentryTwoModel.js';
 
 /**
  * First-person 3D weapon viewmodel.
@@ -233,27 +234,60 @@ export class WeaponView {
     this.held.visible = false;
     this.holdingItem = false;
     this.heldRaise = 1;                  // 1 = down/away, 0 = up in frame
-    const rig = buildSentryModel(texLib);
-    // The model already carries its world scale, so the carry copy scales it
-    // DOWN from that rather than setting an absolute size — resize the sentry
-    // and the thing in your hands is still the same object.
-    rig.group.scale.multiplyScalar(0.26);
-    rig.group.position.set(0, -0.10, 0);
+    /**
+     * ONE CARRY MODEL PER DEPLOYABLE, and only the one in your hands is drawn.
+     *
+     * Both are built here rather than swapped in on demand: they are small,
+     * they are built once, and a machine that had to be assembled at the
+     * moment you took it out of the bag would hitch on the frame that matters
+     * most — the one where you are looking at it.
+     */
+    this.heldRigs = {};
+    const carry = (kind, rig, fold) => {
+      // The model already carries its world scale, so the carry copy scales it
+      // DOWN from that rather than setting an absolute size — resize the
+      // machine and the thing in your hands is still the same object.
+      rig.group.scale.multiplyScalar(kind === 'sentryTwo' ? 0.21 : 0.26);
+      rig.group.position.set(0, -0.10, 0);
+      rig.group.visible = false;
+      fold(rig.parts);
+      this.held.add(rig.group);
+      this.heldRigs[kind] = rig;
+    };
     // Folded for carrying: legs in, knees tucked, mast down — exactly how it
     // comes out of the bag. The legs only kick out once it is standing on the
     // ground, and every joint the deployed one animates is posed here, or the
     // thing in your hands is a different shape from the thing you put down.
-    for (const leg of rig.parts.legs) {
-      leg.hip.rotation.x = 0.06;
-      leg.knee.rotation.x = 0;
-      leg.pad.rotation.x = -0.06;
-      leg.ram.position.y = -0.14;
-      leg.ram.scale.y = 1;
-    }
-    rig.parts.mastStage.position.y = 0.09;
-    rig.parts.body.position.y = 0.10;
-    this.heldRig = rig;
-    this.held.add(rig.group);
+    carry('sentry', buildSentryModel(texLib), (parts) => {
+      for (const leg of parts.legs) {
+        leg.hip.rotation.x = 0.06;
+        leg.knee.rotation.x = 0;
+        leg.pad.rotation.x = -0.06;
+        leg.ram.position.y = -0.14;
+        leg.ram.scale.y = 1;
+      }
+      parts.mastStage.position.y = 0.09;
+      parts.body.position.y = 0.10;
+    });
+    // The Mk II folds tighter still: legs in, jacks screwed up, spade stowed
+    // along the case and the rangefinder bar telescoped down to a stub, which
+    // is the only way a bar that wide goes in a satchel at all.
+    carry('sentryTwo', buildSentryTwoModel(texLib), (parts) => {
+      for (const leg of parts.legs) {
+        leg.hip.rotation.x = 0.05;
+        leg.knee.rotation.x = 0;
+        leg.pad.rotation.x = -0.05;
+        leg.ram.position.y = -0.145;
+        leg.ram.scale.y = 1;
+        leg.jack.position.y = -0.15;
+      }
+      parts.spade.rotation.x = -0.15;
+      parts.mastStage.position.y = 0.135;
+      parts.body.position.y = 0.30;
+      parts.rf.bar.scale.x = 0.35;
+    });
+    this.heldRig = this.heldRigs.sentry;
+    this.heldRigs.sentry.group.visible = true;
     // Rest pose, and it has to be INSIDE the frustum: the overlay camera is a
     // 52° lens, so at half a metre out the frame is only about 0.24 m tall
     // from the middle — park it much below that and the whole carry animation
@@ -281,9 +315,16 @@ export class WeaponView {
       this.scoped = on;
       this._syncVisible();
     });
-    // A deployable came up into the hands (or went back in the bag).
-    this.events.on('sentry:hold', ({ on }) => {
+    // A deployable came up into the hands (or went back in the bag). WHICH
+    // one matters: the carry model has to be the machine you are about to put
+    // down, or the preview on the ground and the thing in your hands are two
+    // different products.
+    this.events.on('sentry:hold', ({ on, kind }) => {
       this.holdingItem = !!on;
+      if (on && kind && this.heldRigs[kind]) {
+        for (const [k, rig] of Object.entries(this.heldRigs)) rig.group.visible = k === kind;
+        this.heldRig = this.heldRigs[kind];
+      }
       this._syncVisible();
     });
   }

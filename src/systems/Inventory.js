@@ -38,11 +38,14 @@ const STORABLE = new Set(['key', 'companionCube']);
 // Exported because it is a CONTRACT as much as a list: everything a player can
 // put out into the world is something a death has to be able to fetch back
 // (Game.respawn), and the suite holds the two lists against each other.
-export const DROPPABLE = new Set(['companionCube', 'sentry', 'companion']);
-const ACTION_LABEL = { companionCube: 'DROP', sentry: 'DEPLOY', companion: 'UNFOLD' };
+export const DROPPABLE = new Set(['companionCube', 'sentry', 'sentryTwo', 'companion']);
+const ACTION_LABEL = {
+  companionCube: 'DROP', sentry: 'DEPLOY', sentryTwo: 'DEPLOY', companion: 'UNFOLD',
+};
 const ACTION_HINT = {
   companionCube: 'Click to set it down',
   sentry: 'Click to take it in hand',
+  sentryTwo: 'Click to take it in hand',
   companion: 'Click to stand her up',
 };
 
@@ -217,6 +220,24 @@ export class Inventory {
       ctx.bezierCurveTo(20, 15.5, 21.5, 13, 24, 14);
       ctx.bezierCurveTo(28, 16, 27, 21, 20, 26);
       ctx.fill();
+    } else if (type === 'sentryTwo') {
+      // The Mk II folded for the bag, and told apart from the Mk I by the
+      // three things that make it: four legs, two barrels, and the
+      // rangefinder bar folded across the top of the case.
+      ctx.strokeStyle = '#8f9a6a'; ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.moveTo(20, 24); ctx.lineTo(9, 34);
+      ctx.moveTo(20, 24); ctx.lineTo(31, 34);
+      ctx.moveTo(20, 24); ctx.lineTo(14, 35);
+      ctx.moveTo(20, 24); ctx.lineTo(26, 35);
+      ctx.stroke();
+      ctx.fillStyle = '#5c6a48'; ctx.fillRect(12, 16, 16, 9);   // the case
+      ctx.fillStyle = '#e0b840'; ctx.fillRect(11, 13, 18, 3);   // hazard band
+      ctx.fillStyle = '#3a3d42';                                 // two barrels
+      ctx.fillRect(26, 17, 12, 2.5);
+      ctx.fillRect(26, 21, 12, 2.5);
+      ctx.fillStyle = '#8f9a6a'; ctx.fillRect(6, 8, 28, 3);      // the bar, folded
+      ctx.fillStyle = '#7ce8d0'; ctx.fillRect(15, 18, 6, 2);     // its lit slit
     } else if (type === 'sentry') {
       // the machine in miniature: splayed legs, drum body, gun head, barrel
       ctx.strokeStyle = '#8f9a6a'; ctx.lineWidth = 2.5;

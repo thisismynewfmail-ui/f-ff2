@@ -428,6 +428,9 @@ const stockOf = (id) => shop.lines.find((l) => l.id === id);
 check('the counter lists the sentry at 100 with six in stock',
   stockOf('sentry').price === 100 && stockOf('sentry').stock === 6,
   `${stockOf('sentry').price} tokens, ${stockOf('sentry').stock} on the shelf`);
+check('...the Mk II at 300, two only',
+  stockOf('sentryTwo').price === 300 && stockOf('sentryTwo').stock === 2,
+  `${stockOf('sentryTwo')?.price} tokens, ${stockOf('sentryTwo')?.stock} on the shelf`);
 check('...and the adjutant at 500, one only',
   stockOf('companion').price === 500 && stockOf('companion').stock === 1,
   `${stockOf('companion')?.price} tokens, ${stockOf('companion')?.stock} on the shelf`);
@@ -604,6 +607,169 @@ check('and the satchel always shows what you actually own',
   && sentry.slotRolledBack === 2 && sentry.slotAfterReset === 0,
   `stowed ${sentry.slotStored}, in hand ${sentry.slotInHand}, placed ${sentry.slotPlaced}, `
   + `rolled back ${sentry.slotRolledBack}, reset ${sentry.slotAfterReset}`);
+
+/* ------------------------------------------------------------------ */
+/* 5b. the Sentry Mk II                                                 */
+/* ------------------------------------------------------------------ */
+/* The second deployable, and everything about it that is a PROMISE rather
+ * than a preference: twice the reach, 240° instead of 180°, two rounds a
+ * pull, its own satchel slot, its own ghost and wedge, and the horde still
+ * not knowing either machine is there. */
+const mk2 = await page.evaluate(async () => {
+  const { TWO_RANGE, TWO_ARC, TWO_INTERVAL, TWO_DAMAGE, TWO_BARRELS, SentryTwo } =
+    await import('/src/entities/SentryTwo.js');
+  const { SENTRY_RANGE, SENTRY_ARC, SENTRY_INTERVAL, SENTRY_DAMAGE } = await import('/src/entities/Sentry.js');
+  const g = window.__game;
+  const out = {
+    rangeRatio: TWO_RANGE / SENTRY_RANGE,
+    arcDeg: Math.round(TWO_ARC * 180 / Math.PI),
+    faster: TWO_INTERVAL < SENTRY_INTERVAL,
+    sameBullet: TWO_DAMAGE === SENTRY_DAMAGE,
+    barrels: TWO_BARRELS,
+  };
+  g.sentries.reset();
+  g.tokens.restore({ tokens: 2000, earned: 2000, spent: 0 });
+
+  // ONE SLOT EACH. Buying a Mk II must never top up the Mk I's tally.
+  g.events.emit('pickup', { type: 'sentry', amount: 1 });
+  g.events.emit('pickup', { type: 'sentryTwo', amount: 1 });
+  const slot = (k) => g.inventory.items.get(k)?.count ?? 0;
+  out.slots = { mk1: slot('Portable Sentry'), mk2: slot('Sentry Mk II') };
+
+  // TAKEN TO HAND, it shows ITS OWN ghost and ITS OWN wedge.
+  g.sentries.takeToHand('sentryTwo');
+  out.holding = g.sentries.holding;
+  out.mk2SlotEmptied = slot('Sentry Mk II') === 0 && slot('Portable Sentry') === 1;
+  g.sentries.update(1 / 60, { zombies: [] }, null, true);
+  const view = g.sentries.previews.sentryTwo;
+  const pos = view.fanGeo.attributes.position;
+  let far = 0, wide = 0;
+  for (let i = 0; i < pos.count; i++) {
+    far = Math.max(far, Math.hypot(pos.getX(i), pos.getZ(i)));
+    wide = Math.max(wide, Math.abs(Math.atan2(pos.getX(i), pos.getZ(i))));
+  }
+  out.wedgeRadius = far;
+  out.wedgeHalfArcDeg = Math.round(wide * 180 / Math.PI);
+  out.onlyOnePreview = view.group.visible && !g.sentries.previews.sentry.group.visible;
+
+  // PLACED with a click, exactly like the Mk I.
+  const placed = g.sentries.place();
+  out.placedKind = placed?.kind;
+  out.handEmpty = g.sentries.holding === null;
+  for (let i = 0; i < 130; i++) placed.update(1 / 60, { zombies: [], player: g.player });
+  out.stoodUp = placed.state !== 'deploy';
+
+  // WHAT IT COVERS: a target at 30 m is past the Mk I's reach entirely, and
+  // one 100° off the centre line is outside the Mk I's arc.
+  const at = (dist, deg) => {
+    const a = placed.yaw + deg * Math.PI / 180;
+    return [placed.position.x + Math.sin(a) * dist, placed.position.z + Math.cos(a) * dist];
+  };
+  const mk1 = { covers: (x, z) => {
+    const dx = x - placed.position.x, dz = z - placed.position.z;
+    if (dx * dx + dz * dz > SENTRY_RANGE * SENTRY_RANGE) return false;
+    let rel = Math.atan2(dx, dz) - placed.yaw;
+    rel = Math.atan2(Math.sin(rel), Math.cos(rel));
+    return Math.abs(rel) <= SENTRY_ARC / 2;
+  } };
+  out.reachesFar = placed.covers(...at(30, 0)) && !mk1.covers(...at(30, 0));
+  out.reachesWide = placed.covers(...at(10, 100)) && !mk1.covers(...at(10, 100));
+  out.stillHasABack = !placed.covers(...at(10, 160));
+  out.notPastItsOwnRange = !placed.covers(...at(TWO_RANGE + 2, 0));
+
+  // TWO BULLETS A PULL. Counted through the real takeDamage pipeline.
+  const realLos = g.world.hasLineOfSight;
+  g.world.hasLineOfSight = () => true;
+  let hits = 0, dmg = 0;
+  const dummy = {
+    state: 'walk', height: 1.8, position: { x: 0, y: placed.position.y, z: 0 },
+    takeDamage(d) { hits++; dmg += d; },
+  };
+  const [dx, dz] = at(24, 0);                    // well past the Mk I's reach
+  dummy.position.x = dx; dummy.position.z = dz;
+  placed.headYaw = 0; placed.converge = 1; placed.cooldown = 0;
+  const beforePulls = placed.shotsFired;
+  for (let i = 0; i < 60; i++) placed.update(1 / 60, { zombies: [dummy], player: g.player });
+  out.pulls = placed.shotsFired - beforePulls;
+  out.hitsPerPull = out.pulls ? hits / out.pulls : 0;
+  out.damagePerPull = out.pulls ? dmg / out.pulls : 0;
+  out.rounds = placed.roundsFired;
+
+  // IT CHANGES ITS OWN DRUM, and cannot fire while it does.
+  placed.drum = 1;
+  const pullsAtEmpty = placed.shotsFired;
+  for (let i = 0; i < 30; i++) placed.update(1 / 60, { zombies: [dummy], player: g.player });
+  out.wentToReload = placed.state === 'reload';
+  const pullsInReload = placed.shotsFired - pullsAtEmpty;
+  for (let i = 0; i < 130; i++) placed.update(1 / 60, { zombies: [dummy], player: g.player });
+  out.reloadHeldFire = pullsInReload <= 1;       // the pull that emptied it, at most
+  out.drumRefilled = placed.drum > 1;
+  g.world.hasLineOfSight = realLos;
+
+  // THE HORDE DOES NOT KNOW IT IS THERE — the same rule as the Mk I.
+  out.offRoster = !g.friendlies.includes(placed);
+  out.tags = [...placed.tags];
+
+  // [E] PUTS IT BACK IN ITS OWN SLOT, not the Mk I's.
+  g.events.emit('sentry:retrieve', { sentry: placed });
+  out.packedAway = { mk2: slot('Sentry Mk II'), mk1: slot('Portable Sentry'),
+    gone: g.sentries.deployed.length === 0 };
+
+  // ...and a death brings both kinds home, stowed. One of each goes out —
+  // the Mk I bought at the top, the Mk II the [E] above just packed away.
+  g.sentries.takeToHand('sentry');
+  g.sentries.place();
+  g.sentries.takeToHand('sentryTwo');
+  g.sentries.place();
+  const recovered = g.sentries.recallAll();
+  out.recall = { recovered, mk1: slot('Portable Sentry'), mk2: slot('Sentry Mk II'),
+    standing: g.sentries.deployed.length };
+
+  // and the save carries the pair, kinds and all
+  g.sentries.takeToHand('sentryTwo');
+  g.sentries.place();
+  const snap = g.sentries.snapshot();
+  out.snapKinds = snap.deployed.map((d) => d.kind).join(',');
+  out.snapCounts = `${snap.counts.sentry}/${snap.counts.sentryTwo}`;
+  g.sentries.reset();
+  g.sentries.restore(snap);
+  out.restoredKinds = g.sentries.deployed.map((s) => s.kind).join(',');
+  g.sentries.reset();
+  return out;
+});
+check('the Mk II reaches exactly twice as far, over 240° instead of 180°',
+  mk2.rangeRatio === 2 && mk2.arcDeg === 240,
+  `${mk2.rangeRatio}× range, ${mk2.arcDeg}°`);
+check('...and the wedge you aim with is drawn from those same numbers',
+  Math.abs(mk2.wedgeRadius - 36.576) < 0.01 && mk2.wedgeHalfArcDeg === 120 && mk2.onlyOnePreview,
+  `${mk2.wedgeRadius.toFixed(2)} m, ±${mk2.wedgeHalfArcDeg}°, one preview ${mk2.onlyOnePreview}`);
+check('it has its own satchel slot, and taking one empties only that slot',
+  mk2.slots.mk1 === 1 && mk2.slots.mk2 === 1 && mk2.holding === 'sentryTwo' && mk2.mk2SlotEmptied,
+  `mk1 ${mk2.slots.mk1}, mk2 ${mk2.slots.mk2}, held ${mk2.holding}`);
+check('clicking puts a Mk II on the ground, and it stands itself up',
+  mk2.placedKind === 'sentryTwo' && mk2.handEmpty && mk2.stoodUp);
+check('it covers what the Mk I cannot — 30 m out, and 100° off the centre line',
+  mk2.reachesFar && mk2.reachesWide && mk2.stillHasABack && mk2.notPastItsOwnRange,
+  `far ${mk2.reachesFar}, wide ${mk2.reachesWide}, still has a back ${mk2.stillHasABack}`);
+check('one pull is TWO bullets, at a faster rate than the Mk I, for the same damage each',
+  mk2.hitsPerPull === 2 && mk2.damagePerPull === 24 && mk2.faster && mk2.sameBullet
+  && mk2.rounds === mk2.pulls * 2,
+  `${mk2.pulls} pulls → ${mk2.rounds} rounds, ${mk2.hitsPerPull}/pull for ${mk2.damagePerPull}`);
+check('it changes its own drum, and holds fire while it does',
+  mk2.wentToReload && mk2.reloadHeldFire && mk2.drumRefilled,
+  `reloaded ${mk2.wentToReload}, held fire ${mk2.reloadHeldFire}, refilled ${mk2.drumRefilled}`);
+check('and the horde has no idea it is there either',
+  mk2.offRoster && !mk2.tags.includes('friendly'), mk2.tags.join('/'));
+check('[E] packs it into ITS OWN slot, not the Mk I\'s',
+  mk2.packedAway.mk2 === 1 && mk2.packedAway.mk1 === 1 && mk2.packedAway.gone,
+  `mk2 ${mk2.packedAway.mk2}, mk1 ${mk2.packedAway.mk1}`);
+check('dying brings both kinds home, stowed and sorted',
+  mk2.recall.recovered === 2 && mk2.recall.mk1 === 1 && mk2.recall.mk2 === 1
+  && mk2.recall.standing === 0,
+  `${mk2.recall.recovered} recovered → mk1 ${mk2.recall.mk1}, mk2 ${mk2.recall.mk2}`);
+check('...and the save carries which machine is which',
+  mk2.snapKinds === 'sentryTwo' && mk2.restoredKinds === 'sentryTwo' && mk2.snapCounts === '1/0',
+  `saved ${mk2.snapKinds} (counts ${mk2.snapCounts}), restored ${mk2.restoredKinds}`);
 
 /* ------------------------------------------------------------------ */
 /* 6. the sentry's new tricks                                          */
@@ -893,7 +1059,7 @@ const death = await page.evaluate(async () => {
   const { DROPPABLE } = await import('/src/systems/Inventory.js');
   const g = window.__game;
   // Everything the satchel lets you put OUT is something a death has to fetch
-  // back. If a fourth droppable ever lands here, Game.respawn needs to know
+  // back. If a fifth droppable ever lands here, Game.respawn needs to know
   // about it, and this is where that gets noticed.
   const out = { droppable: [...DROPPABLE].sort().join(',') };
   g.sentries.reset(); g.companions.reset();
@@ -954,8 +1120,8 @@ check('dying hands every piece of it back, stowed',
 check('...and what was already in the satchel is untouched',
   death.after.key === 1, `key ${death.after.key}`);
 check('...while a cube nobody has found stays where it is hidden', death.unfoundStays);
-check('...and those three are everything the satchel can put out in the first place',
-  death.droppable === 'companion,companionCube,sentry', death.droppable);
+check('...and that kit is everything the satchel can put out in the first place',
+  death.droppable === 'companion,companionCube,sentry,sentryTwo', death.droppable);
 
 check('no console errors across the run', errors.length === 0, errors.slice(0, 3).join(' | '));
 

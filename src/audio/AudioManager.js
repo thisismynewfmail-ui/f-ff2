@@ -41,8 +41,13 @@ export class AudioManager {
     on('exploder:explode', ({ pos }) => this.explosion(pos));
     on('barrier:explode', (b) => this.barrierBlast(b));
     on('spitter:fire', ({ pos }) => this.spitterShot(pos));
-    on('sentry:fire', ({ pos }) => this.sentryShot(pos));
-    on('sentry:deployed', ({ pos }) => this.sentryDeploy(pos));
+    on('sentry:fire', ({ pos, kind }) => this.sentryShot(pos, kind));
+    on('sentry:deployed', ({ pos, kind }) => this.sentryDeploy(pos, kind));
+    // The Mk II changing its own drum, cutting a mark, and the two machines
+    // saying hello to each other.
+    on('sentry:reload', ({ pos }) => this.sentryReload(pos));
+    on('sentry:tally', ({ pos }) => this.sentryTally(pos));
+    on('sentry:handshake', ({ pos }) => this.sentrySalute(pos));
     on('sentry:salute', ({ pos }) => this.sentrySalute(pos));
     on('sentry:wake', ({ pos }) => this.sentryWake(pos));
     // The adjutant's voice. Everything she says goes through one door.
@@ -608,23 +613,76 @@ export class AudioManager {
     this._tone('square', 330, 0.05, 0.05 * s.vol, 0.24, s.pan);        // its bell tapping once
   }
 
-  /** The sentry: legs locking out, and the flat crack of its pistol. */
-  sentryDeploy(pos) {
-    const s = this._spatial(pos, 30);
+  /**
+   * The sentry setting itself up: legs locking out and a bell on the end of it.
+   *
+   * The Mk II gets the same sequence played HEAVIER and one beat longer, with
+   * the spade going in at the end of it — the audio equivalent of the extra
+   * half-second it takes to stand up.
+   */
+  sentryDeploy(pos, kind) {
+    const s = this._spatial(pos, kind === 'sentryTwo' ? 40 : 30);
     if (!s) return;
+    if (kind === 'sentryTwo') {
+      this._noise(0.16, 'bandpass', 620, 2, 0.17 * s.vol, 0, s.pan);       // the legs
+      this._tone('square', 120, 0.10, 0.10 * s.vol, 0.18, s.pan, 180);     // jacks screwing down
+      this._punch(150, 46, 0.09, 0.22 * s.vol, 0.62, s.pan, 'triangle');   // the SPADE going in
+      this._noise(0.09, 'lowpass', 380, 1, 0.13 * s.vol, 0.62, s.pan);
+      this._tone('square', 420, 0.06, 0.05 * s.vol, 0.95, s.pan);          // bolt home
+      return;
+    }
     this._noise(0.12, 'bandpass', 900, 2, 0.14 * s.vol, 0, s.pan);
     this._tone('square', 180, 0.07, 0.08 * s.vol, 0.14, s.pan, 260);
     this._tone('square', 520, 0.05, 0.06 * s.vol, 0.3, s.pan);
   }
 
-  sentryShot(pos) {
-    const s = this._spatial(pos, 50);
+  /**
+   * One pull. The Mk I is one thin crack; the Mk II is TWO barrels going off
+   * together, which is not the same sound twice — it is one heavier report
+   * with a slight flam on it, because two locks never quite fall as one.
+   */
+  sentryShot(pos, kind) {
+    const s = this._spatial(pos, kind === 'sentryTwo' ? 70 : 50);
     if (!s) return;
+    if (kind === 'sentryTwo') {
+      this._punch(230, 62, 0.06, 0.28 * s.vol, 0, s.pan, 'triangle');
+      this._punch(215, 58, 0.055, 0.22 * s.vol, 0.012, s.pan, 'triangle');  // the flam
+      this._noise(0.05, 'bandpass', 2600, 1.2, 0.26 * s.vol, 0, s.pan);
+      this._tone('sine', 4200, 0.05, 0.02 * s.vol, 0.05, s.pan, 2800);
+      return;
+    }
     // Deliberately thinner and drier than the player's pistol: the same
     // cartridge, but coming out of a little machine across the street.
     this._punch(300, 84, 0.045, 0.24 * s.vol, 0, s.pan, 'triangle');
     this._noise(0.035, 'bandpass', 3800, 1.4, 0.22 * s.vol, 0, s.pan);
     this._tone('sine', 5200, 0.04, 0.02 * s.vol, 0.04, s.pan, 3600);
+  }
+
+  /** The Mk II changing a drum: the old one off, the new one seated, bolt home. */
+  sentryReload(pos) {
+    const s = this._spatial(pos, 34);
+    if (!s) return;
+    this._tone('square', 260, 0.05, 0.06 * s.vol, 0, s.pan, 170);        // catch released
+    this._noise(0.08, 'bandpass', 700, 2, 0.10 * s.vol, 0.55, s.pan);    // drum lifted clear
+    this._punch(190, 70, 0.05, 0.16 * s.vol, 1.15, s.pan, 'square');     // the new one seated
+    this._tone('square', 480, 0.05, 0.06 * s.vol, 1.55, s.pan);          // bolt home
+  }
+
+  /**
+   * The Mk II cutting another mark into its own data plate.
+   *
+   * Three short scratches, because that is what the arm does — a stroke is a
+   * rasp and not a beep, so it is filtered noise rather than a tone, and it is
+   * quiet: this is a machine talking to itself, not announcing anything.
+   */
+  sentryTally(pos) {
+    const s = this._spatial(pos, 18);
+    if (!s) return;
+    this._tone('sawtooth', 140, 0.20, 0.030 * s.vol, 0, s.pan, 300);      // the arm reaching back
+    for (let i = 0; i < 3; i++) {
+      this._noise(0.045, 'bandpass', 2900 + i * 260, 6, 0.055 * s.vol, 0.30 + i * 0.13, s.pan, 1700);
+    }
+    this._tone('sawtooth', 300, 0.18, 0.028 * s.vol, 0.78, s.pan, 130);   // and coming home
   }
 
   /** It folding itself back into the satchel. */
