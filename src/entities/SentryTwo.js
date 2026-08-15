@@ -1219,7 +1219,6 @@ export class SentryTwo extends Entity {
     const jitter = this._pulseJitter ?? 0;
     this._pulseJitter = null;
     this.pulseRate = damp(this.pulseRate, base, dt, 1.6);
-    // firing drives it up over and above whatever the state asked for
     // Firing drives it up over and above whatever the state asked for: the
     // recoil term IS the flinch, one per pull, decaying over about a sixth of
     // a second — so a machine in a firefight has a visibly racing heart.
@@ -1588,5 +1587,9 @@ export class SentryTwo extends Entity {
       o.geometry.dispose();
       for (const m of Array.isArray(o.material) ? o.material : [o.material]) m?.dispose();
     });
+    // ...and the canvases this machine drew for itself: its subject's name,
+    // its brain's surface, its chart paper and its tally plate. Only those —
+    // see the note on ownedTextures in the rig.
+    for (const t of this.rig.parts.ownedTextures ?? []) t.dispose();
   }
 }

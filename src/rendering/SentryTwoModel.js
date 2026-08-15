@@ -533,7 +533,8 @@ export function buildSentryTwoModel(texLib = null, subject = SUBJECTS[0]) {
   const bubbleMat = new THREE.MeshBasicMaterial({
     color: 0xdff4e6, transparent: true, opacity: 0.5, depthWrite: false, fog: false,
   });
-  const brainMat = new THREE.MeshLambertMaterial({ map: brainTexture(), emissive: 0x2a1512 });
+  const brainTex = brainTexture();
+  const brainMat = new THREE.MeshLambertMaterial({ map: brainTex, emissive: 0x2a1512 });
   const stemMat = new THREE.MeshLambertMaterial({ color: 0xb99a90 });
 
   const g = new THREE.Group();
@@ -543,6 +544,22 @@ export function buildSentryTwoModel(texLib = null, subject = SUBJECTS[0]) {
     bubbles: [], electrodes: [], doors: {}, arm: {}, rf: {},
     lampMat, lensMat, jacketMat, steamMat, fluidMat, glassMat, brainMat,
     subject,
+    /**
+     * THE TEXTURES THIS RIG OWNS, and only those.
+     *
+     * Four canvases are drawn fresh for every Warden — the brain's surface,
+     * the subject plate, the oscillograph paper and the tally plate — and up
+     * to four rigs exist at once (two deployed, the placement ghost, the copy
+     * in your hands), redrawn every time one is packed up and set down again.
+     * They have to be given back.
+     *
+     * What must NOT be given back is anything out of the shared texture
+     * library: `texLib.get()` hands out the ONE instance the whole game draws
+     * with, so disposing a sentry's armour plate takes the vendor's brass and
+     * everything else painted with it down with it. Hence an explicit list
+     * rather than walking the rig and disposing every material's map.
+     */
+    ownedTextures: [],
   };
   const box = (w, h, d, m) => new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m);
   const cyl = (rt, rb, h, m, seg = 10) => new THREE.Mesh(new THREE.CylinderGeometry(rt, rb, h, seg), m);
@@ -795,9 +812,10 @@ export function buildSentryTwoModel(texLib = null, subject = SUBJECTS[0]) {
   }
 
   // the subject plate, screwed to the sill under the window
+  const subjTex = subjectTexture(subject);
   const subjPlate = at(new THREE.Mesh(
     new THREE.PlaneGeometry(0.150, 0.047),
-    new THREE.MeshBasicMaterial({ map: subjectTexture(subject) }),
+    new THREE.MeshBasicMaterial({ map: subjTex }),
   ), 0, JAR_Y - WIN_H / 2 - 0.034, BAY_Z + JAR_R + 0.008);
   ped.add(subjPlate);
   parts.subjectPlate = subjPlate;
@@ -908,9 +926,12 @@ export function buildSentryTwoModel(texLib = null, subject = SUBJECTS[0]) {
   }
   vessel.add(at(cyl(0.010, 0.010, 0.020, copper, 6), 0, -JAR_H / 2 + 0.004, -0.030));
 
-  // bubbles: they climb, they wobble, and there are more of them on a beat
+  // Bubbles: they climb, they wobble, and there are more of them on a beat.
+  // A material EACH, because the entity fades every one of them separately as
+  // it rises — share one and all eight take whichever opacity the loop set
+  // last, which is eight bubbles blinking in perfect unison.
   for (let i = 0; i < 8; i++) {
-    const b = sph(0.005 + (i % 3) * 0.0018, bubbleMat, 5, 4);
+    const b = sph(0.005 + (i % 3) * 0.0018, bubbleMat.clone(), 5, 4);
     b.renderOrder = 2;
     vessel.add(b);
     parts.bubbles.push({ mesh: b, i, seed: hash(i * 9.7) });
@@ -1572,6 +1593,7 @@ export function buildSentryTwoModel(texLib = null, subject = SUBJECTS[0]) {
   parts.dataPlate = dataPlate;
   parts.setTally = (kills) => { plateTex.draw(kills); plateTex.texture.needsUpdate = true; };
 
+  parts.ownedTextures.push(brainTex, subjTex, rfCard, osc.texture, plateTex.texture);
   g.scale.setScalar(TWO_SCALE);
   poseTwoDeployed(parts);
   return { group: g, parts };
