@@ -167,7 +167,7 @@ const DECK_LIFT = 0.054;
 
 /** The vessel: where the glass is, and how big the thing inside it is. */
 const JAR_Y = 0.524;
-const JAR_Z = 0.200;         // out in front of the drum, in its own bay
+const JAR_Z = 0.020;         // dead centre of the frame, in the open air
 const JAR_R = 0.070;
 const JAR_H = 0.168;
 /**
@@ -411,6 +411,74 @@ function traceTexture() {
   return { texture: tex, push, word };
 }
 
+/**
+ * THE MK II'S OWN SKIN.
+ *
+ * It used to borrow the Mk I's armour plate — county olive drab — and that was
+ * wrong twice over. Wrong once because the Mk I is a hand-carried pistol on a
+ * tripod and this is not that machine; wrong twice because the whole front of
+ * this thing now glows green, and hanging a green lamp on a green machine
+ * means neither of them reads.
+ *
+ * So: cold gunmetal, sprayed over steel, and then LEFT OUT. Paint chipped back
+ * to bare metal along every edge, rust bleeding down out of the rivet lines,
+ * weld seams where the panels meet, and the grime of something that has been
+ * stood in a field for a long time. The palette is deliberately all blues and
+ * greys and browns, so the single green thing on the machine is the only green
+ * thing on the machine.
+ */
+function wardenPlate() {
+  const S = 64;
+  const c = document.createElement('canvas');
+  c.width = c.height = S;
+  const x = c.getContext('2d');
+  x.fillStyle = '#444d55'; x.fillRect(0, 0, S, S);
+  // mottled spray, so it is not a flat swatch
+  for (let i = 0; i < 340; i++) {
+    const v = hash(i * 1.7);
+    x.fillStyle = v > 0.72 ? '#4e5860' : v > 0.4 ? '#3d454c' : '#485159';
+    x.fillRect((hash(i * 2.9) * S) | 0, (hash(i * 5.1) * S) | 0, 1 + ((v * 2) | 0), 1);
+  }
+  // weld seams across the panel
+  for (const y of [15, 46]) {
+    x.fillStyle = '#333a40'; x.fillRect(0, y, S, 1);
+    x.fillStyle = '#59636b'; x.fillRect(0, y + 1, S, 1);
+  }
+  // rivets, each with a shadow under it — and rust bleeding from some of them
+  for (let i = 0; i < 14; i++) {
+    const rx = (hash(i * 7.3) * (S - 6) + 3) | 0;
+    const ry = (hash(i * 4.1) * (S - 6) + 3) | 0;
+    x.fillStyle = '#69737b'; x.fillRect(rx, ry, 2, 2);
+    x.fillStyle = '#2e343a'; x.fillRect(rx, ry + 2, 2, 1);
+    if (hash(i * 9.7) > 0.55) {
+      const run = 4 + ((hash(i * 3.7) * 12) | 0);
+      for (let k = 0; k < run; k++) {
+        x.fillStyle = `rgba(112,62,34,${0.42 * (1 - k / run)})`;
+        x.fillRect(rx, ry + 3 + k, 2 - (k > run * 0.6 ? 1 : 0), 1);
+      }
+    }
+  }
+  // paint chipped back to bare steel, mostly along the edges
+  for (let i = 0; i < 26; i++) {
+    const w = 1 + ((hash(i * 6.1) * 3) | 0), h = 1 + ((hash(i * 8.9) * 3) | 0);
+    const edge = hash(i * 2.2);
+    const cx = edge > 0.5 ? (hash(i * 3.4) > 0.5 ? (hash(i) * 5) | 0 : S - 5 + ((hash(i) * 5) | 0))
+      : (hash(i * 1.3) * S) | 0;
+    const cy = edge > 0.5 ? (hash(i * 5.5) * S) | 0
+      : (hash(i * 4.4) > 0.5 ? (hash(i) * 5) | 0 : S - 5 + ((hash(i) * 5) | 0));
+    x.fillStyle = '#78828b'; x.fillRect(cx, cy, w, h);
+    x.fillStyle = '#333a40'; x.fillRect(cx, cy + h, w, 1);
+  }
+  // and the grime that collects in the low corners
+  for (let i = 0; i < 60; i++) {
+    x.fillStyle = `rgba(30,26,22,${0.10 + hash(i * 3.3) * 0.2})`;
+    x.fillRect((hash(i * 1.9) * S) | 0, (S - 12 + hash(i * 7.7) * 12) | 0, 2, 1);
+  }
+  const t = pixelTex(c);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  return t;
+}
+
 /** The rangefinder's own scale card, seen through the prism head. */
 function rangeCardTexture() {
   const S = 32, c = document.createElement('canvas');
@@ -485,23 +553,33 @@ function brainTexture() {
  * ====================================================================== */
 
 export function buildSentryTwoModel(texLib = null, subject = SUBJECTS[0]) {
-  const plateMat = texLib
-    ? new THREE.MeshLambertMaterial({ map: texLib.get('sentryPlate') })
-    : new THREE.MeshLambertMaterial({ color: 0x4a5236 });
-  const steel = new THREE.MeshLambertMaterial({ color: 0x35383c });
-  const dark = new THREE.MeshLambertMaterial({ color: 0x1e2023 });
-  const oil = new THREE.MeshLambertMaterial({ color: 0x14161a });
+  /**
+   * THE PALETTE, and the one rule it is built around.
+   *
+   * Everything on this machine is a cold blue-grey, a warm brown or a dull
+   * brass. Nothing else. Not one part of the hardware is green — which is the
+   * whole point, because the perfusate is, and a green lamp on a green machine
+   * is a lamp nobody sees. The single saturated colour on the Warden is the
+   * thing in the jar, and the paint is chosen to get out of its way.
+   */
+  const wardenTex = wardenPlate();
+  const plateMat = new THREE.MeshLambertMaterial({ map: wardenTex });
+  const steel = new THREE.MeshLambertMaterial({ color: 0x49515a });
+  const dark = new THREE.MeshLambertMaterial({ color: 0x232830 });
+  const oil = new THREE.MeshLambertMaterial({ color: 0x15181c });
   const chrome = new THREE.MeshLambertMaterial({ color: 0x9aa2ab });
   const brass = texLib
     ? new THREE.MeshLambertMaterial({ map: texLib.get('vendorBrass') })
     : new THREE.MeshLambertMaterial({ color: 0xa8842c });
   const copper = new THREE.MeshLambertMaterial({ color: 0x8a5a2c });
-  // The Mk II's own colour: the county sprayed its heavy kit a darker olive and
-  // banded the moving parts in hazard yellow, which is the one warm accent on
-  // an otherwise cold machine — until the doors open, and then there are two.
-  const hull = new THREE.MeshLambertMaterial({ color: 0x434b32 });
-  const hazard = new THREE.MeshLambertMaterial({ color: 0xb99a2a });
-  const rubber = new THREE.MeshLambertMaterial({ color: 0x2a2622 });
+  const hull = new THREE.MeshLambertMaterial({ color: 0x3f474f });
+  const hazard = new THREE.MeshLambertMaterial({ color: 0xc9a63a });
+  // Two kinds of hose. Black rubber for the cable looms and the dry runs, and
+  // a dark oxblood for the ones with somebody's perfusate going through them —
+  // which is a distinction you are never told about and can read at a glance
+  // once you have noticed the second colour exists.
+  const rubber = new THREE.MeshLambertMaterial({ color: 0x24201e });
+  const flesh = new THREE.MeshLambertMaterial({ color: 0x4c2b25 });
 
   // Animated materials. Kept as materials rather than meshes because the
   // entity drives emissive on all of them and a merged mesh still draws with
@@ -541,7 +619,7 @@ export function buildSentryTwoModel(texLib = null, subject = SUBJECTS[0]) {
   const parts = {
     legs: [], chain: [], loom: [], barrels: [], shells: [], lamps: [], steam: [],
     rack: [], latches: [], clamps: [], wings: [], louvres: [], posts: [],
-    bubbles: [], electrodes: [], doors: {}, arm: {}, rf: {},
+    bubbles: [], electrodes: [], arm: {}, rf: {},
     lampMat, lensMat, jacketMat, steamMat, fluidMat, glassMat, brainMat,
     subject,
     /**
@@ -720,111 +798,150 @@ export function buildSentryTwoModel(texLib = null, subject = SUBJECTS[0]) {
   }
 
   /* ================================================================== *
-   * THE COMPUTING SECTION — an eight-sided drum with a person in it     *
+   * THE COMPUTING SECTION — an open frame with a person hung in it      *
    * ================================================================== */
 
-  const PED_H = PED_Y1 - PED_Y0;
-  const PED_MID = (PED_Y0 + PED_Y1) / 2;
-  const ped = new THREE.Group();
-  g.add(ped);
-  parts.ped = ped;
-
-  ped.add(at(oct(PED_R, PED_H, hull), 0, PED_MID, 0));
-  ped.add(at(oct(PED_R + 0.012, 0.018, steel), 0, PED_Y0 + 0.008, 0));       // bottom flange
-  ped.add(at(oct(PED_R + 0.014, 0.020, steel), 0, PED_Y1 - 0.009, 0));       // top flange
-  for (const y of [PED_Y0 + 0.055, PED_Y1 - 0.058]) {                        // banding
-    ped.add(at(oct(PED_R + 0.004, 0.010, steel), 0, y, 0));
-  }
-  // eight corner ribs, so the casting reads as a casting
-  for (let i = 0; i < 8; i++) {
-    const a = (i / 8) * TAU + Math.PI / 8;
-    ped.add(at(box(0.014, PED_H - 0.03, 0.016, steel),
-      Math.sin(a) * (PED_R - 0.004), PED_MID, Math.cos(a) * (PED_R - 0.004)).rotateY(a));
-  }
-
-  /* ---- FRONT: the vessel bay, its doors, and the sill plate ---- */
-
   /**
-   * THE BAY, AND WHY THE VESSEL IS NOT INSIDE THE DRUM.
+   * THERE IS NO CASING. That is the design.
    *
-   * It was, first, and it was completely invisible — which is obvious in
-   * hindsight and was not obvious at all while building it. A window drawn on
-   * the face of a solid casting is a picture of a window: the frame reads, the
-   * hazard chevron reads, the plate underneath reads, and behind all of it is
-   * an unbroken wall of olive paint with a jar sealed up inside where no
-   * camera will ever see it. Cutting a real hole in an eight-sided prism is
-   * fiddly and the aperture the jar needs is wider than the drum's flat face
-   * anyway.
+   * The first version of this was a cast drum with two armoured doors in the
+   * front of it, and the doors were the problem: a box that opens is still a
+   * box, the vessel was only ever visible through one aperture from one angle,
+   * and the plumbing that keeps the occupant alive was all sealed up inside
+   * where it could not be seen doing it. A machine that HIDES the thing in its
+   * belly is a machine with a secret. This one has no secret. It has an
+   * exposed nervous system.
    *
-   * So the vessel came OUT. It sits in a bay bolted to the front of the drum —
-   * a hood, a sill and two cheeks with nothing across the front of them — and
-   * the glass stands proud of the armour, out in the daylight, at the height
-   * of a person's chest. Which is better than the sealed version in every way
-   * that matters: it is lit by the actual scene rather than by whatever the
-   * perfusate is doing, it is unmissable from the front, and a machine that
-   * carries the thing on the OUTSIDE is a machine nobody bothered to hide it
-   * in.
+   * So the casing came off entirely and what is left is the structure: four
+   * corner posts, a floor pan, a top ring, X-braces on three faces and nothing
+   * at all across the front. Slung in the middle of that, in a brass gimbal, in
+   * the open air, is the vessel — and threaded through the whole frame, in
+   * front of it and behind it and round it, is the circuit that keeps the
+   * occupant going. A peristaltic pump with a rotor you can watch turning. A
+   * bellows that compresses on every heartbeat. Sight glasses with the fluid
+   * level bobbing in them. Six hoses, ribbed, sagging under their own weight,
+   * two of them oxblood because of what is inside them.
+   *
+   * It is meant to be unpleasant to look at closely and completely
+   * matter-of-fact about being unpleasant, which is the only register this
+   * whole machine is written in.
    */
-  const BAY_Z = JAR_Z;
-  const WIN_W = 0.196, WIN_H = 0.186;
-  const bayD = BAY_Z + JAR_R + 0.012 - FACE_Z;      // how far it stands out
-  const bayMid = FACE_Z + bayD / 2;
-  ped.add(at(box(WIN_W + 0.048, 0.026, bayD, plateMat), 0, JAR_Y + WIN_H / 2 + 0.012, bayMid));
-  ped.add(at(box(WIN_W + 0.048, 0.028, bayD, plateMat), 0, JAR_Y - WIN_H / 2 - 0.012, bayMid));
-  for (const sx of [-1, 1]) {                        // the two cheeks
-    ped.add(at(box(0.024, WIN_H + 0.052, bayD, plateMat), sx * (WIN_W / 2 + 0.012), JAR_Y, bayMid));
-    // and the stay that carries the bay's weight back onto the casting
-    ped.add(at(box(0.012, 0.070, 0.012, steel),
-      sx * (WIN_W / 2 + 0.010), JAR_Y - WIN_H / 2 - 0.052, bayMid + 0.020).rotateX(0.72));
-  }
-  // a warning chevron along the sill, because the county banded everything
-  ped.add(at(box(WIN_W + 0.040, 0.010, 0.016, hazard), 0, JAR_Y - WIN_H / 2 - 0.026, BAY_Z + JAR_R - 0.004));
-  ped.add(at(box(WIN_W + 0.040, 0.010, 0.016, hazard), 0, JAR_Y + WIN_H / 2 + 0.026, BAY_Z + JAR_R - 0.004));
 
+  const FR_Y0 = PED_Y0;
+  const FR_Y1 = PED_Y1;
+  const FR_H = FR_Y1 - FR_Y0;
+  const FR_MID = (FR_Y0 + FR_Y1) / 2;
+  const FR_X = 0.116;                    // half the frame's width, corner to corner
+  const frame = new THREE.Group();
+  g.add(frame);
+  parts.ped = frame;
+  parts.frame = frame;
+
+  // --- the floor pan: a shallow tray, because things drip
+  frame.add(at(box(FR_X * 2 + 0.03, 0.014, FR_X * 2 + 0.03, plateMat), 0, FR_Y0 + 0.007, 0));
+  for (const [ax, az] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+    frame.add(at(box(ax ? 0.010 : FR_X * 2 + 0.03, 0.022, az ? 0.010 : FR_X * 2 + 0.03, steel),
+      ax * (FR_X + 0.012), FR_Y0 + 0.018, az * (FR_X + 0.012)));
+  }
+  // ...and what has dripped into it, which nobody has cleaned out
+  const puddle = at(new THREE.Mesh(new THREE.CircleGeometry(0.070, 12), fluidMat), 0.030, FR_Y0 + 0.016, -0.020);
+  puddle.rotation.x = -Math.PI / 2;
+  puddle.renderOrder = 1;
+  frame.add(puddle);
+
+  // --- four corner posts, and the top ring the gun stands on
+  for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+    frame.add(at(box(0.022, FR_H, 0.022, steel), sx * FR_X, FR_MID, sz * FR_X));
+    frame.add(at(box(0.030, 0.012, 0.030, hazard), sx * FR_X, FR_Y1 - 0.030, sz * FR_X));
+    frame.add(at(box(0.030, 0.012, 0.030, hazard), sx * FR_X, FR_Y0 + 0.034, sz * FR_X));
+  }
   /**
-   * THE ARMOURED DOORS.
-   *
-   * Two leaves, hinged on the bay's cheeks, and they are shut for carry and
-   * for the whole first three-quarters of the deploy. They are what makes this
-   * a REVEAL rather than a feature: you set the machine down, you watch it
-   * stand up, and then — with the gun already in battery and everything
-   * apparently finished — the front of it opens.
+   * The top is a RING OF RAILS with two cross beams under the kingpin, not a
+   * lid. A lid is the one thing that undoes the whole design: the front of the
+   * frame is open, but the machine is a metre and a half tall and the player
+   * is looking DOWN at it from about forty degrees, so a solid plate across
+   * the top closes the interior off from the angle it is actually viewed at.
+   * Rails carry the same load and you can see straight down into the frame.
    */
-  for (const sx of [-1, 1]) {
-    const hinge = new THREE.Group();
-    hinge.position.set(sx * (WIN_W / 2 + 0.008), JAR_Y, BAY_Z + JAR_R + 0.014);
-    ped.add(hinge);
-    const leaf = new THREE.Group();
-    hinge.add(leaf);
-    const lw = WIN_W / 2 + 0.006;
-    leaf.add(at(box(lw, WIN_H + 0.030, 0.014, plateMat), -sx * lw / 2, 0, 0));
-    leaf.add(at(box(lw - 0.02, 0.012, 0.018, hazard), -sx * lw / 2, WIN_H / 2 - 0.010, 0));
-    leaf.add(at(box(lw - 0.02, 0.012, 0.018, hazard), -sx * lw / 2, -WIN_H / 2 + 0.010, 0));
-    // a barred vision slot, so the doors are not simply two flat plates
-    leaf.add(at(box(lw - 0.045, 0.026, 0.006, oil), -sx * lw / 2, 0.042, 0.008));
-    for (let k = 0; k < 3; k++) {
-      leaf.add(at(box(0.005, 0.030, 0.010, chrome), -sx * (0.026 + k * 0.022), 0.042, 0.010));
+  for (const [ax, az, rot] of [[0, 1, 0], [0, -1, 0], [1, 0, Math.PI / 2], [-1, 0, Math.PI / 2]]) {
+    frame.add(at(box(FR_X * 2 + 0.044, 0.020, 0.026, plateMat),
+      ax * (FR_X + 0.010), FR_Y1 - 0.010, az * (FR_X + 0.010)).rotateY(rot));
+  }
+  frame.add(at(box(0.052, 0.016, FR_X * 2, steel), 0, FR_Y1 - 0.014, -0.040));
+  frame.add(at(box(FR_X * 2, 0.016, 0.052, steel), 0, FR_Y1 - 0.014, -0.040));
+  for (const sx of [-1, 1]) {                        // and a pad under each post
+    frame.add(at(box(0.046, 0.014, 0.046, steel), sx * 0.100, FR_Y1 - 0.014, -0.075));
+  }
+  // a mid-rail on three sides, and X-braces above it — the front stays open
+  for (const [sx, sz, rot] of [[0, -1, 0], [-1, 0, Math.PI / 2], [1, 0, Math.PI / 2]]) {
+    const rail = (y) => frame.add(at(box(FR_X * 2, 0.014, 0.014, steel),
+      sx * FR_X, y, sz * FR_X).rotateY(rot));
+    rail(FR_MID);
+    for (const d of [-1, 1]) {                                  // the X itself
+      const br = at(box(FR_X * 2.1, 0.010, 0.010, steel), sx * FR_X, FR_MID + 0.055, sz * FR_X);
+      br.rotation.y = rot;
+      br.rotation.z = d * 0.52;
+      frame.add(br);
     }
-    leaf.add(at(cyl(0.010, 0.010, 0.022, chrome, 6), -sx * (lw - 0.014), -0.052, 0.012));  // handle
-    leaf.add(at(tor(0.013, 0.004, chrome, 4, 8), 0, 0.070, 0).rotateY(Math.PI / 2));       // hinge knuckles
-    leaf.add(at(tor(0.013, 0.004, chrome, 4, 8), 0, -0.070, 0).rotateY(Math.PI / 2));
-    parts.doors[sx < 0 ? 'L' : 'R'] = leaf;
   }
 
-  // the subject plate, screwed to the sill under the window
-  const subjTex = subjectTexture(subject);
-  const subjPlate = at(new THREE.Mesh(
-    new THREE.PlaneGeometry(0.150, 0.047),
-    new THREE.MeshBasicMaterial({ map: subjTex }),
-  ), 0, JAR_Y - WIN_H / 2 - 0.034, BAY_Z + JAR_R + 0.008);
-  ped.add(subjPlate);
-  parts.subjectPlate = subjPlate;
+  /* ---- THE VESSEL, slung in a gimbal, out in the open ---- */
 
-  /* ---- THE VESSEL ---- */
+  /**
+   * THE PRESENTATION, which is the animation that replaced the doors.
+   *
+   * Folded, the vessel is DOWN between the frame's legs and laid over on its
+   * back, tucked where it can survive being carried in a bag. On deploy the ram
+   * under it extends, the whole vessel RISES OUT OF THE MACHINE and rights
+   * itself, two latch arms close over its gimbal ring — and every hose attached
+   * to it is dragged up with it and pulled taut on the way.
+   *
+   * A door opening tells you there is something behind the door. This tells you
+   * the machine is holding something up.
+   *
+   * AND WHY IT IS A RAM AND NOT A YOKE. A pair of hinged yoke arms was the
+   * obvious way to swing a jar upright, and it does not work: an arm long
+   * enough to look right is about 0.05 units and the vessel has to travel 0.13
+   * from stowed to presented. No rotation of a short arm reaches that far, so
+   * the trunnions would tear straight out of the ring halfway up — invisible in
+   * the code, unmissable on screen. A straight-line lift has its travel written
+   * down as a DISTANCE, and a distance cannot come apart.
+   */
+  const lift = new THREE.Group();
+  frame.add(lift);
+  parts.vesselLift = lift;
+  parts.vesselUp = JAR_Y;
+  parts.vesselDown = JAR_Y - 0.128;
+  parts.vesselTilt = -1.22;              // laid on its back for carry
+  lift.position.set(0, JAR_Y, JAR_Z);
 
+  const ramTube = at(cyl(0.022, 0.024, 0.076, oil, 8), 0, FR_Y0 + 0.054, JAR_Z);
+  frame.add(ramTube);
+  const ramRod = at(cyl(0.012, 0.012, 0.100, chrome, 6), 0, FR_Y0 + 0.130, JAR_Z);
+  frame.add(ramRod);
+  parts.vesselRam = ramRod;
+  parts.ramFoot = FR_Y0 + 0.086;                 // where the rod leaves the tube
+  for (const sx of [-1, 1]) {                    // the two rails it runs between
+    frame.add(at(box(0.012, FR_H - 0.06, 0.012, chrome), sx * 0.100, FR_MID, JAR_Z));
+    frame.add(at(box(0.020, 0.014, 0.026, steel), sx * 0.100, FR_Y1 - 0.044, JAR_Z));
+    frame.add(at(box(0.020, 0.014, 0.026, steel), sx * 0.100, FR_Y0 + 0.044, JAR_Z));
+  }
+
+  const tilt = new THREE.Group();
+  lift.add(tilt);
+  parts.vesselTiltNode = tilt;
+  // the two latch arms, carried on the lift, that close over the gimbal ring
+  for (const sx of [-1, 1]) {
+    const latch = new THREE.Group();
+    latch.position.set(sx * 0.100, 0, 0);
+    lift.add(latch);
+    latch.add(at(box(0.032, 0.014, 0.018, steel), -sx * 0.016, 0, 0));
+    latch.add(at(cyl(0.010, 0.010, 0.020, chrome, 6), 0, 0, 0).rotateX(Math.PI / 2));
+    latch.add(at(box(0.014, 0.030, 0.018, hazard), -sx * 0.030, 0.004, 0));
+    parts[sx < 0 ? 'latchL' : 'latchR'] = latch;
+  }
   const vessel = new THREE.Group();
-  vessel.position.set(0, JAR_Y, JAR_Z);
-  ped.add(vessel);
+  tilt.add(vessel);
   parts.vessel = vessel;
 
   // the fluid, then the glass over it, then the cage over that
@@ -847,6 +964,11 @@ export function buildSentryTwoModel(texLib = null, subject = SUBJECTS[0]) {
 
   vessel.add(at(cyl(JAR_R + 0.008, JAR_R + 0.008, 0.018, brass, 14), 0, JAR_H / 2 - 0.004, 0));
   vessel.add(at(cyl(JAR_R + 0.010, JAR_R + 0.012, 0.022, brass, 14), 0, -JAR_H / 2 + 0.006, 0));
+  // the gimbal ring the latch arms close onto, round the jar's waist
+  vessel.add(at(tor(JAR_R + 0.012, 0.008, brass, 5, 16), 0, 0, 0).rotateX(Math.PI / 2));
+  for (const sx of [-1, 1]) {
+    vessel.add(at(cyl(0.013, 0.013, 0.026, brass, 8), sx * (JAR_R + 0.016), 0, 0).rotateZ(Math.PI / 2));
+  }
   // FOUR cage bars, clocked to the diagonals. Six evenly spaced put two of
   // them straight across the front of the glass, which is a cage in front of
   // the one thing the whole machine exists to show you.
@@ -880,11 +1002,11 @@ export function buildSentryTwoModel(texLib = null, subject = SUBJECTS[0]) {
   parts.brain = brain;
 
   const lobe = (x, y, z, sx, sy, sz, m = brainMat) => {
-    const s = sph(0.5, m, 10, 8);
-    s.position.set(x, y, z);
-    s.scale.set(sx, sy, sz);
-    brain.add(s);
-    return s;
+    const sp = sph(0.5, m, 10, 8);
+    sp.position.set(x, y, z);
+    sp.scale.set(sx, sy, sz);
+    brain.add(sp);
+    return sp;
   };
   for (const sx of [-1, 1]) {
     lobe(sx * BRAIN_W * 0.235, 0, -0.004, BRAIN_W * 0.55, BRAIN_H * 0.98, BRAIN_L * 0.86);
@@ -900,7 +1022,7 @@ export function buildSentryTwoModel(texLib = null, subject = SUBJECTS[0]) {
 
   /**
    * THE ELECTRODE CROWN. Six platinum pins on a ring that comes DOWN onto the
-   * cortex during the deploy and seats there — the twelfth beat of the
+   * cortex during the deploy and seats there — the thirteenth beat of the
    * sequence, and the one that turns a specimen into a computer.
    */
   const crown = new THREE.Group();
@@ -917,16 +1039,18 @@ export function buildSentryTwoModel(texLib = null, subject = SUBJECTS[0]) {
     crown.add(at(sph(0.004, brass, 5, 4), Math.sin(a) * 0.030, -0.002, Math.cos(a) * 0.030));
     parts.electrodes.push(pin);
   }
-  // the cradle it sits in, and the perfusion inlet under it
+  // the cradle it sits in, and the perfusion inlet and outlet under it
   vessel.add(at(tor(0.042, 0.006, chrome, 4, 12), 0, -JAR_H / 2 + 0.030, 0).rotateX(Math.PI / 2));
   for (let i = 0; i < 4; i++) {
     const a = (i / 4) * TAU + Math.PI / 4;
     vessel.add(at(box(0.006, 0.030, 0.006, chrome),
       Math.sin(a) * 0.040, -JAR_H / 2 + 0.016, Math.cos(a) * 0.040));
   }
-  vessel.add(at(cyl(0.010, 0.010, 0.020, copper, 6), 0, -JAR_H / 2 + 0.004, -0.030));
+  for (const sx of [-1, 1]) {
+    vessel.add(at(cyl(0.011, 0.011, 0.024, copper, 6), sx * 0.034, -JAR_H / 2 - 0.006, 0));
+  }
 
-  // Bubbles: they climb, they wobble, and there are more of them on a beat.
+  // bubbles: they climb, they wobble, and there are more of them on a beat.
   // A material EACH, because the entity fades every one of them separately as
   // it rises — share one and all eight take whichever opacity the loop set
   // last, which is eight bubbles blinking in perfect unison.
@@ -941,125 +1065,286 @@ export function buildSentryTwoModel(texLib = null, subject = SUBJECTS[0]) {
   vLamp.rotation.x = -Math.PI / 2;
   vessel.add(vLamp);
 
-  /* ---- LEFT FACE (−X): the perfusion plant, under the loader arm ---- */
+  /* ---- THE PLANT: everything that keeps the occupant going ---- */
 
-  const plant = new THREE.Group();
-  plant.position.set(-FACE_Z, PED_MID, 0);
-  plant.rotation.y = -Math.PI / 2;
-  ped.add(plant);
-  plant.add(at(box(0.150, 0.150, 0.016, steel), 0, 0.010, 0.010));          // its backing plate
-  // the bottle, in a cage, with a level you can read off. The fill's geometry
-  // is shifted so its ORIGIN is the bottom of the liquid — scale it down the
-  // middle and the perfusate empties from the top, which is the only direction
-  // liquid empties in.
-  const bottleFill = at(cyl(0.024, 0.024, 0.090, fluidMat, 10), -0.040, -0.031, 0.026);
+  /**
+   * THE PERISTALTIC PUMP.
+   *
+   * A rotor with three rollers squeezing a loop of tube round a race, which is
+   * how you move a fluid without the pump ever touching it. It turns on the
+   * heartbeat, and it is mounted on the front-left post at about knee height
+   * where you cannot miss it: the most medical-looking object on a gun.
+   */
+  const pumpPlate = at(box(0.100, 0.100, 0.014, plateMat), -0.088, FR_Y0 + 0.088, FR_X - 0.004);
+  frame.add(pumpPlate);
+  const pump = new THREE.Group();
+  pump.position.set(-0.088, FR_Y0 + 0.088, FR_X + 0.014);
+  frame.add(pump);
+  parts.pump = pump;
+  pump.add(at(cyl(0.040, 0.040, 0.016, oil, 14), 0, 0, 0).rotateX(Math.PI / 2));
+  pump.add(at(tor(0.036, 0.007, flesh, 4, 16), 0, 0, 0.004));          // the tube in its race
+  const rotor = new THREE.Group();
+  rotor.position.set(0, 0, 0.012);
+  pump.add(rotor);
+  parts.rotor = rotor;
+  rotor.add(at(cyl(0.014, 0.014, 0.016, chrome, 8), 0, 0, 0).rotateX(Math.PI / 2));
+  for (let i = 0; i < 3; i++) {
+    const a = (i / 3) * TAU;
+    rotor.add(at(cyl(0.008, 0.008, 0.020, chrome, 6),
+      Math.sin(a) * 0.026, Math.cos(a) * 0.026, 0).rotateX(Math.PI / 2));
+    rotor.add(at(box(0.006, 0.052, 0.008, chrome), Math.sin(a) * 0.013, Math.cos(a) * 0.013, 0)
+      .rotateZ(-a));
+  }
+
+  /**
+   * THE BELLOWS. A concertina on the right-hand post that compresses on every
+   * systole and lets go between them, which from ten feet away is a machine
+   * with a small pair of lungs on the outside of it.
+   */
+  const bellows = new THREE.Group();
+  bellows.position.set(0.096, FR_Y0 + 0.098, 0.030);
+  frame.add(bellows);
+  parts.bellows = bellows;
+  bellows.add(at(box(0.052, 0.010, 0.052, steel), 0, -0.050, 0));
+  bellows.add(at(box(0.052, 0.010, 0.052, steel), 0, 0.050, 0));
+  for (let i = 0; i < 5; i++) {
+    bellows.add(at(cyl(0.030, 0.030, 0.009, i % 2 ? flesh : rubber, 10), 0, -0.036 + i * 0.018, 0));
+  }
+  bellows.add(at(cyl(0.006, 0.006, 0.110, chrome, 6), 0.030, 0, 0));    // its guide rod
+
+  /**
+   * TWO SIGHT GLASSES, on the back-left post. The column in each bobs with the
+   * pressure, which is the only readout on this machine anybody could actually
+   * use, and it is calibrated in nothing at all.
+   */
+  parts.sight = [];
+  for (let i = 0; i < 2; i++) {
+    const gx = -0.070 - i * 0.028, gz = -FR_X - 0.006;
+    frame.add(at(cyl(0.010, 0.010, 0.078, glassMat, 8), gx, FR_MID + 0.020, gz));
+    const col = at(cyl(0.007, 0.007, 0.060, fluidMat, 8), gx, FR_MID + 0.010, gz);
+    col.geometry.translate(0, 0.030, 0);
+    col.renderOrder = 1;
+    frame.add(col);
+    for (const y of [-0.040, 0.040]) {
+      frame.add(at(cyl(0.012, 0.012, 0.008, brass, 8), gx, FR_MID + 0.020 + y, gz));
+    }
+    parts.sight.push(col);
+  }
+
+  // the perfusion bottle, in its cage on the left post, where the arm can
+  // reach it. It empties, visibly, over a long run.
+  const bottleFill = at(cyl(0.024, 0.024, 0.090, fluidMat, 10), -FR_X - 0.026, FR_MID + 0.006, -0.046);
   bottleFill.geometry.translate(0, 0.045, 0);
   bottleFill.renderOrder = 1;
-  plant.add(bottleFill);
+  frame.add(bottleFill);
   parts.bottleFill = bottleFill;
-  const bottleGlass = at(cyl(0.028, 0.028, 0.104, glassMat, 10), -0.040, 0.014, 0.026);
-  bottleGlass.renderOrder = 3;
-  plant.add(bottleGlass);
-  plant.add(at(cyl(0.030, 0.030, 0.012, brass, 10), -0.040, 0.070, 0.026));
-  for (const y of [-0.030, 0.052]) {
-    plant.add(at(tor(0.032, 0.004, chrome, 4, 10), -0.040, y, 0.026).rotateX(Math.PI / 2));
+  frame.add(at(cyl(0.028, 0.028, 0.104, glassMat, 10), -FR_X - 0.026, FR_MID + 0.052, -0.046));
+  frame.add(at(cyl(0.030, 0.030, 0.012, brass, 10), -FR_X - 0.026, FR_MID + 0.108, -0.046));
+  for (const y of [0.014, 0.090]) {
+    frame.add(at(tor(0.032, 0.004, chrome, 4, 10), -FR_X - 0.026, FR_MID + y, -0.046).rotateX(Math.PI / 2));
   }
-  // the pump: a piston in a barrel, and it strokes on the heartbeat
-  const pump = new THREE.Group();
-  pump.position.set(0.034, -0.012, 0.030);
-  plant.add(pump);
-  pump.add(at(cyl(0.020, 0.020, 0.060, oil, 10), 0, 0, 0));
-  pump.add(at(cyl(0.023, 0.023, 0.010, brass, 10), 0, 0.032, 0));
-  const pumpRod = at(cyl(0.007, 0.007, 0.040, chrome, 6), 0, 0.052, 0);
-  pump.add(pumpRod);
-  pump.add(at(box(0.030, 0.008, 0.014, chrome), 0, 0.070, 0));              // the crosshead
-  parts.pump = pump;
-  parts.pumpRod = pumpRod;
-  // copper runs from the bottle to the pump to the drum, so the circuit closes
-  for (const [x0, y0, x1, y1] of [[-0.040, -0.040, 0.034, -0.040], [0.034, 0.078, 0.034, 0.100]]) {
-    const len = Math.hypot(x1 - x0, y1 - y0);
-    const p = at(cyl(0.005, 0.005, len, copper, 6), (x0 + x1) / 2, (y0 + y1) / 2, 0.030);
-    p.rotation.z = Math.atan2(x1 - x0, y1 - y0) * -1;
-    plant.add(p);
-  }
-  // the pressure gauge, and its needle
-  plant.add(at(cyl(0.024, 0.024, 0.012, brass, 12), 0.044, 0.062, 0.032).rotateX(Math.PI / 2));
+  // the pressure gauge, beside the pump
+  frame.add(at(cyl(0.024, 0.024, 0.012, brass, 12), -0.088, FR_Y0 + 0.156, FR_X + 0.006).rotateX(Math.PI / 2));
   const gauge = at(box(0.004, 0.020, 0.002, new THREE.MeshBasicMaterial({ color: 0xc8302a })),
-    0.044, 0.062, 0.040);
+    -0.088, FR_Y0 + 0.156, FR_X + 0.014);
   gauge.geometry.translate(0, 0.010, 0);
-  plant.add(gauge);
+  frame.add(gauge);
   parts.gauge = gauge;
-
-  /* ---- RIGHT FACE (+X): heat louvres, and somebody's spanner ---- */
-
-  const flank = new THREE.Group();
-  flank.position.set(FACE_Z, PED_MID, 0);
-  flank.rotation.y = Math.PI / 2;
-  ped.add(flank);
+  // the condenser, on the back, and the heat louvres beside it
   for (let i = 0; i < 5; i++) {
-    const l = at(box(0.130, 0.016, 0.010, steel), 0, 0.050 - i * 0.024, 0.008);
-    flank.add(l);
+    frame.add(at(tor(0.020, 0.005, copper, 4, 10), 0.052, FR_MID - 0.048 + i * 0.020, -FR_X - 0.008)
+      .rotateX(Math.PI / 2));
+  }
+  const louvrePanel = new THREE.Group();
+  louvrePanel.position.set(FR_X + 0.004, FR_MID + 0.052, 0.034);
+  louvrePanel.rotation.y = Math.PI / 2;
+  frame.add(louvrePanel);
+  louvrePanel.add(at(box(0.100, 0.014, 0.012, hazard), 0, 0.020, 0.006));
+  for (let i = 0; i < 4; i++) {
+    // Authored INSIDE a panel that already faces +X, so the entity can tip
+    // each slat about its own local X and stand it proud along its own local
+    // Z without knowing which face of the frame it happens to be bolted to.
+    const l = at(box(0.090, 0.013, 0.010, steel), 0, -0.010 - i * 0.022, 0.008);
+    louvrePanel.add(l);
     parts.louvres.push(l);
   }
-  flank.add(at(box(0.150, 0.014, 0.014, hazard), 0, 0.074, 0.008));
-  // the spanner: clipped on, left behind, and exactly the size of the collar
-  // nuts on the vessel. Somebody was going to open it.
+  // the spanner: clipped on a post, left behind, and exactly the size of the
+  // collar nuts on the vessel. Somebody was going to open it.
   const spanner = new THREE.Group();
-  spanner.position.set(0.044, -0.062, 0.014);
-  spanner.rotation.z = 0.22;
-  flank.add(spanner);
+  spanner.position.set(FR_X + 0.014, FR_Y0 + 0.080, -0.050);
+  spanner.rotation.set(0, Math.PI / 2, 0.22);
+  frame.add(spanner);
   spanner.add(at(box(0.012, 0.086, 0.007, chrome), 0, 0, 0));
   spanner.add(at(box(0.026, 0.020, 0.007, chrome), 0, 0.048, 0));
   spanner.add(at(box(0.010, 0.012, 0.009, oil), 0, 0.052, 0));
-  for (const y of [-0.030, 0.026]) flank.add(at(box(0.020, 0.008, 0.014, rubber), 0.044, y, 0.012));
 
-  /* ---- BACK FACE (−Z): the oscillograph, the loom drum, the chimney ---- */
+  /**
+   * THE HOSES, and why they are laid out per frame rather than modelled.
+   *
+   * Six of them, each a chain of ribbed segments strung between a fixed anchor
+   * on the frame and a point on the VESSEL — which moves, a long way, every
+   * time the machine stands up or packs down. Modelled as static geometry they
+   * would either float in the air when the vessel is up or run through it when
+   * it is down. So each one is re-laid every frame along a sagging curve
+   * between its two ends (see layPlumbing), which means they are dragged up with
+   * the vessel during the presentation, swing as it rights itself, and hang
+   * slack when it is stowed.
+   *
+   * Two of them are oxblood and swell on the heartbeat, because those are the
+   * two with somebody's perfusate going through them.
+   */
+  const HOSE_SEGS = 7;
+  const hoses = [];
+  parts.hoses = hoses;
+  const makeHose = (from, to, { sag = 0.05, mat = rubber, pulses = false, r = 0.010, fixed = false } = {}) => {
+    const segs = [];
+    for (let i = 0; i < HOSE_SEGS; i++) {
+      // alternating radii, which is a corrugated hose for the price of nothing
+      const seg = cyl(r * (i % 2 ? 1 : 1.22), r * (i % 2 ? 1.22 : 1), 0.10, mat, 6);
+      frame.add(seg);
+      segs.push(seg);
+    }
+    hoses.push({ segs, from, to, sag, pulses, r, fixed });
+  };
+  const JB = -JAR_H / 2, JT = JAR_H / 2;
+  //          fixed end (frame space)                        moving end (vessel space)
+  makeHose({ x: -0.088, y: FR_Y0 + 0.118, z: FR_X + 0.014 }, { x: -0.034, y: JB - 0.014, z: 0 },
+    { sag: 0.055, mat: flesh, pulses: true, r: 0.011 });                       // pump → vessel in
+  makeHose({ x: 0.096, y: FR_Y0 + 0.152, z: 0.030 }, { x: 0.034, y: JB - 0.014, z: 0 },
+    { sag: 0.050, mat: flesh, pulses: true, r: 0.011 });                       // vessel out → bellows
+  makeHose({ x: -FR_X - 0.026, y: FR_MID + 0.014, z: -0.046 }, { x: -0.040, y: JB + 0.010, z: -0.030 },
+    { sag: 0.062, mat: rubber, r: 0.009 });                                    // bottle → vessel
+  makeHose({ x: 0.052, y: FR_MID - 0.050, z: -FR_X - 0.010 }, { x: 0.030, y: JB + 0.012, z: -0.034 },
+    { sag: 0.058, mat: rubber, r: 0.009 });                                    // condenser → vessel
+  makeHose({ x: 0.0, y: FR_Y1 - 0.026, z: -0.052 }, { x: 0, y: JT + 0.020, z: -0.010 },
+    { sag: 0.030, mat: oil, r: 0.012 });                                       // crown → the gun
+  makeHose({ x: -0.070, y: FR_MID + 0.062, z: -FR_X - 0.006 }, { x: -0.028, y: JT + 0.006, z: -0.026 },
+    { sag: 0.034, mat: rubber, r: 0.008 });                                    // sight glass → head
+  // ...and three that go nowhere near the vessel, draped across the frame
+  // between fittings. Not one of them is doing anything you could name, which
+  // is exactly why they are there: machinery is untidy, and a frame with only
+  // the hoses it strictly needs reads as a diagram.
+  makeHose({ x: -FR_X - 0.010, y: FR_Y0 + 0.048, z: 0.060 }, { x: -0.088, y: FR_Y0 + 0.062, z: FR_X + 0.010 },
+    { sag: 0.040, mat: flesh, r: 0.009, fixed: true });
+  makeHose({ x: FR_X + 0.008, y: FR_MID + 0.058, z: 0.034 }, { x: 0.096, y: FR_Y0 + 0.154, z: 0.030 },
+    { sag: 0.026, mat: rubber, r: 0.008, fixed: true });
+  makeHose({ x: -FR_X + 0.006, y: FR_Y1 - 0.034, z: -FR_X - 0.004 }, { x: FR_X - 0.010, y: FR_MID - 0.010, z: -FR_X - 0.008 },
+    { sag: 0.048, mat: oil, r: 0.010, fixed: true });
 
-  const back = new THREE.Group();
-  back.position.set(0, PED_MID, -FACE_Z);
-  back.rotation.y = Math.PI;
-  ped.add(back);
+  /**
+   * Lay every hose along the curve between its two ends, given where the
+   * vessel currently is. Called once a frame by the entity, after it has set
+   * the lift and the tilt — the hoses are downstream of the vessel, and there
+   * is no order in which they can be computed first.
+   */
+  const HOSE_UP = new THREE.Vector3(0, 1, 0);
+  const _a = new THREE.Vector3(), _b = new THREE.Vector3(), _c = new THREE.Vector3();
+  const _p = new THREE.Vector3(), _q = new THREE.Vector3(), _t = new THREE.Vector3();
+  const _quat = new THREE.Quaternion();
+  parts.layPlumbing = (beat = 0) => {
+    lift.updateMatrix();
+    tilt.updateMatrix();
+    // the ram rod stretches from its tube up to whatever height the lift is at
+    const reach = Math.max(0.02, lift.position.y - parts.ramFoot);
+    ramRod.scale.y = reach / 0.100;
+    ramRod.position.y = parts.ramFoot + reach / 2;
+    for (const h of hoses) {
+      _a.set(h.from.x, h.from.y, h.from.z);
+      _b.set(h.to.x, h.to.y, h.to.z);
+      // A hose strung frame-to-frame does not care where the vessel is; one
+      // strung TO the vessel has to be taken through the lift and the tilt to
+      // find out where its far end has got to.
+      if (!h.fixed) _b.applyMatrix4(tilt.matrix).applyMatrix4(lift.matrix);
+      // one quadratic bezier, with the control point hung below the midpoint
+      _c.copy(_a).add(_b).multiplyScalar(0.5);
+      _c.y -= h.sag;
+      const bez = (u, out) => {
+        const v = 1 - u;
+        out.set(
+          v * v * _a.x + 2 * v * u * _c.x + u * u * _b.x,
+          v * v * _a.y + 2 * v * u * _c.y + u * u * _b.y,
+          v * v * _a.z + 2 * v * u * _c.z + u * u * _b.z,
+        );
+        return out;
+      };
+      const swell = h.pulses ? 1 + beat * 0.30 : 1;
+      for (let i = 0; i < h.segs.length; i++) {
+        bez(i / h.segs.length, _p);
+        bez((i + 1) / h.segs.length, _q);
+        const seg = h.segs[i];
+        seg.position.copy(_p).add(_q).multiplyScalar(0.5);
+        _t.copy(_q).sub(_p);
+        const len = _t.length() || 1e-4;
+        _quat.setFromUnitVectors(HOSE_UP, _t.divideScalar(len));
+        seg.quaternion.copy(_quat);
+        seg.scale.set(swell, len / 0.10, swell);
+      }
+    }
+  };
 
+  /* ---- what is written on it: the plate, the paper, the stack ---- */
+
+  // the subject plate, on the front rail under the vessel, where you read it
+  const subjTex = subjectTexture(subject);
+  // Tilted up off the skirt like a placard, NOT hung across the front of the
+  // frame — which is where it was, and where a 0.166-wide panel of armour
+  // covered the bottom third of the glass and most of the occupant with it.
+  // Down here it is read by looking down at the machine, and it obscures
+  // nothing but the floor pan.
+  const subjPlate = at(new THREE.Mesh(
+    new THREE.PlaneGeometry(0.150, 0.047),
+    new THREE.MeshBasicMaterial({ map: subjTex, side: THREE.DoubleSide }),
+  ), 0, FR_Y0 + 0.030, FR_X + 0.026);
+  subjPlate.rotation.x = -0.62;
+  const subjBack = at(box(0.164, 0.056, 0.008, plateMat), 0, FR_Y0 + 0.028, FR_X + 0.023);
+  subjBack.rotation.x = -0.62;
+  frame.add(subjBack);
+  frame.add(subjPlate);
+  parts.subjectPlate = subjPlate;
+
+  // the oscillograph, on a bracket off the back
   const osc = traceTexture();
-  back.add(at(box(0.176, 0.086, 0.022, steel), 0, 0.034, 0.010));
-  back.add(at(box(0.166, 0.076, 0.008, oil), 0, 0.034, 0.020));
+  const back = new THREE.Group();
+  back.position.set(0, FR_MID + 0.038, -FR_X - 0.020);
+  back.rotation.y = Math.PI;
+  frame.add(back);
+  back.add(at(box(0.176, 0.086, 0.020, plateMat), 0, 0, 0.008));
+  back.add(at(box(0.166, 0.076, 0.008, oil), 0, 0, 0.018));
   const paper = at(new THREE.Mesh(
     new THREE.PlaneGeometry(0.156, 0.049),
     new THREE.MeshBasicMaterial({ map: osc.texture }),
-  ), 0, 0.030, 0.026);
+  ), 0, -0.004, 0.024);
   back.add(paper);
-  // the take-up drum below the window, and the needle arm that writes on it
-  back.add(at(cyl(0.016, 0.016, 0.150, brass, 8), 0, -0.014, 0.020).rotateZ(Math.PI / 2));
+  back.add(at(cyl(0.016, 0.016, 0.150, brass, 8), 0, -0.048, 0.018).rotateZ(Math.PI / 2));
   const needle = new THREE.Group();
-  needle.position.set(0.070, 0.030, 0.030);
+  needle.position.set(0.070, -0.004, 0.028);
   back.add(needle);
   needle.add(at(box(0.062, 0.004, 0.004, chrome), -0.031, 0, 0));
   needle.add(at(box(0.005, 0.010, 0.005, hazard), -0.062, 0, 0));
   needle.add(at(cyl(0.008, 0.008, 0.010, chrome, 6), 0, 0, 0).rotateX(Math.PI / 2));
   parts.osc = { push: osc.push, word: osc.word, needle, paper };
-  back.add(at(box(0.176, 0.012, 0.016, hazard), 0, 0.082, 0.010));
+  back.add(at(box(0.176, 0.012, 0.016, hazard), 0, 0.048, 0.008));
 
-  // THE NERVE LOOM DRUM. Everything the vessel says to the gun goes up this
-  // cable, and it is on a spring drum so the head can turn without tearing it.
-  const loomDrum = at(cyl(0.030, 0.030, 0.048, oil, 10), 0, -0.062, 0.026);
+  // the nerve-loom drum, on a spring so the head can turn without tearing it
+  const loomDrum = at(cyl(0.030, 0.030, 0.048, oil, 10), -0.060, FR_Y1 - 0.048, -FR_X + 0.010);
   loomDrum.rotation.z = Math.PI / 2;
-  back.add(loomDrum);
-  back.add(at(tor(0.031, 0.005, brass, 4, 10), -0.026, -0.062, 0.026).rotateY(Math.PI / 2));
+  frame.add(loomDrum);
+  frame.add(at(tor(0.031, 0.005, brass, 4, 10), -0.086, FR_Y1 - 0.048, -FR_X + 0.010).rotateY(Math.PI / 2));
   parts.loomDrum = loomDrum;
 
   /**
    * THE CHIMNEY, and the cowl on top of it.
    *
-   * The drum runs warm — there is a person in it — and the waste heat goes up
+   * The frame runs warm — there is a person in it — and the waste heat goes up
    * a stack at the back with a four-vane cowl on top. The cowl TURNS whenever
-   * the machine is computing, which is almost always, and it turns faster when
-   * the machine is working hard. It is the one part of this thing that is
-   * moving even when everything else has gone still, and it is what makes a
-   * dozing Mk II read as asleep rather than as switched off.
+   * the machine is computing, which is almost always, and faster when it is
+   * working hard. It is the one part of this thing that is moving even when
+   * everything else has gone still, and it is what makes a dozing Warden read
+   * as asleep rather than as switched off.
    */
   const stack = new THREE.Group();
-  stack.position.set(0, PED_Y1 - 0.010, -0.086);
-  ped.add(stack);
+  stack.position.set(0.070, FR_Y1 - 0.010, -0.076);
+  frame.add(stack);
   stack.add(at(cyl(0.026, 0.030, 0.056, steel, 10), 0, 0.026, 0));
   stack.add(at(tor(0.028, 0.005, brass, 4, 10), 0, 0.050, 0).rotateX(Math.PI / 2));
   const cowl = new THREE.Group();
@@ -1349,33 +1634,35 @@ export function buildSentryTwoModel(texLib = null, subject = SUBJECTS[0]) {
   cradle.add(at(box(0.044, 0.042, 0.030, dark), 0, 0.068, 0.010));
 
   /**
-   * The ready rack of spare drums, slung on the left flank.
+   * THE READY DRUMS — on the floor of the frame, not hanging off the gun.
    *
-   * It hangs from a pivot on the edge of the deck and it is authored HANGING
-   * STRAIGHT DOWN, because that is the compact shape: tucked into the slot
-   * between the deck and the drum, inside the machine's own footprint, which
-   * is the only way it goes in a satchel. On deploy it swings outboard to
-   * where the loader arm can actually get at it, which is the tenth beat.
+   * They were two flat discs slung from a pivot on the edge of the deck, and
+   * from anywhere but dead astern they read as two coins stuck to the side of
+   * the turret with nothing holding them: no bracket you could see, no reason
+   * for them to be at that height, and a silhouette that made the machine look
+   * broken. Now they are where spare ammunition actually goes — stood on the
+   * floor pan between the legs, inside the frame, under a clamp bar that lifts
+   * off them on deploy. The loader arm reaches DOWN through the deck for one,
+   * which is a longer and better-looking move than reaching sideways.
    */
-  const rack = new THREE.Group();
-  // Hung outboard of the computing drum rather than over it: stowed, the whole
-  // rack drops into the slot BESIDE the casting, and a pivot any further in
-  // puts two spare drums through the wall of the machine.
-  rack.position.set(-0.135, 0.014, -0.075);
-  head.add(rack);
-  parts.rackArm = rack;
-  rack.add(at(box(0.018, 0.115, 0.130, steel), -0.010, -0.058, 0));
-  rack.add(at(cyl(0.010, 0.010, 0.030, chrome, 6), 0, 0, 0).rotateZ(Math.PI / 2));
   for (let k = 0; k < 2; k++) {
-    const spare = at(cyl(0.062, 0.062, 0.036, plateMat, 12), -0.042, -0.048 - k * 0.052, 0);
-    spare.rotation.z = Math.PI / 2;
-    rack.add(spare);
-    rack.add(at(tor(0.062, 0.006, brass, 4, 14), -0.060, -0.048 - k * 0.052, 0).rotateY(Math.PI / 2));
+    const sx = k ? 1 : -1;
+    const spare = at(cyl(0.050, 0.050, 0.030, plateMat, 12), sx * 0.058, FR_Y0 + 0.033, -0.062);
+    frame.add(spare);
+    frame.add(at(tor(0.050, 0.005, brass, 4, 14), sx * 0.058, FR_Y0 + 0.048, -0.062).rotateX(Math.PI / 2));
     parts.rack.push(spare);
   }
-  parts.rackOut = -0.48;      // swung out, working
-  parts.doorOpen = DOOR_OPEN;
-  parts.rackIn = 0;           // hanging straight down, stowed
+  // the clamp bar over them, which lifts on the tenth beat
+  const clampBar = new THREE.Group();
+  clampBar.position.set(0, FR_Y0 + 0.052, -0.112);
+  frame.add(clampBar);
+  parts.rackArm = clampBar;
+  clampBar.add(at(box(0.170, 0.012, 0.014, steel), 0, 0.006, 0.050));
+  clampBar.add(at(box(0.170, 0.010, 0.012, hazard), 0, 0.014, 0.050));
+  for (const sx of [-1, 1]) clampBar.add(at(box(0.012, 0.012, 0.052, steel), sx * 0.078, 0.004, 0.026));
+  parts.rackOut = -0.95;      // lifted clear of the drums
+  parts.rackIn = 0;           // clamped down for carry
+  parts.latchOpen = LATCH_OPEN;
 
   /* ================================================================== *
    * THE LOADER ARM — the closest thing the gun has to a face             *
@@ -1610,19 +1897,11 @@ export function buildSentryTwoModel(texLib = null, subject = SUBJECTS[0]) {
  * preview, the carry model and the deploy animation all agree.            *
  * ====================================================================== */
 
-/**
- * How far each armoured door swings, and which way is OUT.
- *
- * Both leaves hinge on their outer jamb and the free edge has to travel
- * outward and forward. Getting the sign wrong is not subtle — the doors swing
- * INTO the drum and through the glass — so the direction is stated once, here,
- * with the geometry that justifies it: the left leaf is authored extending
- * along its hinge's +X, the right along −X, so they need opposite signs.
- */
-const DOOR_OPEN = 2.05;
-
 /** How far the prism caps drop off the lenses. */
 const CAP_OPEN = 2.3;
+
+/** How far the vessel's latch arms splay while it is still moving. */
+const LATCH_OPEN = 1.15;
 
 /** Where the electrode crown rides: seated on the cortex, and lifted clear. */
 const CROWN_SEATED = JAR_H / 2 - 0.040;
@@ -1664,19 +1943,23 @@ export function poseTwoDeployed(parts) {
   parts.body.position.y = parts.deckY;
   for (const c of parts.clamps) c.node.rotation.z = -c.sx * 1.5;
   for (const w of parts.wings) w.node.rotation.y = w.sx * 0.55;
-  parts.rackArm.rotation.z = parts.rackOut;
+  parts.rackArm.rotation.x = parts.rackOut;
   parts.cradle.position.z = parts.batteryZ;
   parts.rf.bar.scale.x = 1;
   parts.rf.capL.rotation.x = CAP_OPEN;
   parts.rf.capR.rotation.x = CAP_OPEN;
   parts.arm.post.scale.y = 1;
   setArm(parts, TWO_ARM_REST);
-  parts.doors.L.rotation.y = -DOOR_OPEN;
-  parts.doors.R.rotation.y = DOOR_OPEN;
+  // the vessel, up and presented, latched into its gimbal
+  parts.vesselLift.position.y = parts.vesselUp;
+  parts.vesselTiltNode.rotation.x = 0;
+  parts.latchL.rotation.z = 0;
+  parts.latchR.rotation.z = 0;
   parts.crown.position.y = CROWN_SEATED;
   parts.eyeLid.position.y = parts.eyeLidOpen;
   parts.bottleFill.scale.y = 1;
   layoutTwoLift(parts, parts.deckY);
+  parts.layPlumbing(0);
 }
 
 /** Folded, latched, shut — how it comes out of the satchel. */
@@ -1694,19 +1977,23 @@ export function poseTwoFolded(parts) {
   parts.body.position.y = parts.deckFold;
   for (const c of parts.clamps) c.node.rotation.z = 0;
   for (const w of parts.wings) w.node.rotation.y = 0;
-  parts.rackArm.rotation.z = parts.rackIn;
+  parts.rackArm.rotation.x = parts.rackIn;
   parts.cradle.position.z = parts.stowZ;
   parts.rf.bar.scale.x = 0.30;
   parts.rf.capL.rotation.x = 0;
   parts.rf.capR.rotation.x = 0;
   parts.arm.post.scale.y = 0.18;
   setArm(parts, { yaw: 0, shoulder: -0.95, elbow: -2.45, wrist: 0, claw: 0 });
-  parts.doors.L.rotation.y = 0;
-  parts.doors.R.rotation.y = 0;
+  // the vessel, struck down between the legs and laid on its back
+  parts.vesselLift.position.y = parts.vesselDown;
+  parts.vesselTiltNode.rotation.x = parts.vesselTilt;
+  parts.latchL.rotation.z = LATCH_OPEN;
+  parts.latchR.rotation.z = -LATCH_OPEN;
   parts.crown.position.y = CROWN_LIFTED;
   parts.eyeLid.position.y = parts.eyeLidOpen - 0.021;
   parts.bottleFill.scale.y = 1;
   layoutTwoLift(parts, parts.deckFold);
+  parts.layPlumbing(0);
 }
 
 /**

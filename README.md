@@ -898,11 +898,14 @@ There is deliberately no command that touches the kill counter — the
   ### The computing section
 
   The county's manual calls the bottom half of this machine the COMPUTING
-  SECTION and leaves it at that. Behind two armoured doors in the front of it
-  there is a **glass vessel with a human brain in it** — perfused, wired to a
-  six-pin platinum crown, and doing the fire control. It is life-size, it is at
-  the height of your own chest, and there is a **brass plate screwed to the
-  sill under the glass with a name on it**:
+  SECTION and leaves it at that. **There is no casing on it.** What is there is
+  an open steel frame — four corner posts, a floor pan, a top ring of rails,
+  X-braces on three faces and nothing at all across the front — and slung in
+  the middle of that, in the open air, in a brass gimbal, is a **glass vessel
+  with a human brain in it**: perfused, wired to a six-pin platinum crown, and
+  doing the fire control. It is life-size, it is at the height of your own
+  chest, and there is a **brass placard tilted up off the skirt below it with a
+  name on it**:
 
   ```
   COMPUTING SECTION MK II        SEALED — DO NOT OPEN
@@ -915,8 +918,22 @@ There is deliberately no command that touches the kill counter — the
   and **two Wardens on the same street are two different people**. Three of the
   eight are marked NON-VOL.
 
-  Nothing in the game ever says any of this out loud. The doors open on deploy,
-  the plate is at waist height, and that is the whole delivery. What it does to
+  Threaded through that frame, in front of the vessel and behind it and round
+  it, is the circuit that keeps the occupant going, and none of it is hidden
+  either: **nine ribbed hoses** sagging under their own weight (two of them
+  oxblood, because of what is inside them), a **peristaltic pump** whose rotor
+  you can watch walking its rollers round the tube, a **bellows** that shuts on
+  every systole, **two sight glasses** with the column bobbing in them, a
+  condenser coil, and a drip tray with a puddle in it that nobody has emptied.
+  Six of the hoses are strung to the vessel and are re-laid every frame, so
+  they are dragged up with it when it rises and hang slack when it is struck
+  down; three go nowhere near it and are simply draped across the frame,
+  because machinery is untidy and a frame carrying only the hoses it strictly
+  needs reads as a diagram.
+
+  Nothing in the game ever says any of this out loud. The frame is open on
+  every side, the placard is at waist height, and that is the whole delivery.
+  What it does to
   everything else is retroactive: the salute, the little self-tests, the tally
   it cuts into its own data plate — the second time you look at any of it, none
   of it is charming.
@@ -940,6 +957,18 @@ There is deliberately no command that touches the kill counter — the
   in the jar is doing, plus a **chimney whose cowl turns whenever it is
   thinking**.
 
+  **And it is not green any more.** The Mk II used to borrow the Mk I's armour
+  plate — county olive drab — which was wrong twice over: the Mk I is a
+  hand-carried pistol on a tripod and this is not that machine, and hanging a
+  green lamp on a green machine means neither of them reads. It has its own
+  procedural skin now: **cold gunmetal sprayed over steel and then left out** —
+  chipped back to bare metal along the edges, rust bleeding down out of the
+  rivet lines, weld seams where the panels meet, and the grime of something
+  that has stood in a field a long time. The palette is deliberately all blues,
+  greys and browns, with brass for the mechanism and a desaturated amber for
+  the hazard banding, so that **the only saturated colour anywhere on the
+  Warden is the thing in the jar.**
+
   ### Standing up: two seconds, sixteen beats
 
   Setting one down takes **2.10 s — exactly twice `SENTRY_DEPLOY_TIME`**, off
@@ -950,8 +979,8 @@ There is deliberately no command that touches the kill counter — the
   | # | Beat | What moves | # | Beat | What moves |
   |--:|------|------------|--:|------|------------|
   | 1 | `latch` | four transit latches pop | 9 | `battery` | the gun runs out on its rails |
-  | 2 | `clamp` | the clamps over the gun swing clear | 10 | `wings` | shield wings out, ready rack drops |
-  | 3 | `splay` | four legs scissor out | 11 | `shutter` | **the doors open** |
+  | 2 | `clamp` | the clamps over the gun swing clear | 10 | `wings` | shield wings out, drum clamp lifts |
+  | 3 | `splay` | four legs scissor out | 11 | `present` | **the vessel rises out of it** |
   | 4 | `knee` | knees fold, a beat behind | 12 | `perfuse` | the pump primes — **first heartbeat** |
   | 5 | `jack` | screw jacks wind down, turning | 13 | `cortex` | the crown seats, the needle drops |
   | 6 | `level` | the jacks argue and it rocks level | 14 | `range` | the bar telescopes, the caps drop |
@@ -962,8 +991,16 @@ There is deliberately no command that touches the kill counter — the
   the gun is already running into battery — but the order is mechanically true,
   and the **sound design carries the reveal before the picture does**: beats one
   to ten are dry (metal, pneumatics, screw threads, a spade in dirt), and then
-  the doors go on a seal breaking and the last five are wet — a pump priming,
+  the eleventh lifts the vessel and the last five are wet — a pump priming,
   fluid climbing, six contacts seating on something soft, and a heartbeat.
+
+  **The eleventh beat is the one worth watching.** The vessel rides a ram
+  between two guide rails: struck down between the legs and laid on its back
+  for carry, and on deploy it comes **up out of the machine** and rights itself,
+  with two latch arms closing over its gimbal ring in the last two-fifths of
+  the travel and every hose attached to it dragged up and pulled taut on the
+  way. A door opening tells you there is something behind the door. This tells
+  you the machine is holding something up.
 
   The **spade genuinely reaches the ground** now. It used to be a blade on a
   hinged arm whose pivot sat 0.36 m up and whose reach was 0.17 m, so at no
@@ -981,9 +1018,10 @@ There is deliberately no command that touches the kill counter — the
 
   - **Reload** — forty pulls in, the drum comes off, one comes out of the rack,
     and it is nineteen-tenths of a second before it will shoot again. The two
-    drums on the flank are the **ready rack**, not the reserve: they drain over
-    two changes and the third brings a fresh pair up from the case, so a rack
-    you watched go empty is full again next time you look.
+    drums standing on the frame's floor pan under a clamp bar are the **ready
+    rack**, not the reserve: they drain over two changes and the third brings a
+    fresh pair up, so a rack you watched go empty is full again next time you
+    look. The arm reaches DOWN through the deck for one.
   - **Self-test** — lamps in a chase, the arm run once through its whole
     travel, the legs shaken down.
   - **Polish** — a rag comes out of the claw and the rangefinder glass gets a

@@ -132,7 +132,7 @@ const BEATS = [
   { id: 'rise', a: 0.560, b: 0.670 },   //  8 the twin posts stand the deck up
   { id: 'battery', a: 0.620, b: 0.725 },   //  9 the gun runs out into battery
   { id: 'wings', a: 0.690, b: 0.765 },   // 10 shield wings out, ready rack drops
-  { id: 'shutter', a: 0.735, b: 0.825 },   // 11 THE DOORS OPEN
+  { id: 'present', a: 0.735, b: 0.835 },   // 11 THE VESSEL RISES OUT OF IT
   { id: 'perfuse', a: 0.790, b: 0.870 },   // 12 the pump starts. The first beat
   { id: 'cortex', a: 0.840, b: 0.895 },   // 13 the crown seats; the needle drops
   { id: 'range', a: 0.865, b: 0.930 },   // 14 the bar telescopes, the caps drop
@@ -1203,7 +1203,8 @@ export class SentryTwo extends Entity {
    * three fields — _pulseWant, _pulseJitter and _agitate — rather than by
    * reaching into the rig. What the routines say is how the thing FEELS; what
    * happens to the glass, the pump, the bubbles, the gauge and the paper is
-   * decided here, once, in one place.
+   * decided here, once, in one place. Returns the beat's value, which is the
+   * one thing outside this method needs: the hoses swell on it.
    */
   _vessel(dt, now) {
     const p = this.rig.parts;
@@ -1256,9 +1257,23 @@ export class SentryTwo extends Entity {
     p.fluidMat.opacity = 0.26 + b * 0.06;
     p.bottleFill.scale.y = Math.max(0.06, this.perfusion);
 
-    // the pump: one stroke per beat, and the gauge kicks with it
-    const stroke = this._perfStroke ?? 0;
-    p.pumpRod.position.y = 0.052 - stroke * 0.020;
+    /**
+     * THE PLANT, all of it on the same beat.
+     *
+     * The rotor walks its three rollers round the tube — a peristaltic pump
+     * does not touch what it is moving, which is the whole reason a machine
+     * like this would use one. The bellows shuts on the systole and lets go
+     * between. The two sight glasses bob. The gauge kicks. Everything in the
+     * frame is driven by the one number, so a player standing in front of it
+     * sees five separate objects agreeing with each other about a rhythm, and
+     * that agreement is what makes it read as ALIVE rather than as five
+     * animations that happen to be playing.
+     */
+    p.rotor.rotation.z -= dt * (0.35 + drive * 2.6);
+    p.bellows.scale.y = 1 - b * 0.32;
+    for (let i = 0; i < p.sight.length; i++) {
+      p.sight[i].scale.y = (0.52 + b * 0.34) * (0.85 + i * 0.18) * (0.5 + 0.5 * this.perfusion);
+    }
     p.gauge.rotation.z = -0.9 + b * 1.5 + (1 - this.perfusion) * 0.4;
 
     // the bubbles, climbing out of the inlet and wobbling as they go
@@ -1298,6 +1313,7 @@ export class SentryTwo extends Entity {
       }
       p.osc.needle.rotation.z = (b * 0.85 - 0.12) * 0.42;
     }
+    return b;
   }
 
   _present(dt, ctx) {
@@ -1378,7 +1394,7 @@ export class SentryTwo extends Entity {
     for (const c of p.clamps) c.node.rotation.z = -c.sx * 1.5 * st.clamp;
     p.cradle.position.z = p.stowZ + (p.batteryZ - p.stowZ) * st.battery - this.recoil * 0.012;
     for (const w of p.wings) w.node.rotation.y = w.sx * 0.55 * st.wings;
-    p.rackArm.rotation.z = p.rackIn + (p.rackOut - p.rackIn) * st.wings;
+    p.rackArm.rotation.x = p.rackIn + (p.rackOut - p.rackIn) * st.wings;
     for (let i = 0; i < p.barrels.length; i++) {
       const b = p.barrels[i];
       b.group.position.z = b.home - this.recoil * 0.05;
@@ -1470,12 +1486,26 @@ export class SentryTwo extends Entity {
     p.rf.bar.rotation.x = (this._barTip || 0);
     this._barTip = damp(this._barTip || 0, 0, dt, 5);
 
-    /* ---- the vessel, and the thing in it ---- */
-    for (const [k, leaf] of Object.entries(p.doors)) {
-      leaf.rotation.y = (k === 'L' ? -p.doorOpen : p.doorOpen) * st.shutter;
-    }
+    /**
+     * THE PRESENTATION — the eleventh beat, and the one the machine is for.
+     *
+     * The vessel comes up out of the frame on its ram and rights itself as it
+     * goes, so the last thing that happens before the gun is ready is that the
+     * machine lifts its occupant into the daylight. The latch arms stay splayed
+     * for most of the travel and only close over the gimbal ring in the last
+     * two-fifths of it, which is what stops the whole move reading as one rigid
+     * object sliding upward.
+     */
+    p.vesselLift.position.y = p.vesselDown + (p.vesselUp - p.vesselDown) * st.present;
+    p.vesselTiltNode.rotation.x = p.vesselTilt * (1 - st.present);
+    const latch = p.latchOpen * (1 - ease(sat((st.present - 0.6) / 0.4)));
+    p.latchL.rotation.z = latch;
+    p.latchR.rotation.z = -latch;
     p.crown.position.y = 0.072 - 0.028 * st.cortex;
-    this._vessel(dt, now);
+    // The plumbing is DOWNSTREAM of the vessel — six hoses strung between the
+    // frame and a thing that has just moved — so it is laid last, off the beat
+    // the organ is on, and there is no order in which it could go earlier.
+    p.layPlumbing(this._vessel(dt, now));
 
     /* ---- heat: the valve lifts, the louvres crack, and it boils over ---- */
     const h = this.heat;
