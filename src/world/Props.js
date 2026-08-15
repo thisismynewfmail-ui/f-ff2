@@ -1180,7 +1180,13 @@ export class PropKit {
     return { group: g, collide: [0.68, 0.35, 0.68] };
   }
 
-  /** Wire litter bin, overflowing, at every corner it should be at. */
+  /**
+   * Wire litter bin, at every corner it should be at.
+   *
+   * It used to carry a "sack" of refuse on top, and at this scale a box wider
+   * than the bin's own mouth in near-black is not refuse — it is a black cube
+   * balanced on a bin. The bin reads better empty.
+   */
   trashCan() {
     const g = new THREE.Group();
     const body = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.24, 0.85, 8), this.mat('metalRust'));
@@ -1188,9 +1194,7 @@ export class PropKit {
     const rim = new THREE.Mesh(new THREE.TorusGeometry(0.28, 0.035, 5, 10), this.mat('metalRust'));
     rim.rotation.x = Math.PI / 2;
     rim.position.y = 0.86;
-    const sack = this.box(0.42, 0.3, 0.42, this.colorMat(0x2a2c2a));
-    sack.position.y = 0.96;
-    g.add(body, rim, sack);
+    g.add(body, rim);
     return { group: g, collide: [0.3, 0.45, 0.3] };
   }
 

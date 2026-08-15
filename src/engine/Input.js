@@ -55,9 +55,11 @@ const LOCK_RETRY_MS = 260;
 // allowed rather than four times a second.
 const LOCK_URGENT_RETRY_MS = 100;
 // How long the faster cadence lasts. Generous, because the window it covers is
-// a player standing in the street with no mouse look: every overlay in this
-// game closes on Escape, Escape grants no user activation, and a browser that
-// has decided to wait for one will wait as long as it likes.
+// a player standing in the street with no mouse look. No overlay closes on
+// Escape any more — precisely because Escape grants no user activation — but
+// Escape is still how a pointer lock is LEFT, and a browser that has decided
+// to wait for an activation before granting another will wait as long as it
+// likes.
 const LOCK_URGENT_MS = 8000;
 // How long a lock must survive before it counts as the player being back at
 // the controls rather than the browser handing one over mid-refusal.

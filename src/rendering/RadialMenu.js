@@ -36,9 +36,11 @@
  * and picking an order flashes that one well. No blurs, no filters, no shadow
  * animation — this thing goes up in the middle of a fight.
  *
- * ESCAPE and the interact key both close it, and both hand the mouse straight
- * back — same contract as the shop and the arcade, same reasons, and the same
- * caveat about Escape carrying no user activation (see engine/Input.js).
+ * The interact key that opened it closes it, and so does a click on the ground
+ * outside the dial — same contract as the shop and the arcade, and the same
+ * reason for preferring the key you arrived on: Escape carries no user
+ * activation and so cannot hand the mouse back (see engine/Input.js). Escape
+ * itself is swallowed here and does nothing at all.
  */
 
 const R_OUT = 100;      // outer edge of the wells
@@ -54,7 +56,7 @@ const SEG = 8;
 const WEB = 2.6;
 
 /** What the tip line says when nothing is under the cursor. */
-const HINT = 'CLICK AN ORDER · KEYS 1–8 · [ESC] STEPS BACK';
+const HINT = 'CLICK AN ORDER · KEYS 1–8 · CLICK OUTSIDE TO STEP BACK';
 
 /**
  * The eight orders, clockwise from twelve. `kind` is which half of her state
@@ -188,14 +190,24 @@ export class RadialMenu {
       if (e.target === this.el) this.close();
     });
 
-    // Escape, and the interact key that opened it — the second because an
-    // ordinary key press carries user activation where Escape does not, so
-    // leaving the way you arrived is the exit that always gets the mouse back
-    // on the spot. Capture phase, stopped dead, so the pause screen never sees
-    // it. (Tab is left alone: the satchel owns Tab.)
+    // The interact key that opened it is the way back out, because an ordinary
+    // key press carries user activation where Escape does not, so leaving the
+    // way you arrived is the exit that always gets the mouse back on the spot.
+    // Clicking off the dial does the same.
+    //
+    // ESCAPE IS DELIBERATELY INERT HERE — swallowed, not acted on. It is the
+    // key a player hits by reflex to mean "not that", and having it close an
+    // instrument you opened on purpose is how an order gets abandoned halfway.
+    // It is still stopped dead in the capture phase so it can never reach the
+    // pause screen either. (Tab is left alone: the satchel owns Tab.)
     document.addEventListener('keydown', (e) => {
       if (!this.open || e.repeat) return;
-      if (e.code === 'Escape' || this.cb.interactCodes?.().includes(e.code)) {
+      if (e.code === 'Escape') {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        return;
+      }
+      if (this.cb.interactCodes?.().includes(e.code)) {
         e.preventDefault();
         e.stopImmediatePropagation();
         this.close();

@@ -15,7 +15,8 @@
  *      acquires it, and an Exploder going off at the pitch cannot hurt it
  *   4. the shop opens on [E], sells what it says it sells, refuses what it
  *      cannot be paid for, runs out of sentries after exactly two, and leaves
- *      on Escape straight back into the game rather than to the pause menu
+ *      on [E] or a click outside straight back into the game rather than to
+ *      the pause menu — while Escape does nothing at all
  *   5. a sentry deploys facing where the player looked, covers a 180° arc to
  *      sixty feet, shoots at the pistol's rate for the pistol's damage,
  *      ignores what is behind it, and packs back into the satchel on [E]
@@ -381,18 +382,20 @@ const shop = await page.evaluate(async () => {
   g.shop._tryBuy('comingSoon');
   out.lockedFree = g.tokens.tokens === spentBefore;
 
-  // Escape leaves the counter and goes back to the game, never to the pause
+  // ESCAPE IS INERT HERE. It neither leaves the counter nor reaches the pause
+  // screen behind it: it is the key a player hits by reflex, and a counter
+  // they walked up to and opened on purpose should not fall over when they do.
   const key = (code, init = {}) =>
     document.dispatchEvent(new KeyboardEvent('keydown', { code, key: code, bubbles: true, ...init }));
   key('Escape');
-  out.closed = !g.shop.open;
+  out.escHolds = g.shop.open;
   out.state = g.state.state;
   out.pause = getComputedStyle(document.getElementById('screen-pause')).display;
 
-  // ...and so does every other way out. There are four on purpose: a browser
-  // only hands the pointer back to a page holding user activation, and Escape
-  // grants none — so the button, the backdrop and the interact key are the
-  // exits that always recapture the mouse on the spot.
+  // The ways out are the three that carry user activation — a browser only
+  // hands the pointer back to a page holding some, and Escape grants none, so
+  // the button, the backdrop and the interact key are the exits that always
+  // recapture the mouse on the spot.
   const open = () => { g.events.emit('shop:open', {}); return g.shop.open; };
   out.byInteract = (open(), key(g.input.codesFor("interact")[0]), !g.shop.open);
   out.byButton = (open(), g.shop.closeBtn.dispatchEvent(new MouseEvent('click', { bubbles: true })), !g.shop.open);
@@ -408,12 +411,11 @@ const shop = await page.evaluate(async () => {
   // the counter it does nothing at all rather than doing both things at once
   key('Tab');
   out.tabHolds = g.shop.open && !g.inventory.open;
-  // Leaving on Escape has to be CLEAN: no "click to take the mouse back"
-  // plate, and no system cursor sitting in the middle of the street while the
-  // browser gets round to the lock. Escape grants no user activation, so that
-  // window is real; it just must not be visible.
+  // Leaving has to be CLEAN: no "click to take the mouse back" plate, and no
+  // system cursor sitting in the middle of the street while the browser gets
+  // round to the lock.
   open();
-  key('Escape');
+  key(g.input.codesFor("interact")[0]);
   await new Promise((r) => requestAnimationFrame(r));
   await new Promise((r) => requestAnimationFrame(r));
   out.exitPrompt = !!document.getElementById('lock-hint');
@@ -455,18 +457,62 @@ check('and the adjutant is sold once, at five hundred',
 check('ammunition costs 10 and reaches the gun',
   shop.ammoBought && shop.ammoCost === 10 && shop.ammoGained === 30,
   `${shop.ammoGained} rounds for ${shop.ammoCost}`);
-check('Escape leaves the counter for the street, not the pause menu',
-  shop.closed && shop.state === 'playing' && shop.pause === 'none',
-  `state ${shop.state}, pause ${shop.pause}`);
+check('Escape does nothing at the counter, and never reaches the pause menu',
+  shop.escHolds && shop.state === 'playing' && shop.pause === 'none',
+  `still open ${shop.escHolds}, state ${shop.state}, pause ${shop.pause}`);
 check('the button, the backdrop and [E] all leave too',
   shop.byInteract && shop.byButton && shop.byBackdrop,
   `interact ${shop.byInteract}, button ${shop.byButton}, backdrop ${shop.byBackdrop}`);
 check('and nothing else does — the case holds, a key repeat holds, Tab holds',
   shop.caseHolds && shop.survivesRepeat && shop.tabHolds,
   `case ${shop.caseHolds}, repeat ${shop.survivesRepeat}, tab ${shop.tabHolds}`);
-check('leaving on Escape shows no prompt and no cursor',
+check('leaving on [E] shows no prompt and no cursor',
   shop.exitClosed && !shop.exitPrompt && shop.exitCursorHidden,
   `closed ${shop.exitClosed}, prompt ${shop.exitPrompt}, cursor hidden ${shop.exitCursorHidden}`);
+
+/* ONE RULE FOR EVERY OVERLAY: Escape is swallowed and does nothing, and the
+ * way out is the key that opened it or a click on the ground outside it. The
+ * pause screen is the exception in both directions — Escape is what PUTS IT
+ * UP, and only its buttons take it down — and that is checked here too, since
+ * an overlay that let Escape through would reach it. */
+const esc = await page.evaluate(async () => {
+  const g = window.__game;
+  const key = (code) => document.dispatchEvent(
+    new KeyboardEvent('keydown', { code, key: code, bubbles: true }));
+  const outside = (id, type = 'mousedown') => document.getElementById(id)
+    .dispatchEvent(new MouseEvent(type, { bubbles: true }));
+  const out = {};
+
+  g.inventory.close(); g.companions.reset();
+  // the satchel
+  g.inventory.toggle();
+  key('Escape'); out.satchelHolds = g.inventory.open;
+  outside('inventory'); out.satchelClickOut = !g.inventory.open;
+
+  // the order dial
+  g.events.emit('pickup', { type: 'companion', amount: 1 });
+  const c = g.companions.deploy();
+  g.radial.openOn(c);
+  key('Escape'); out.dialHolds = g.radial.open;
+  outside('radial', 'click'); out.dialClickOut = !g.radial.open;
+  g.companions.reset();
+
+  // and the pause screen, which Escape owns from the other side
+  out.pausedOnEsc = (key('Escape'), g.state.state);
+  out.stillPausedOnEsc = (key('Escape'), g.state.state);
+  g.startPlaying();
+  out.resumedByButton = g.state.state;
+  return out;
+});
+check('Escape is inert in the satchel and on the order dial as well',
+  esc.satchelHolds && esc.dialHolds, `satchel ${esc.satchelHolds}, dial ${esc.dialHolds}`);
+check('...and a click outside closes both of them',
+  esc.satchelClickOut && esc.dialClickOut,
+  `satchel ${esc.satchelClickOut}, dial ${esc.dialClickOut}`);
+check('Escape puts the pause screen UP and never takes it down',
+  esc.pausedOnEsc === 'paused' && esc.stillPausedOnEsc === 'paused'
+  && esc.resumedByButton === 'playing',
+  `${esc.pausedOnEsc} → ${esc.stillPausedOnEsc} → ${esc.resumedByButton} on RESUME`);
 
 /* ------------------------------------------------------------------ */
 /* 5. the sentry                                                        */

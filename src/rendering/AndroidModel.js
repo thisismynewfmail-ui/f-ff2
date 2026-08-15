@@ -169,7 +169,6 @@ export function buildAndroidModel(texLib = null) {
   // the pelvis casting, and the plum skirt panel over it
   add(hips, box(0.23, 0.15, 0.17, shell), 0, -0.02, 0);
   add(hips, box(0.25, 0.06, 0.19, trim), 0, -0.08, 0);
-  add(hips, box(0.10, 0.09, 0.02, brass), 0, -0.03, 0.088);      // belt buckle plate
   for (const sx of [-1, 1]) add(hips, cyl(0.045, 0.045, 0.10, joint, 8), sx * 0.085, -0.06, 0)
     .rotateZ(Math.PI / 2);
 

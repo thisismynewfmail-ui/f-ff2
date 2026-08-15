@@ -3,7 +3,9 @@
  *
  * Toggled with Tab. Opening frees the mouse cursor for the UI (the host
  * releases pointer lock and freezes the sim through a callback); pressing Tab
- * again — or Escape — closes it and hands the mouse straight back to the game.
+ * again — or clicking the ground outside the panel — closes it and hands the
+ * mouse straight back to the game. Escape is swallowed and does nothing, the
+ * same rule every overlay in the game follows.
  * Quest items arrive through the same 'pickup' events the rest of the game
  * uses, so nothing here reaches into other systems. DROPPABLE items can be
  * clicked in their slot to take them out of the satchel: the item leaves the
@@ -92,7 +94,7 @@ export class Inventory {
     this.el.style.display = 'none';
     this.el.innerHTML = `
       <div class="inv-panel">
-        <div class="inv-title">SATCHEL <span class="inv-hint">TAB / ESC TO CLOSE</span></div>
+        <div class="inv-title">SATCHEL <span class="inv-hint">TAB OR CLICK OUTSIDE TO CLOSE</span></div>
         <div class="inv-grid"></div>
         <div class="inv-foot">What you carry is kept here. Click a sentry to take it in hand, or the Companion Cube to set it down.</div>
       </div>`;
@@ -123,11 +125,18 @@ export class Inventory {
         e.preventDefault();
         this.toggle();
       } else if (this.open && e.code === 'Escape') {
+        // Swallowed, not obeyed — the same rule every overlay here follows.
+        // Tab shuts the satchel (it is what opened it) and so does a click on
+        // the ground outside the panel; Escape does nothing but stay off the
+        // pause screen.
         e.preventDefault();
         e.stopPropagation();
-        this.close();
       }
     }, true);
+
+    // ...and clicking outside the panel puts it away, the way the counter and
+    // the order dial do.
+    this.el.addEventListener('mousedown', (e) => { if (e.target === this.el) this.close(); });
   }
 
   toggle() {

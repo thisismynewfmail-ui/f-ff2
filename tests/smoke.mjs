@@ -1303,10 +1303,14 @@ const arc = await page.evaluate(async () => {
   out.played = g.arcade.game.rows.length < before || g.arcade.game.score > 0;
   out.scoreShown = document.querySelector('.arc-score b').textContent;
 
-  // Escape leaves the machine and drops the player back into the street. It
-  // must NOT reach the pause handler: a player stepping away from a cabinet
-  // wants the street, not a stats panel they did not ask for.
+  // Escape does NOT leave the machine — a reflex key must not switch off a run
+  // you are in the middle of — and it must not reach the pause handler either.
   document.dispatchEvent(new KeyboardEvent('keydown', { code: 'Escape', key: 'Escape', bubbles: true }));
+  out.escHeld = g.arcade.open;
+  out.escPause = getComputedStyle(document.getElementById('screen-pause')).display;
+  // A click on the room around the cabinet is the way out, and it is the one
+  // that always hands the pointer back: a click is user activation.
+  document.getElementById('arcade').dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
   out.closed = !g.arcade.open && getComputedStyle(document.getElementById('arcade')).display === 'none';
   out.stillPlaying = g.state.state;
   out.pauseShown = getComputedStyle(document.getElementById('screen-pause')).display;
@@ -1325,7 +1329,9 @@ check('walking up to one starts it', arc.opened && arc.suppressed,
 check('the town is held while you play', arc.worldHeld,
   'world clock and health both frozen');
 check('and the machine itself runs', arc.played, `score readout ${arc.scoreShown}`);
-check('Escape steps away from the machine, not into the pause menu',
+check('Escape does nothing at a machine you are playing',
+  arc.escHeld && arc.escPause === 'none', `still open ${arc.escHeld}, pause ${arc.escPause}`);
+check('a click off the cabinet steps away from it, not into the pause menu',
   arc.closed && arc.stillPlaying === 'playing' && arc.pauseShown === 'none' && arc.handedBack,
   `closed ${arc.closed}, state ${arc.stillPlaying}, pause ${arc.pauseShown}, input back ${arc.handedBack}`);
 check('and the town starts moving again', arc.worldResumed);
@@ -1434,11 +1440,14 @@ const lockFix = await page.evaluate(async () => {
   out.paused1 = g.state.state;
   out.wantsNothingWhilePaused = g.input.lockWanted === false;
 
-  // Escape must close the pause screen. It used not to: the handler was gated
-  // on test mode, so in a real run the only thing that ever left this screen
-  // was the RESUME button.
+  // ESCAPE MUST NOT CLOSE THE PAUSE SCREEN. It is what put the screen up, and
+  // a stray press of it cannot be allowed to drop the player back into a wave
+  // they are not looking at — this screen is left on its buttons, on purpose.
   esc();
-  out.escResumed = g.state.state;
+  out.escHeldPause = g.state.state;
+  // RESUME is the way out, and it has to leave ASKING for the pointer.
+  document.getElementById('btn-resume').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+  out.resumed = g.state.state;
   out.wantsPointer = g.input.lockWanted === true;
   const askedAtResume = asked;
 
@@ -1503,10 +1512,13 @@ const lockFix = await page.evaluate(async () => {
   out.lateGrantReturned = !document.pointerLockElement && !g.input.pointerLocked;
   out.stillPaused = g.state.state;
 
-  // and Escape gets back out of it a second time, which is the exact sequence
-  // in the report: pause, resume, pause, and then stuck.
+  // ...and RESUME gets back out of it a second time, which is the exact
+  // sequence in the report: pause, resume, pause, and then stuck. Escape is
+  // tried again first, and must again do nothing.
   esc();
-  out.escResumed2 = g.state.state;
+  out.escHeldPause2 = g.state.state;
+  document.getElementById('btn-resume').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+  out.resumed2 = g.state.state;
 
   // The RESUME button is the other way out, and it has to ask for the pointer
   // the same way — it was reported stuck too.
@@ -1543,8 +1555,12 @@ const lockFix = await page.evaluate(async () => {
   g.state.state = 'playing';
   return out;
 });
-check('Escape closes the pause screen', lockFix.escResumed === 'playing' && lockFix.escResumed2 === 'playing',
-  `first ${lockFix.escResumed}, after a second pause ${lockFix.escResumed2}`);
+check('Escape opens the pause screen and never closes it',
+  lockFix.escHeldPause === 'paused' && lockFix.escHeldPause2 === 'paused',
+  `held ${lockFix.escHeldPause} / ${lockFix.escHeldPause2}`);
+check('RESUME closes it, twice over',
+  lockFix.resumed === 'playing' && lockFix.resumed2 === 'playing',
+  `first ${lockFix.resumed}, after a second pause ${lockFix.resumed2}`);
 check('resuming asks for the pointer, and keeps asking when refused',
   lockFix.wantsPointer && lockFix.retried >= 2,
   `wanted ${lockFix.wantsPointer}, ${lockFix.retried} retries after the refusal`);
@@ -1606,7 +1622,14 @@ const freeLook = await page.evaluate(async () => {
   await frame(); await frame();
   out.menuLookFrozen = g.player.yaw === yawInMenu;
 
+  // Leave the counter the way the game actually leaves one: Escape is inert in
+  // every overlay now, so this is [E] — which is also the exit that carries the
+  // user activation a re-lock needs. Escape is tried first and must do nothing.
   document.dispatchEvent(new KeyboardEvent('keydown', { code: 'Escape', key: 'Escape', bubbles: true }));
+  await frame();
+  out.escInert = g.shop.open;
+  document.dispatchEvent(new KeyboardEvent('keydown',
+    { code: g.input.codesFor('interact')[0], key: 'e', bubbles: true }));
   await frame(); await frame();
   out.closed = !g.shop.open;
   out.refusedAndAsking = !locked && g.input.lockPending;
@@ -1644,7 +1667,9 @@ const freeLook = await page.evaluate(async () => {
   return out;
 });
 check('the world does not turn under an open menu',
-  freeLook.menuLookFrozen && freeLook.closed, `frozen ${freeLook.menuLookFrozen}`);
+  freeLook.menuLookFrozen && freeLook.escInert && freeLook.closed,
+  `frozen ${freeLook.menuLookFrozen}, escape inert ${freeLook.escInert},`
+  + ` left on [E] ${freeLook.closed}`);
 check('and you can look around in the gap before the pointer comes back',
   freeLook.refusedAndAsking && Math.abs(freeLook.yawMoved) > 0.05 && Math.abs(freeLook.pitchMoved) > 0.01,
   `still refused ${freeLook.refusedAndAsking}, yaw ${freeLook.yawMoved.toFixed(3)},`
@@ -1853,30 +1878,32 @@ const arcEsc = await page.evaluate(async () => {
   await settle(6);
   out.openedUnlocked = g.arcade.open && !g.input.pointerLocked && g.state.state === 'playing';
 
+  const pauseShown = () => getComputedStyle(document.getElementById('screen-pause')).display;
+
+  // ESCAPE AT A CABINET closes nothing — but the browser still drops the
+  // pointer lock on it, because that is what Escape IS to a locked page, and
+  // the game must not read that drop as the player walking away. The machine
+  // stays up and the street stays unpaused behind it.
   escaping = true;
   document.dispatchEvent(new KeyboardEvent('keydown', { code: 'Escape', key: 'Escape', bubbles: true }));
   setTimeout(() => { escaping = false; }, 120);
   await settle(12);
-  out.fastRevoke = { closed: !g.arcade.open, state: g.state.state, locked: g.input.pointerLocked };
+  out.escHeld = { open: g.arcade.open, state: g.state.state, pause: pauseShown() };
 
-  // ...and the same thing again with the revoke arriving LATE. A guard built
-  // on "was the lock held only briefly" or "did an overlay close recently"
-  // passes the quick case and fails this one, which is the case a loaded
+  // Leaving is a click on the room around the cabinet, and THAT is where the
+  // hazard lives: the exit asks for the pointer back, and the browser is
+  // entitled to grant it and then take it away again LATE because of the
+  // Escape a moment ago. A guard built on "was the lock held only briefly"
+  // passes a quick revoke and fails this one, which is the case a loaded
   // machine actually produces.
-  // Straight back into a machine — do NOT drop the lock by hand first. A
-  // deliberate release while playing IS the player leaving, and pausing on it
-  // is correct; opening the cabinet is what gives the pointer up here.
-  g.arcade.play('brickfall');
-  await settle(6);
-  out.round2Open = g.arcade.open && g.state.state === 'playing';
   slowRevoke = true; escaping = true;
-  document.dispatchEvent(new KeyboardEvent('keydown', { code: 'Escape', key: 'Escape', bubbles: true }));
+  document.getElementById('arcade').dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
   setTimeout(() => { escaping = false; slowRevoke = false; }, 700);
   await settle(24);
   out.closed = !g.arcade.open;
   out.state = g.state.state;
   out.locked = g.input.pointerLocked;
-  out.pauseShown = getComputedStyle(document.getElementById('screen-pause')).display;
+  out.pauseShown = pauseShown();
 
   // put the real plumbing back
   Object.defineProperty(document, 'pointerLockElement', realGet);
@@ -1886,22 +1913,21 @@ const arcEsc = await page.evaluate(async () => {
   g.input.releasePointerLock();
   return out;
 });
-check('Escape at a cabinet goes back to the street, not the pause menu',
-  arcEsc.startLocked && arcEsc.openedUnlocked && arcEsc.fastRevoke.closed
-  && arcEsc.fastRevoke.state === 'playing',
-  `closed ${arcEsc.fastRevoke.closed}, state ${arcEsc.fastRevoke.state}`);
-check('and it holds when the browser takes its time refusing',
-  arcEsc.round2Open && arcEsc.closed && arcEsc.state === 'playing' && arcEsc.pauseShown === 'none',
-  `reopened ${arcEsc.round2Open}, closed ${arcEsc.closed}, state ${arcEsc.state}, pause ${arcEsc.pauseShown}`);
+check('Escape at a cabinet keeps the machine and does not pause the street',
+  arcEsc.startLocked && arcEsc.openedUnlocked && arcEsc.escHeld.open
+  && arcEsc.escHeld.state === 'playing' && arcEsc.escHeld.pause === 'none',
+  `still open ${arcEsc.escHeld.open}, state ${arcEsc.escHeld.state}, pause ${arcEsc.escHeld.pause}`);
+check('a click off it goes back to the street, even when the browser takes its time refusing',
+  arcEsc.closed && arcEsc.state === 'playing' && arcEsc.pauseShown === 'none',
+  `closed ${arcEsc.closed}, state ${arcEsc.state}, pause ${arcEsc.pauseShown}`);
 check('and the pointer comes back with you',
-  arcEsc.fastRevoke.locked && arcEsc.locked,
-  `prompt-revoke ${arcEsc.fastRevoke.locked}, late-revoke ${arcEsc.locked}`);
+  arcEsc.locked, `late-revoke ${arcEsc.locked}`);
 
 /* a run you walked away from is still there when you come back            */
-// Escape at a cabinet used to throw the game away: play() built a new machine
-// every time, so a good run ended the moment a zombie walked past the arcade
-// door. Now the run is HELD, frozen, and re-entered paused — and the best
-// score rides along in the save.
+// Stepping away from a cabinet used to throw the game away: play() built a new
+// machine every time, so a good run ended the moment a zombie walked past the
+// arcade door. Now the run is HELD, frozen, and re-entered paused — and the
+// best score rides along in the save.
 const arcHold = await page.evaluate(async () => {
   const g = window.__game;
   const settle = (n) => new Promise((r) => { let i = 0; const t = () => (++i >= n ? r() : requestAnimationFrame(t)); t(); });
@@ -1913,7 +1939,10 @@ const arcHold = await page.evaluate(async () => {
   for (let i = 0; i < 40; i++) { g.arcade.update(1 / 30); }
   g.arcade.game.score = 340;                       // a run worth keeping
   const mid = { score: g.arcade.game.score, bx: g.arcade.game.bx, by: g.arcade.game.by };
-  key('Escape');
+  // Walking away is a click on the room around the cabinet — Escape does not
+  // close a machine any more, and a run must survive being walked away from
+  // however the player does it.
+  document.getElementById('arcade').dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
   await settle(3);
   const away = { closed: !g.arcade.open, paused: g.arcade.paused };
   // The world runs on while the cabinet is shut, and the machine must not.

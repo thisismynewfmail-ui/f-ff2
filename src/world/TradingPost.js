@@ -259,12 +259,22 @@ export class TradingPost {
      */
     const PAD = DECK_H;
 
-    /** A jersey barrier: the tapered concrete block every closed lane has. */
+    /**
+     * A jersey barrier: the tapered concrete block every closed lane has.
+     *
+     * The three courses are named rather than laid out by eye, because the
+     * height of the thing is not private: cones are left standing ON these,
+     * and a cone placed off a guessed number is a cone hanging in the air.
+     * JERSEY_H is that number, and it comes from the block itself.
+     */
+    const J_FOOT = 0.20, J_MID = 0.22, J_TOP = 0.40;
+    const JERSEY_H = J_FOOT + J_MID + J_TOP;     // 0.82 — the surface to stand on
+    const J_TOP_W = 0.22;                        // ...and how wide that surface is
     const jersey = (px, pz, len, rot) => {
       const j = new THREE.Group();
-      const foot = box(len, 0.20, 0.56, mat.pad); foot.position.y = 0.10; j.add(foot);
-      const mid = box(len, 0.22, 0.36, mat.pad); mid.position.y = 0.31; j.add(mid);
-      const top = box(len, 0.40, 0.22, mat.pad); top.position.y = 0.62; j.add(top);
+      const foot = box(len, J_FOOT, 0.56, mat.pad); foot.position.y = J_FOOT / 2; j.add(foot);
+      const mid = box(len, J_MID, 0.36, mat.pad); mid.position.y = J_FOOT + J_MID / 2; j.add(mid);
+      const top = box(len, J_TOP, J_TOP_W, mat.pad); top.position.y = JERSEY_H - J_TOP / 2; j.add(top);
       j.position.set(px, PAD, pz);
       j.rotation.y = rot;
       g.add(j);
@@ -301,8 +311,11 @@ export class TradingPost {
     // --- the two front corners: barriers on the road side, plant behind them
     jersey(-hw + 0.44, hd - 0.55, 1.5, Math.PI / 2);
     jersey(hw - 0.44, hd - 0.58, 1.5, Math.PI / 2 + 0.03);
-    cone(-hw + 0.46, PAD + 0.98, hd - 0.55);            // one left on top of each
-    cone(hw - 0.42, PAD + 0.98, hd - 0.62, 0.92);
+    // One left on top of each — STANDING on the block, not hovering over it,
+    // and small enough that its foot is on the 0.22 top course rather than
+    // hanging off both sides of it.
+    cone(-hw + 0.45, PAD + JERSEY_H, hd - 0.55, 0.62);
+    cone(hw - 0.43, PAD + JERSEY_H, hd - 0.62, 0.58);
 
     // --- left flank: a pallet stack with a cable drum leaning off it
     pallets(-hw + 0.52, hd - 1.55, 4, 0.06);
@@ -356,9 +369,11 @@ export class TradingPost {
     // the strongbox, on top of the right-hand cabinet where a trader would
     // keep it: in reach, in sight, and not on the floor
     put(box(0.32, 0.20, 0.24, mat.brass), hw - 0.46, PAD + 1.19, hd - 1.62).rotation.y = 0.18;
-    // two more cones out on the apron, marking the lane in
-    cone(-1.05, PAD, hd + 0.06, 0.85);
-    cone(1.15, PAD, hd + 0.02, 0.85);
+    // two more cones out on the apron, marking the lane in — held back from
+    // the kerb by their own footprint, so no corner of a base plate is left
+    // hanging over the edge of the slab
+    cone(-1.05, PAD, hd - 0.06, 0.85);
+    cone(1.15, PAD, hd - 0.10, 0.85);
 
     // Collapse the lot to one mesh per material, THEN hang the light on it:
     // mergeStatic clears the group as it goes, and a light is not geometry.

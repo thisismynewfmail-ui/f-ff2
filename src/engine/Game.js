@@ -262,13 +262,15 @@ export class Game {
   /**
    * Take the pointer back after an overlay (the arcade, the satchel) closes.
    *
-   * Both of those close on Escape, and Escape is the one key that must not be
-   * holding the pointer request. Chromium grants a lock asked for inside an
-   * Escape keydown and then the SAME keypress takes it straight back off you a
-   * beat later — by which time the overlay is closed, so the game reads that
+   * Escape is the one key that must never be holding the pointer request, and
+   * it is why no overlay closes on it. Chromium grants a lock asked for inside
+   * an Escape keydown and then the SAME keypress takes it straight back off you
+   * a beat later — by which time the overlay is closed, so the game reads that
    * unlock as the player walking away and pauses. That is the "Escape at a
    * cabinet drops me on the pause screen with a loose cursor" report, and it
    * never showed up in the suite because test mode skips pointer lock whole.
+   * The overlays now leave on [E] or on a click outside, both of which carry
+   * the activation a re-lock needs; this is still the belt and braces.
    *
    * So the request waits for the next frame, out from under the keypress, and
    * an unlock arriving in the moments after an overlay closed is treated as
@@ -390,8 +392,11 @@ export class Game {
       // The pause settings overlay eats Escape first (HUD._wire) to close
       // itself; if it is open, this must not also fire.
       if (this.hud.pauseSettingsEl && !this.hud.pauseSettingsEl.hidden) return;
-      if (this.state.is('paused')) this.startPlaying();
-      else if (this.state.is('playing')) this.pause();
+      // ESCAPE PAUSES. IT DOES NOT RESUME. The pause screen is the one thing
+      // here that must be left on purpose — you leave it with RESUME, or with
+      // one of the other buttons on it — so a stray press of the key that put
+      // it up cannot drop the player back into a wave they were not looking at.
+      if (this.state.is('playing')) this.pause();
     });
 
     // Checkpoint every tenth wave: snapshot the run so a death rolls back to it.

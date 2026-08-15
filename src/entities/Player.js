@@ -10,7 +10,16 @@ import { Entity } from './Entity.js';
  * Gameplay only — the camera object is written in applyCamera().
  */
 const MOUSE_SENS = 0.0022;
-const WALK_SPEED = 5.0;
+/**
+ * How fast the player crosses the town on foot.
+ *
+ * Exported because it is not a private number: the horde is balanced AGAINST
+ * it (see ZombieTypes — the Exploder and the Sprinter must stay faster than a
+ * walk so they cannot simply be strolled away from, the Spitter slower), and
+ * the suite holds those relationships rather than a set of magic numbers. Move
+ * it and the guard is what tells you which archetype the move just broke.
+ */
+export const WALK_SPEED = 5.2;
 const SPRINT_SPEED = 8.2;
 const CROUCH_SPEED = 2.6;
 const JUMP_VELOCITY = 6.8;

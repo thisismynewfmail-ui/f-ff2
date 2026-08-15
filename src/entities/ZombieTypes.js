@@ -81,7 +81,7 @@ export const ZOMBIE_TYPES = {
     damage: 0,           // the explosion — not a melee — deals the damage
     reach: 1.5,          // unused by the class; kept sane for shared helpers
     wanderSpeed: 1.0,
-    chaseSpeed: 5.4,     // only SLIGHTLY faster than the player's 5.0 walk
+    chaseSpeed: 5.4,     // only SLIGHTLY faster than the player's walk (5.2)
     sightRange: 60,
     // As tall as the other enemies: stands shoulder-to-shoulder with the
     // eye-level Walker rather than as a runt. The Exploder sheet is cropped to
@@ -126,7 +126,7 @@ export const ZOMBIE_TYPES = {
     damage: 8,             // per shot that lands
     reach: 1.6,            // unused by the class; kept sane for shared helpers
     wanderSpeed: 1.0,
-    chaseSpeed: 4.4,       // SLIGHTLY slower than the player's 5.0 walk
+    chaseSpeed: 4.4,       // SLIGHTLY slower than the player's walk (5.2)
     sightRange: 60,
     // A rangy silhouette: noticeably taller on average than the old 1.72 m
     // (the per-zombie 0.9–1.1 size jitter still varies individuals around
