@@ -966,17 +966,35 @@ const crew = await page.evaluate(async () => {
 
   // THE TRACE: flat while the drum is out, and it comes back with a spike.
   two.heat = 0; two.state = 'scan'; two.drum = 0;
-  let flatWhileOpen = true, sawRevive = false;
+  let flatWhileOpen = true, sawRevive = false, openFrames = 0;
   g.events.on('sentry:revive', () => { sawRevive = true; });
   for (let i = 0; i < 200; i++) {
     two.update(1 / 60, { zombies: [], player: p });
-    if (two.state === 'reload') {
-      const band = Math.max(...[...two.trace].map(Math.abs));
-      if (band > 0.25) flatWhileOpen = false;
-    }
+    if (two.state !== 'reload') { openFrames = 0; continue; }
+    // The trace is a scrolling ring of 44 samples, so for the first 44 frames
+    // of a drum change the screen still holds what it was drawing a moment
+    // ago. Judge it once the old data has scrolled off, which is what a
+    // player sees too.
+    if (++openFrames <= two.trace.length) continue;
+    const band = Math.max(...[...two.trace].map(Math.abs));
+    if (band > 0.25) flatWhileOpen = false;
   }
   out.flatWhileOpen = flatWhileOpen;
   out.cameBack = sawRevive && two.trace.some((v) => Math.abs(v) > 0.05);
+
+  // IT DISAGREES WITH ITS OWN GUN. Boiling is what a water-jacketed barrel is
+  // for; the trace under it is not the tidy scribble of a machine at work.
+  two.state = 'scan'; two.routine = null; two.drum = 40; two.flatline = 0;
+  const bandOver = (hold, frames) => {
+    let band = 0;
+    for (let i = 0; i < frames; i++) {
+      hold(); two.update(1 / 60, { zombies: [], player: p });
+      band = Math.max(band, Math.max(...[...two.trace].map(Math.abs)));
+    }
+    return +band.toFixed(2);
+  };
+  out.calmBand = bandOver(() => { two.heat = 0; }, 120);
+  out.hotBand = bandOver(() => { two.heat = 0.95; }, 120);
 
   // AND IT DREAMS, given long enough alone — then goes back to sleep.
   let dreamt = false, organised = 0;
@@ -1016,6 +1034,9 @@ check('it has a pulse, and the pulse races when it is boiling',
 check('...and while the drum is out the trace is flat, then it comes back',
   crew.flatWhileOpen && crew.cameBack,
   `flat while open ${crew.flatWhileOpen}, revived ${crew.cameBack}`);
+check('...and when the gun is boiling the trace stops looking like a machine',
+  crew.hotBand > crew.calmBand * 1.6 && crew.hotBand > 0.7,
+  `calm ${crew.calmBand} → boiling ${crew.hotBand}`);
 check('...and left alone long enough, it dreams — then goes back to sleep',
   crew.dreamt && crew.dreamingNow === 'dream' && crew.dreamAmplitude > 0.3
   && crew.afterDream === 'doze',

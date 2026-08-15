@@ -407,7 +407,15 @@ export class SentryTwo extends Entity {
     let v;
     if (this.prime < 0.5) v = 0;
     else if (this.flatline > 0) v = (Math.random() - 0.5) * 0.02;
-    else if (this.routine === 'dream') {
+    else if (this.heat > 0.7) {
+      // DISTRESS. The gun is fine — it is a water-jacketed gun and boiling is
+      // what it is designed to do. The trace is not fine: big, irregular,
+      // nothing like the tidy scribble of a machine at work. This is the one
+      // place the two halves of the Mk II disagree with each other, and the
+      // player is only ever shown the disagreement, never told about it.
+      v = (Math.random() - 0.5) * 0.95 + Math.sin(t * 31) * 0.28
+        + (Math.random() < 0.06 ? (Math.random() - 0.5) * 1.4 : 0);
+    } else if (this.routine === 'dream') {
       // ORGANISED. Not noise, not a sawtooth — a shape, repeating, that a
       // player will notice is not what the other states draw.
       v = Math.sin(t * 2.1) * 0.42 + Math.sin(t * 4.2 + 1) * 0.16;
@@ -532,6 +540,7 @@ export class SentryTwo extends Entity {
     if (!near) return;
     this._handshakeDue = false;
     this._begin('handshake');
+    this.traceSpike = Math.max(this.traceSpike, 0.5);
     this.events.emit('sentry:handshake', { pos: this.position.clone(), other: near });
   }
 
@@ -683,6 +692,12 @@ export class SentryTwo extends Entity {
     this._armWant = { yaw: -0.7 * tip, shoulder: 0.85 * tip, elbow: 1.25 * tip, wrist: 0, claw: 0.5 * tip };
     if (f > 0.22 && !this._saluted) {
       this._saluted = true;
+      // IT RECOGNISED YOU. The bar is the gesture; this is the reason for it.
+      // Whatever is in the jar spikes when a person walks up, and it does not
+      // spike for anything else in this game — not for a target, not for a
+      // kill, not for the machine on the next corner.
+      this.traceSpike = Math.max(this.traceSpike, 1.1);
+      this.pulseT = Math.min(this.pulseT, 0.12);
       this.events.emit('sentry:salute', { pos: this.position.clone(), kind: this.kind });
     }
     if (f >= 1) this._saluted = false;
@@ -713,6 +728,7 @@ export class SentryTwo extends Entity {
     if (f > 0.45 && !this._notched) {
       this._notched = true;
       this.rig.parts.setTally?.(this.kills);
+      this.traceSpike = Math.max(this.traceSpike, 0.6);   // it is counting too
       this.events.emit('sentry:tally', { pos: this.position.clone(), kills: this.kills });
     }
     if (f >= 1) this._notched = false;

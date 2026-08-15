@@ -938,7 +938,16 @@ There is deliberately no command that touches the kill counter — the
   scribble awake, low alpha asleep, a spike on every pull — and **it goes flat
   for the whole of a drum change**, because a gun that is open is a gun with
   its crew put under. It comes back with a spike, every time. Pick one up and
-  the pump stops mid-stroke and the flat line is the last thing you hear. On top: a **drum magazine of forty pulls** that spins as it feeds, a
+  the pump stops mid-stroke and the flat line is the last thing you hear.
+
+  **The gun and its crew do not always agree.** Boiling is what a
+  water-jacketed barrel is *for* — the machine is working exactly as designed
+  — and while it is happening the trace goes big and irregular and stops
+  looking like anything mechanical at all. That disagreement is the only place
+  the horror is stated, and it is never stated in words. Meanwhile the trace
+  spikes for a salute — for **you**, walking up — and it does that for nothing
+  else in the game: not for a target, not for a kill, not for the machine on
+  the next corner. On top: a **drum magazine of forty pulls** that spins as it feeds, a
   **rack of spares**, twin water-jacketed barrels with a **relief valve** that
   lifts and vents steam when the jackets go over (past its ceiling it stops
   firing and cools, then picks up where it left off), a **drag chain** whose
