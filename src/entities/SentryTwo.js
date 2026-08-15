@@ -94,6 +94,17 @@ const DRUM_PULLS = 40;
 const RELOAD_TIME = 1.9;
 const RACK_SIZE = 2;          // drums on the flank; must match the rig's rack
 
+/**
+ * WHERE THE LOADER ARM LIVES WHEN IT HAS NOTHING TO DO.
+ *
+ * Every joint of the arm is authored pointing straight UP, so "no pose" used
+ * to mean the arm standing bolt upright — a thin fork sticking a foot above
+ * the machine and reading as an aerial somebody had bolted on. An arm at rest
+ * is a FOLDED arm: elbow shut, leaning back off the breech, claw parked just
+ * over the deck. Everything eases back to this rather than to zero.
+ */
+const ARM_REST = { yaw: -0.30, shoulder: -0.55, elbow: -1.75, wrist: 0, claw: 0.12 };
+
 const SELFTEST_EVERY = 30;
 const POLISH_EVERY = 44;
 const DOZE_AFTER = 58;
@@ -123,7 +134,7 @@ export class SentryTwo extends Entity {
     const y = world.groundHeightFor(x, z, 1e9);
     this.position.set(x, y, z);
     this.yaw = yaw;              // the centre of its arc; fixed once placed
-    this.height = 0.78 * TWO_SCALE;
+    this.height = 0.90 * TWO_SCALE;    // measured to the top of the rangefinder
     this.radius = 0.36;
 
     this.rig = buildSentryTwoModel(texLib);
@@ -164,7 +175,7 @@ export class SentryTwo extends Entity {
     this.nextPolish = POLISH_EVERY * (0.7 + Math.random() * 0.6);
     this.saluteReady = 0;
     this.sawPlayer = 0;
-    this._armPose = { yaw: 0, shoulder: 0, elbow: 0, wrist: 0, claw: 0 };
+    this._armPose = { ...ARM_REST };   // it comes out of the bag already folded
     if (grumpy) { this.routine = 'grumble'; this.routineT = 0; }
     this._handshakeDue = true;
 
@@ -389,10 +400,11 @@ export class SentryTwo extends Entity {
     this._lampMode = 'chase';
     this._convergeWant = 0.5 + 0.5 * Math.sin(f * Math.PI * 4);
     // the arm runs its whole travel once: round, out, and back
+    const swing = Math.abs(Math.sin(f * Math.PI * 2));
     this._armWant = {
       yaw: Math.sin(f * Math.PI * 2) * 1.5 * k,
-      shoulder: 0.55 * Math.abs(Math.sin(f * Math.PI * 2)) * k,
-      elbow: -0.8 * Math.abs(Math.sin(f * Math.PI * 2)) * k,
+      shoulder: 0.85 * swing * k,
+      elbow: 0.90 * swing * k,
       wrist: Math.sin(f * Math.PI * 6) * 0.4 * k,
       claw: Math.abs(Math.sin(f * Math.PI * 5)) * k,
     };
@@ -410,8 +422,11 @@ export class SentryTwo extends Entity {
     if (this.headYaw < -limit) { this.headYaw = -limit; this.scanDir = 1; }
     this._lampMode = 'heartbeat';
     this._convergeWant = 0.05;
-    // the arm droops on its post, the way a hand goes slack
-    this._armWant = { yaw: 0.3 * settle, shoulder: 0.75 * settle, elbow: -0.55 * settle, wrist: 0.2, claw: 0.1 };
+    // the arm sags on its post, the way a hand goes slack
+    this._armWant = {
+      yaw: 0.15 * settle, shoulder: -0.18 * settle, elbow: -0.20 * settle,
+      wrist: 0.2 * settle, claw: -0.05 * settle,
+    };
     // it snores: a puff off the relief valve every few seconds
     const s = Math.sin(this.routineT * 0.55);
     if (s > 0.995) this._sigh = 1;
@@ -439,8 +454,8 @@ export class SentryTwo extends Entity {
     this.headPitch = tip * 0.12;
     this._lampMode = 'friendly';
     this._convergeWant = 0.85;
-    // and the arm comes up with it, held out to the side like a wave
-    this._armWant = { yaw: -0.9 * tip, shoulder: -0.35 * tip, elbow: -0.45 * tip, wrist: 0, claw: 0.6 * tip };
+    // and the arm comes up with it, unfolding out to the side like a wave
+    this._armWant = { yaw: -0.7 * tip, shoulder: 0.85 * tip, elbow: 1.25 * tip, wrist: 0, claw: 0.5 * tip };
     if (f > 0.22 && !this._saluted) {
       this._saluted = true;
       this.events.emit('sentry:salute', { pos: this.position.clone(), kind: this.kind });
@@ -464,8 +479,8 @@ export class SentryTwo extends Entity {
     // right round to the plate at the back, three short strokes, and back
     this._armWant = {
       yaw: 2.5 * k,
-      shoulder: 1.15 * k,
-      elbow: -1.05 * k,
+      shoulder: 0.60 * k,
+      elbow: 0.55 * k,
       wrist: Math.sin(f * Math.PI * 9) * 0.5 * k,
       claw: 0.85 * k,
     };
@@ -488,8 +503,8 @@ export class SentryTwo extends Entity {
     // up and over to the rangefinder glass, and the rag comes out
     this._armWant = {
       yaw: -1.25 * k,
-      shoulder: -0.62 * k,
-      elbow: -0.30 * k,
+      shoulder: 1.05 * k,
+      elbow: 1.15 * k,
       wrist: Math.sin(f * Math.PI * 8) * 0.75 * k,   // the wiping itself
       claw: 0.4,
       rag: true,
@@ -518,7 +533,7 @@ export class SentryTwo extends Entity {
     if (f >= 1) return true;
     const k = pulse(f, 0.25, 0.3);
     this._barTip = k * 0.4;
-    this._armWant = { yaw: -0.7 * k, shoulder: -0.3 * k, elbow: -0.5 * k, wrist: 0.3 * k, claw: 0.9 * k };
+    this._armWant = { yaw: -0.7 * k, shoulder: 0.75 * k, elbow: 1.0 * k, wrist: 0.3 * k, claw: 0.9 * k };
     this._lampMode = 'friendly';
     return false;
   }
@@ -585,11 +600,11 @@ export class SentryTwo extends Entity {
       leg.hip.rotation.x = leg.splay * open + shake;
       leg.knee.rotation.x = leg.fold * knee;
       leg.pad.rotation.x = -(leg.hip.rotation.x + leg.knee.rotation.x);
-      leg.ram.position.y = -0.145 - open * 0.038;
+      leg.ram.position.y = -0.122 - open * 0.032;
       leg.ram.scale.y = 1 + open * 0.35;
       // the jack screws down last, and it TURNS as it does — the thread is
       // right there, so a jack that extended without turning would be a lie
-      leg.jack.position.y = -0.15 - jackOut * 0.045;
+      leg.jack.position.y = -0.120 - jackOut * 0.038;
       leg.jack.rotation.y = jackOut * 7.5;
     }
     this._legShake = 0;
@@ -597,7 +612,7 @@ export class SentryTwo extends Entity {
     p.spade.rotation.x = -0.15 + spadeIn * 1.05 + (this._spadeStamp || 0);
     this._spadeStamp = 0;
     p.mastStage.position.y = 0.135 + open * 0.06;
-    p.body.position.y = 0.30 + 0.14 * open;
+    p.body.position.y = p.deckFold + 0.14 * open;
 
     /* ---- the ring: yaw, pinion, drag chain, and the counterweight lag ---- */
     const lastYaw = this._lastHeadYaw ?? this.headYaw;
@@ -628,7 +643,10 @@ export class SentryTwo extends Entity {
       b.bolt.position.z = b.boltZ - this.bolt * 0.06;
       b.flash.visible = this.flashT > 0;
       if (b.flash.visible) {
-        b.flash.scale.setScalar(0.7 + Math.random() * 0.6);
+        // Two of these go off at once, a hand's width apart, and they are
+        // additive — so each one has to be modest or the pair together simply
+        // paints the front of the machine out.
+        b.flash.scale.setScalar(0.62 + Math.random() * 0.45);
         b.flash.rotation.z = Math.random() * Math.PI;
       }
     }
@@ -669,21 +687,24 @@ export class SentryTwo extends Entity {
       const out = Math.sin(Math.min(1, f * 2) * Math.PI * 0.5);       // going for it
       const back = Math.max(0, (f - 0.5) * 2);                         // coming back
       want = {
-        yaw: 1.85 * out - 2.6 * back * out,
-        shoulder: 1.05 * out - 0.65 * back,
-        elbow: -0.95 * out + 0.55 * back,
+        yaw: 2.15 * out - 2.90 * back * out,
+        shoulder: 0.75 * out - 0.35 * back,
+        elbow: 1.05 * out - 0.45 * back,
         wrist: 0.4 * Math.sin(f * Math.PI * 2),
-        claw: f > 0.35 && f < 0.85 ? 1 : 0.1,
+        claw: f > 0.35 && f < 0.85 ? 0.9 : 0,
       };
     }
     this._armWant = null;
     const a = this._armPose;
     const rate = this.state === 'reload' ? 12 : 6;
-    a.yaw = damp(a.yaw, want?.yaw ?? 0, dt, rate);
-    a.shoulder = damp(a.shoulder, want?.shoulder ?? 0, dt, rate);
-    a.elbow = damp(a.elbow, want?.elbow ?? 0, dt, rate);
-    a.wrist = damp(a.wrist, want?.wrist ?? 0, dt, rate);
-    a.claw = damp(a.claw, want?.claw ?? 0, dt, rate);
+    // A routine's pose is a DEPARTURE from the rest pose, not from zero — the
+    // routines are all written as "how far from folded", which is why they can
+    // be authored as small numbers and still read as whole gestures.
+    a.yaw = damp(a.yaw, ARM_REST.yaw + (want?.yaw ?? 0), dt, rate);
+    a.shoulder = damp(a.shoulder, ARM_REST.shoulder + (want?.shoulder ?? 0), dt, rate);
+    a.elbow = damp(a.elbow, ARM_REST.elbow + (want?.elbow ?? 0), dt, rate);
+    a.wrist = damp(a.wrist, ARM_REST.wrist + (want?.wrist ?? 0), dt, rate);
+    a.claw = damp(a.claw, ARM_REST.claw + (want?.claw ?? 0), dt, rate);
     p.arm.base.rotation.y = a.yaw;
     p.arm.shoulder.rotation.x = a.shoulder;
     p.arm.elbow.rotation.x = a.elbow;

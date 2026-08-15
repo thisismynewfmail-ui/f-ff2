@@ -243,12 +243,21 @@ export class WeaponView {
      * most — the one where you are looking at it.
      */
     this.heldRigs = {};
-    const carry = (kind, rig, fold) => {
+    /**
+     * `shrink` and `drop` are per machine, and both are about the FRAME rather
+     * than about the machine: the Mk II is half again the Mk I's size in the
+     * world, and carrying that ratio into a 52° lens half a metre from the eye
+     * fills the top of the screen with turret. It is scaled to sit in the hands
+     * the way the Mk I does — plainly the bigger, wider, twin-barrelled thing,
+     * without being the whole view — and dropped to put its bulk on the same
+     * line, since a folded Mk II balances higher than a folded Mk I.
+     */
+    const carry = (kind, rig, shrink, drop, fold) => {
       // The model already carries its world scale, so the carry copy scales it
       // DOWN from that rather than setting an absolute size — resize the
       // machine and the thing in your hands is still the same object.
-      rig.group.scale.multiplyScalar(kind === 'sentryTwo' ? 0.21 : 0.26);
-      rig.group.position.set(0, -0.10, 0);
+      rig.group.scale.multiplyScalar(shrink);
+      rig.group.position.set(0, drop, 0);
       rig.group.visible = false;
       fold(rig.parts);
       this.held.add(rig.group);
@@ -258,7 +267,7 @@ export class WeaponView {
     // comes out of the bag. The legs only kick out once it is standing on the
     // ground, and every joint the deployed one animates is posed here, or the
     // thing in your hands is a different shape from the thing you put down.
-    carry('sentry', buildSentryModel(texLib), (parts) => {
+    carry('sentry', buildSentryModel(texLib), 0.26, -0.10, (parts) => {
       for (const leg of parts.legs) {
         leg.hip.rotation.x = 0.06;
         leg.knee.rotation.x = 0;
@@ -272,18 +281,18 @@ export class WeaponView {
     // The Mk II folds tighter still: legs in, jacks screwed up, spade stowed
     // along the case and the rangefinder bar telescoped down to a stub, which
     // is the only way a bar that wide goes in a satchel at all.
-    carry('sentryTwo', buildSentryTwoModel(texLib), (parts) => {
+    carry('sentryTwo', buildSentryTwoModel(texLib), 0.155, -0.155, (parts) => {
       for (const leg of parts.legs) {
-        leg.hip.rotation.x = 0.05;
+        leg.hip.rotation.x = -0.05;          // out, not back: see SentryTwoModel
         leg.knee.rotation.x = 0;
-        leg.pad.rotation.x = -0.05;
-        leg.ram.position.y = -0.145;
+        leg.pad.rotation.x = 0.05;
+        leg.ram.position.y = -0.122;
         leg.ram.scale.y = 1;
-        leg.jack.position.y = -0.15;
+        leg.jack.position.y = -0.120;        // screwed all the way up
       }
       parts.spade.rotation.x = -0.15;
       parts.mastStage.position.y = 0.135;
-      parts.body.position.y = 0.30;
+      parts.body.position.y = parts.deckFold;
       parts.rf.bar.scale.x = 0.35;
     });
     this.heldRig = this.heldRigs.sentry;
@@ -529,7 +538,17 @@ export class WeaponView {
     const p = this.heldRig.parts;
     p.pinion.rotation.y += dt * 0.9;
     const breath = 0.42 + Math.sin(this.t * 2.1) * 0.14;
-    for (const b of p.iris) b.blade.position.x = b.home * (0.35 + breath * 0.9);
+    // WHAT BREATHES DEPENDS ON WHICH MACHINE IS IN YOUR HANDS. The Mk I sees
+    // through an iris of six blades; the Mk II has no iris at all — it has a
+    // coincidence rangefinder, and what idles on it is the toe-in of the two
+    // prism heads and the drum turning over. Same beat, different instrument,
+    // so this asks the rig what it has rather than assuming.
+    if (p.iris) for (const b of p.iris) b.blade.position.x = b.home * (0.35 + breath * 0.9);
+    if (p.rf) {
+      p.rf.headL.rotation.y = breath * 0.20;
+      p.rf.headR.rotation.y = -breath * 0.20;
+      p.drum.rotation.y += dt * 0.35;
+    }
     p.lensMat.emissive.setRGB(0.03, 0.16, 0.11);
     p.lampMat.emissive.setRGB(0.42, 0.3, 0.05);
     for (const l of p.lamps) l.material.emissive.setRGB(0.34, 0.25, 0.04);

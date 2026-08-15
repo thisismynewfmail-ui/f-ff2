@@ -78,10 +78,17 @@ import * as THREE from '../../lib/three.module.js';
  */
 export const TWO_SCALE = 1.52;
 
-/** Where the barrels sit and how far the muzzles stand out, in model units.
- *  Exported so the entity's ballistics read the model rather than guessing. */
-export const TWO_EYE = 0.60;
-export const TWO_MUZZLE = 0.34;
+/**
+ * Where the barrels sit and how far the muzzles stand out, in model units.
+ *
+ * Exported so the entity's ballistics read the model rather than guessing —
+ * and MEASURED off the assembled rig rather than estimated, because these two
+ * numbers are the origin of every line-of-sight test the gun does. Guess them
+ * low and the machine shoots from inside its own mast: it refuses targets it
+ * can plainly see, and there is nothing on screen to say why.
+ */
+export const TWO_EYE = 0.76;
+export const TWO_MUZZLE = 0.42;
 /** How far apart the two bores are — the entity fires from both. */
 export const TWO_SPREAD = 0.062;
 
@@ -217,7 +224,10 @@ export function buildSentryTwoModel(texLib = null) {
    * THE BASE — a square case, four legs, four screw jacks, one spade    *
    * ================================================================== */
 
-  const HUB_Y = 0.22;
+  // How high the case rides. It is not a free number: the legs below it have a
+  // length and a splay, and this is what puts the PADS ON THE GROUND rather
+  // than through it. Change a leg dimension and this changes with it.
+  const HUB_Y = 0.385;
   // the case the whole thing folds into: a box with lifting eyes at its corners
   g.add(at(box(0.26, 0.085, 0.26, plate), 0, HUB_Y - 0.02, 0));
   g.add(at(box(0.27, 0.014, 0.27, steel), 0, HUB_Y + 0.028, 0));       // the lid
@@ -235,12 +245,30 @@ export function buildSentryTwoModel(texLib = null) {
     const a = (i / 4) * TAU + Math.PI / 4;          // corners, not faces
     const hip = new THREE.Group();
     hip.position.set(Math.sin(a) * 0.115, HUB_Y - 0.012, Math.cos(a) * 0.115);
+    /**
+     * ORDER MATTERS HERE, and getting it wrong is invisible in the code and
+     * unmissable on screen.
+     *
+     * The hip carries TWO rotations: a fixed Y that aims the leg at its corner,
+     * and an animated X that swings it out as the machine deploys. Under the
+     * default XYZ order the X is applied in the PARENT's frame, so every leg
+     * tips the same way in model space — all four reach out behind the machine
+     * instead of one to each corner, and the pads end up under the pavement.
+     * YXZ puts the corner rotation first, which is what makes the X a splay
+     * rather than a lean.
+     *
+     * With the corner applied first, local +Z points OUTWARD, and a positive X
+     * tips the leg toward local −Z — inward. So the splay below is negative and
+     * the knee folds back positive: both are stated once, in the parts record,
+     * and every pose reads them from there.
+     */
+    hip.rotation.order = 'YXZ';
     hip.rotation.y = a;
     g.add(hip);
 
     hip.add(at(cyl(0.030, 0.030, 0.062, chrome, 8), 0, 0, 0).rotateZ(Math.PI / 2));
     // the thigh: a box section with a lightening cut down it, not a stick
-    const thighH = 0.235;
+    const thighH = 0.195;
     hip.add(at(box(0.056, thighH, 0.042, steel), 0, -thighH / 2, 0));
     hip.add(at(box(0.020, thighH * 0.7, 0.046, oil), 0, -thighH / 2, 0));
     hip.add(at(box(0.060, 0.010, 0.046, hazard), 0, -thighH + 0.012, 0));  // banded end
@@ -250,8 +278,8 @@ export function buildSentryTwoModel(texLib = null) {
     const ramPivot = new THREE.Group();
     ramPivot.position.set(0.050, -0.014, 0);
     hip.add(ramPivot);
-    ramPivot.add(at(cyl(0.018, 0.018, 0.105, oil, 8), 0, -0.052, 0));
-    const rod = at(cyl(0.009, 0.009, 0.125, chrome, 6), 0, -0.145, 0);
+    ramPivot.add(at(cyl(0.018, 0.018, 0.090, oil, 8), 0, -0.045, 0));
+    const rod = at(cyl(0.009, 0.009, 0.105, chrome, 6), 0, -0.122, 0);
     ramPivot.add(rod);
 
     // knee, and the shin below it
@@ -259,7 +287,7 @@ export function buildSentryTwoModel(texLib = null) {
     knee.position.set(0, -thighH, 0);
     hip.add(knee);
     knee.add(at(cyl(0.024, 0.024, 0.052, chrome, 8), 0, 0, 0).rotateZ(Math.PI / 2));
-    const shinH = 0.185;
+    const shinH = 0.150;
     knee.add(at(box(0.042, shinH, 0.042, steel), 0, -shinH / 2, 0));
 
     /**
@@ -271,8 +299,8 @@ export function buildSentryTwoModel(texLib = null) {
     const jack = new THREE.Group();
     jack.position.set(0, -shinH, 0);
     knee.add(jack);
-    jack.add(at(cyl(0.013, 0.013, 0.085, chrome, 8), 0, -0.042, 0));
-    for (let k = 0; k < 6; k++) {                   // the thread, as real turns
+    jack.add(at(cyl(0.013, 0.013, 0.075, chrome, 8), 0, -0.037, 0));
+    for (let k = 0; k < 5; k++) {                   // the thread, as real turns
       jack.add(at(new THREE.Mesh(new THREE.TorusGeometry(0.015, 0.0035, 4, 9), chrome),
         0, -0.012 - k * 0.013, 0).rotateX(Math.PI / 2));
     }
@@ -280,7 +308,7 @@ export function buildSentryTwoModel(texLib = null) {
     jack.add(at(box(0.048, 0.008, 0.012, brass), 0, -0.006, 0));           // its tommy bar
 
     const pad = new THREE.Group();
-    pad.position.set(0, -0.085, 0);
+    pad.position.set(0, -0.070, 0);
     jack.add(pad);
     pad.add(at(cyl(0.058, 0.066, 0.020, dark, 10), 0, -0.010, 0));
     pad.add(at(cyl(0.032, 0.032, 0.014, chrome, 8), 0, 0.006, 0));
@@ -289,7 +317,8 @@ export function buildSentryTwoModel(texLib = null) {
       pad.add(at(box(0.014, 0.011, 0.046, oil), Math.sin(ga) * 0.032, -0.022, Math.cos(ga) * 0.032)
         .rotateY(ga));
     }
-    parts.legs.push({ hip, knee, jack, pad, ram: rod, splay: 0.72, fold: -0.52 });
+    // Negative out, positive back — see the note on the rotation order above.
+    parts.legs.push({ hip, knee, jack, pad, ram: rod, splay: -0.62, fold: 0.44 });
   }
 
   /**
@@ -332,8 +361,21 @@ export function buildSentryTwoModel(texLib = null) {
    * THE SLEW RING — the race, its pinion, and the DRAG CHAIN           *
    * ================================================================== */
 
+  /**
+   * The deck rides on the case, so its height is DERIVED from the case's.
+   *
+   * It is parented to the model root rather than to the mast — the mast
+   * telescopes underneath it and would drag it up and down — which means
+   * nothing ties the two together except this number. Both heights are put on
+   * the rig (`deckY` standing, `deckFold` collapsed) so the entity's deploy,
+   * the ghost's frozen pose and the carry model in your hands all read the
+   * same figures instead of each keeping a copy.
+   */
+  const DECK_Y = HUB_Y + 0.220;
+  parts.deckY = DECK_Y;
+  parts.deckFold = DECK_Y - 0.14;
   const body = new THREE.Group();
-  body.position.y = 0.46;
+  body.position.y = DECK_Y;
   g.add(body);
   parts.body = body;
 
@@ -459,9 +501,9 @@ export function buildSentryTwoModel(texLib = null) {
     // over the machine — which is exactly what a pair of opaque planes at
     // this scale did.
     const flash = new THREE.Mesh(
-      new THREE.PlaneGeometry(0.105, 0.105),
+      new THREE.PlaneGeometry(0.072, 0.072),
       new THREE.MeshBasicMaterial({
-        color: 0xffd88a, transparent: true, opacity: 0.85,
+        color: 0xffd88a, transparent: true, opacity: 0.62,
         depthWrite: false, blending: THREE.AdditiveBlending, fog: false,
       }),
     );
@@ -626,19 +668,28 @@ export function buildSentryTwoModel(texLib = null) {
   const rfCard = rangeCardTexture();
   const rf = {};
   const bar = new THREE.Group();
-  bar.position.set(0, 0.205, -0.015);
+  // A coincidence rangefinder wants a long base, and at 0.60 it had one: a bar
+  // two and a half times the width of the machine carrying it, which read as a
+  // pair of wings bolted to a gun rather than as part of one. 0.38 is still
+  // plainly the longest thing on it and still the reason it can range, without
+  // being the whole silhouette.
+  bar.position.set(0, 0.185, -0.015);
   head.add(bar);
   rf.bar = bar;
-  bar.add(at(box(0.60, 0.030, 0.036, plate), 0, 0, 0));                    // the tube itself
-  bar.add(at(box(0.62, 0.010, 0.040, steel), 0, 0.019, 0));
+  bar.add(at(box(0.38, 0.030, 0.036, plate), 0, 0, 0));                    // the tube itself
+  bar.add(at(box(0.40, 0.010, 0.040, steel), 0, 0.019, 0));
   bar.add(at(cyl(0.014, 0.014, 0.10, chrome, 8), 0, -0.022, 0));           // its pedestal
+  // the two braces that actually hold it up, so it is mounted and not floating
+  for (const sx of [-1, 1]) {
+    bar.add(at(box(0.010, 0.075, 0.010, steel), sx * 0.062, -0.038, 0.004).rotateZ(sx * 0.42));
+  }
   bar.add(at(box(0.070, 0.040, 0.046, steel), 0, 0.004, -0.024));          // the eyepiece box
   // the two prism heads, one at each end, which TOE IN onto a target: the
   // whole optical trick of a coincidence rangefinder, and the animation that
   // tells you it has seen something long before the barrels have swung.
   for (const sx of [-1, 1]) {
     const headG = new THREE.Group();
-    headG.position.set(sx * 0.295, 0, 0);
+    headG.position.set(sx * 0.185, 0, 0);
     bar.add(headG);
     headG.add(at(box(0.055, 0.055, 0.055, steel), 0, 0, 0));
     headG.add(at(cyl(0.020, 0.020, 0.020, dark, 10), 0, 0, 0.030).rotateX(Math.PI / 2));

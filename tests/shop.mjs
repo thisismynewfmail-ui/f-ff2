@@ -771,6 +771,50 @@ check('...and the save carries which machine is which',
   mk2.snapKinds === 'sentryTwo' && mk2.restoredKinds === 'sentryTwo' && mk2.snapCounts === '1/0',
   `saved ${mk2.snapKinds} (counts ${mk2.snapCounts}), restored ${mk2.restoredKinds}`);
 
+/* Both machines have to survive being HELD for real frames, not just taken and
+ * put straight down. The viewmodel idles whatever is in your hands — creeping
+ * the pinion, breathing the optic — and the two rigs do not have the same
+ * parts, so an idle written for one of them throws sixty times a second on the
+ * other. The bug that prompted this check was exactly that: the Mk II has no
+ * iris, and holding one was an exception per frame with nothing on screen to
+ * say so. Frames are let run for real here; that is the whole point. */
+const errsBefore = errors.length;
+const carry = await page.evaluate(() => {
+  const g = window.__game;
+  g.sentries.reset();
+  g.events.emit('pickup', { type: 'sentry', amount: 1 });
+  g.events.emit('pickup', { type: 'sentryTwo', amount: 1 });
+  return { rigs: Object.keys(g.viewModel?.heldRigs ?? {}).sort().join(',') };
+});
+const heldShapes = [];
+for (const kind of ['sentry', 'sentryTwo']) {
+  await page.evaluate((k) => {
+    const g = window.__game;
+    g.sentries.takeToHand(k);
+    g.viewModel.heldRaise = 0;             // up in frame, so it is really drawn
+  }, kind);
+  await page.waitForTimeout(500);          // ~30 frames of the real loop
+  heldShapes.push(await page.evaluate(async (k) => {
+    const THREE = await import('/lib/three.module.js');
+    const g = window.__game, vm = g.viewModel;
+    const box = new THREE.Box3().setFromObject(vm.heldRigs[k].group);
+    const shown = Object.entries(vm.heldRigs).filter(([, r]) => r.group.visible).map(([n]) => n);
+    g.sentries.stow();
+    return { k, shown: shown.join(','), h: +(box.max.y - box.min.y).toFixed(3),
+      mid: +((box.max.y + box.min.y) / 2).toFixed(3) };
+  }, kind));
+}
+const [oneHeld, twoHeld] = heldShapes;
+check('both rigs are built, and only the one you are holding is drawn',
+  carry.rigs === 'sentry,sentryTwo'
+  && oneHeld.shown === 'sentry' && twoHeld.shown === 'sentryTwo',
+  `${carry.rigs} → held ${oneHeld.shown} then ${twoHeld.shown}`);
+check('...and holding either of them for real frames throws nothing',
+  errors.length === errsBefore, errors.slice(errsBefore, errsBefore + 2).join(' | '));
+check('...and the Mk II sits in the hands on the same line as the Mk I, not over the screen',
+  Math.abs(twoHeld.h - oneHeld.h) < 0.05 && Math.abs(twoHeld.mid - oneHeld.mid) < 0.05,
+  `mk1 ${oneHeld.h} tall at ${oneHeld.mid}, mk2 ${twoHeld.h} at ${twoHeld.mid}`);
+
 /* ------------------------------------------------------------------ */
 /* 6. the sentry's new tricks                                          */
 /* ------------------------------------------------------------------ */

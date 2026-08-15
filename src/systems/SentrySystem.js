@@ -73,7 +73,7 @@ export const SENTRY_KINDS = {
     range: TWO_RANGE,
     arc: TWO_ARC,
     clearRadius: 0.36,
-    bodyH: 0.78,
+    bodyH: 0.90,
     // A bigger machine needs a bigger berth, and two of these overlapping
     // would be two guns in the same hole rather than a crossfire.
     spacing: 1.7,
@@ -84,13 +84,13 @@ export const SENTRY_KINDS = {
         leg.hip.rotation.x = leg.splay;
         leg.knee.rotation.x = leg.fold;
         leg.pad.rotation.x = -(leg.splay + leg.fold);
-        leg.ram.position.y = -0.183;
+        leg.ram.position.y = -0.154;
         leg.ram.scale.y = 1.35;
-        leg.jack.position.y = -0.195;
+        leg.jack.position.y = -0.158;
       }
       parts.spade.rotation.x = 0.90;
       parts.mastStage.position.y = 0.195;
-      parts.body.position.y = 0.44;
+      parts.body.position.y = parts.deckY;
       parts.rf.bar.scale.x = 1;
     },
   },
