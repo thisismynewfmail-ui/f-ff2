@@ -947,12 +947,16 @@ There is deliberately no command that touches the kill counter — the
   animates four channels off one ramp, this runs a table of **sixteen named
   beats**, each with its own window, its own moving part and **its own sound**:
 
-  | | | | |
-  |---|---|---|---|
-  | 1 `latch` four transit latches pop | 2 `clamp` the clamps over the gun swing clear | 3 `splay` four legs scissor out | 4 `knee` knees fold, a beat behind |
-  | 5 `jack` screw jacks wind down, turning | 6 `level` the jacks argue and it rocks level | 7 `spade` the drop spade goes in — THUMP | 8 `rise` twin posts stand the deck up |
-  | 9 `battery` the gun runs out on its rails | 10 `wings` shield wings out, ready rack drops | 11 `shutter` **the doors open** | 12 `perfuse` the pump primes — **first heartbeat** |
-  | 13 `cortex` the crown seats, the needle drops | 14 `range` the bar telescopes, caps drop | 15 `charge` the handle, drawn and released | 16 `ready` lamps run, the talkback answers |
+  | # | Beat | What moves | # | Beat | What moves |
+  |--:|------|------------|--:|------|------------|
+  | 1 | `latch` | four transit latches pop | 9 | `battery` | the gun runs out on its rails |
+  | 2 | `clamp` | the clamps over the gun swing clear | 10 | `wings` | shield wings out, ready rack drops |
+  | 3 | `splay` | four legs scissor out | 11 | `shutter` | **the doors open** |
+  | 4 | `knee` | knees fold, a beat behind | 12 | `perfuse` | the pump primes — **first heartbeat** |
+  | 5 | `jack` | screw jacks wind down, turning | 13 | `cortex` | the crown seats, the needle drops |
+  | 6 | `level` | the jacks argue and it rocks level | 14 | `range` | the bar telescopes, the caps drop |
+  | 7 | `spade` | the drop spade goes in — THUMP | 15 | `charge` | the handle, drawn and released |
+  | 8 | `rise` | twin posts stand the deck up | 16 | `ready` | lamps run, the talkback answers |
 
   They overlap deliberately — a real machine has the legs still going out while
   the gun is already running into battery — but the order is mechanically true,
