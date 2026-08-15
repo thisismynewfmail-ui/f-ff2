@@ -51,8 +51,8 @@ export const SHOP_STOCK = [
     buy: (events) => events.emit('pickup', { type: 'sentry', amount: 1, label: 'Portable Sentry' }),
   },
   {
-    id: 'sentryTwo', name: 'SENTRY MK II "WARDEN"', price: 300, stock: 2, bay: 'hardware',
-    blurb: 'Twin-barrel post gun. 240° of cover, twice the reach, and it loads itself.',
+    id: 'sentryTwo', name: 'SENTRY MK II "WARDEN"', price: 500, stock: 2, bay: 'hardware',
+    blurb: 'Twin-barrel post gun. 240° of cover, twice the reach. Crewed unit — donor sealed.',
     buy: (events) => events.emit('pickup', { type: 'sentryTwo', amount: 1, label: 'Sentry Mk II' }),
   },
   {
@@ -299,6 +299,13 @@ export class ShopUI {
       ctx.fillStyle = '#7ce8d0'; ctx.fillRect(22, 15, 9, 2);   // its slit, lit
       ctx.fillStyle = bar; ctx.fillRect(6, 8, 40, 3);          // the rangefinder bar
       ctx.fillStyle = gun; ctx.fillRect(6, 5, 6, 6); ctx.fillRect(40, 5, 6, 6);
+      // AND THE JAR, on the flank, because the catalogue does not lie about
+      // what it is selling — it simply does not explain it either.
+      ctx.fillStyle = '#2e4a42'; ctx.fillRect(6, 18, 11, 15);
+      ctx.fillStyle = '#a8e0c8'; ctx.fillRect(7, 19, 9, 13);
+      ctx.fillStyle = '#c08a86'; ctx.fillRect(8, 22, 7, 7);    // what is in it
+      ctx.fillStyle = '#8b5450'; ctx.fillRect(8, 25, 7, 1);
+      ctx.fillStyle = bar; ctx.fillRect(5, 17, 13, 2); ctx.fillRect(5, 32, 13, 2);
       return;
     }
     if (entry.id === 'companion') {

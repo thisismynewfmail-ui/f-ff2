@@ -835,7 +835,7 @@ There is deliberately no command that touches the kill counter — the
   exit leans on the silent recapture described under Controls rather than on a
   plate telling the player to go and click something. It sells a
   **Portable Sentry at 100 tokens, six of them**; the **Sentry Mk II "Warden"
-  at 300, two only**; the **adjutant android at 500, one only**; **every
+  at 500, two only**; the **adjutant android at 500, one only**; **every
   ammunition type separately at 10** a crate; and carries one dead bay at the
   bottom for whatever has not arrived yet.
 - **Portable Sentry:** a tripod auto-pistol that stows in the satchel. Click it
@@ -878,7 +878,7 @@ There is deliberately no command that touches the kill counter — the
   vertical, hold it, and put it back down**. Every twenty-fifth kill it taps the
   barrel twice, like a gunner notching a stock. Pick one up and set it down
   three times inside twenty seconds and it deploys with a shake of the head.
-- **Sentry Mk II "WARDEN" — 300 tokens, two only.** The Mk I holds a doorway.
+- **Sentry Mk II "WARDEN" — 500 tokens, two only.** The Mk I holds a doorway.
   This holds a junction. It carries in the satchel and comes out into your
   hands the same way, shows the same kind of preview — its own ghost, its own
   green wedge — and the wedge is visibly a different machine's: a **240° fan of
@@ -894,14 +894,51 @@ There is deliberately no command that touches the kill counter — the
   a better gun; it is the same gun twice, further out and pointed at more of
   the street, and the price and the shelf limit are set against that.
 
-  **It is a four-legged thing that anchors itself.** Set it down and it takes
-  most of two seconds to be ready: four legs kick out and lock, **screw jacks
-  wind down until the pads take the weight**, a **ground spade drives in
-  behind it** with a thump you can hear, and a two-stage mast stands the body
-  up. It finishes about **1.4 m tall** — half again the Mk I, and low enough
-  that you still look down on it — standing on the pads rather than resting on
-  its case, which is a sentence worth writing down because getting it wrong is
-  invisible in the code and unmissable on screen. On top: a **drum magazine of forty pulls** that spins as it feeds, a
+  **It is a four-legged thing that anchors itself, and it takes exactly twice
+  as long as the Mk I to do it** — 2.1 seconds, in **fourteen overlapping
+  beats**, each with its own mechanism on screen and its own sound: four
+  over-centre latches snap off the case · the quadrupod scissors out · screw
+  jacks wind down until the pads take the weight · a **ground spade drives in
+  behind it** with a thump you can hear · the mast rises, stage one then stage
+  two · three lock dogs swing over and take the deck · the ring **bore-sights
+  itself** hard left, hard right and back to centre, so you see the 240°
+  before it has shot at anything · the rangefinder telescopes out · **the
+  chiller vents and the frost goes off the glass** · the pump primes and the
+  jar fills · **the thing in the jar comes up** · the charging handle is
+  pulled · the lamps chase to green. The first ten beats are a gun being set
+  up. The last four are somebody being woken. It finishes about **1.4 m
+  tall** — half again the Mk I, and low enough that you still look down on it
+  — standing on the pads rather than resting on its case.
+
+  **There is a person in it.** Bolted to the right flank, exactly opposite the
+  loader arm, is a **human brain in a chilled perfusion canister**: life-size
+  at 16 × 17 cm, folded and lobed, six electrodes down through a cap ring into
+  the top of it, suspended in fluid you can see the bubbles rise through, with
+  a cage of bars over the glass and a **brass donor plate** underneath. The
+  plate faces outboard. Nothing in the game tells you it is there — the shop
+  calls the Mk II a "crewed unit" and leaves it — so you find it by walking
+  round the right-hand side of a machine you have already deployed, and the
+  moment you read the plate every charming thing this gun does stops being
+  charming. Six donors, picked per machine, so two Warden on the same corner
+  are two different people. One of them declined.
+
+  **The mechanism keeping it alive is all on show**, the same rule as the rest
+  of the machine: a **chiller** with condenser coils and a fan that spins
+  faster as things heat up; a **perfusion pump** whose piston strokes once a
+  beat, with two hoses arcing up into the base; a **gimbal**, so that when the
+  gun slews the jar does not — the machine turns around the person rather than
+  swinging them about; and an **EEG scope** on the outboard panel drawing a
+  real 44-point trace of what it is thinking.
+
+  **The pulse is a readout.** The pump beat is emitted as sound, so a Warden
+  is audible before it is visible and legible before it is readable: slow at
+  rest, working when it has a target, and **frighteningly fast when the
+  jackets have gone over**, at which point the fluid turns from clinical green
+  to a bad amber-red. The trace reports the same things honestly — a busy
+  scribble awake, low alpha asleep, a spike on every pull — and **it goes flat
+  for the whole of a drum change**, because a gun that is open is a gun with
+  its crew put under. It comes back with a spike, every time. Pick one up and
+  the pump stops mid-stroke and the flat line is the last thing you hear. On top: a **drum magazine of forty pulls** that spins as it feeds, a
   **rack of spares**, twin water-jacketed barrels with a **relief valve** that
   lifts and vents steam when the jackets go over (past its ceiling it stops
   firing and cools, then picks up where it left off), a **drag chain** whose
@@ -943,6 +980,14 @@ There is deliberately no command that touches the kill counter — the
   - **Grumble** — set one down for the third time in a hurry and it plants the
     spade twice as hard, shakes on its jacks, and puts its lamps to red about
     it.
+  - **Dream** — the quietest thing in the build. Left asleep for the better
+    part of two minutes the trace stops being noise and draws a **slow,
+    regular, plainly organised waveform**, the claw closes on nothing, the
+    fluid warms, and two long tuned notes play under everything — the only
+    sound in this game that is neither machinery nor a weapon. Nothing else
+    about the gun changes, so the only way to catch it is to be standing
+    beside a dozing Warden looking at the little green screen. There is no
+    reward for finding it.
 - **The adjutant — "NEKO", 500 tokens, one only.** A refurbished companion
   android, and the only thing in this town that walks beside you on purpose.
   She stows in the satchel folded into a ball; click her and she unfolds on the

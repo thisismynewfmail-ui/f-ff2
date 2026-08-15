@@ -238,6 +238,10 @@ export class Inventory {
       ctx.fillRect(26, 21, 12, 2.5);
       ctx.fillStyle = '#8f9a6a'; ctx.fillRect(6, 8, 28, 3);      // the bar, folded
       ctx.fillStyle = '#7ce8d0'; ctx.fillRect(15, 18, 6, 2);     // its lit slit
+      // the jar rides in the case with it, frosted over and dark
+      ctx.fillStyle = '#3a4a48'; ctx.fillRect(4, 14, 8, 11);
+      ctx.fillStyle = '#b8ccc8'; ctx.fillRect(5, 15, 6, 9);
+      ctx.fillStyle = '#8f7f80'; ctx.fillRect(6, 18, 4, 4);
     } else if (type === 'sentry') {
       // the machine in miniature: splayed legs, drum body, gun head, barrel
       ctx.strokeStyle = '#8f9a6a'; ctx.lineWidth = 2.5;

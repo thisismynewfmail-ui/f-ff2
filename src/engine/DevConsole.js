@@ -200,11 +200,18 @@ const COMMANDS = {
       const kind = type === 'sentry2' ? 'sentryTwo' : 'sentry';
       const gap = kind === 'sentryTwo' ? 1.9 : 1.25;   // the Mk II wants a wider berth
       let stood = 0;
+      const crew = [];
       for (let i = 0; i < n; i++) {
-        if (game.sentries.spawnAhead(game.player, 0.3048 + i * gap, kind)) stood++;
+        const s = game.sentries.spawnAhead(game.player, 0.3048 + i * gap, kind);
+        if (!s) continue;
+        stood++;
+        if (s.donor) crew.push(`${s.donor[0]} ${s.donor[1]}`);
       }
       const what = kind === 'sentryTwo' ? `Mk II${stood === 1 ? '' : 's'}` : `sentr${stood === 1 ? 'y' : 'ies'}`;
       con.print(`stood up ${stood} ${what} — [E] to pack up`, stood ? 'ok' : 'err');
+      // Who each of them was. The console is a debug tool, so it is allowed to
+      // say out loud the one thing the game itself never does.
+      for (const c of crew) con.print(`  crewed by ${c}`);
       return;
     }
     let made = 0;

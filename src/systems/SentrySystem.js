@@ -92,6 +92,17 @@ export const SENTRY_KINDS = {
       parts.mastStage.position.y = 0.195;
       parts.body.position.y = parts.deckY;
       parts.rf.bar.scale.x = 1;
+      // The ghost is the machine as it will STAND, so it is shown with its
+      // latches off, its dogs over, and the jar primed — the thing you are
+      // about to have, not the thing in your bag.
+      for (const l of parts.latches) l.rotation.x = -1.5;
+      for (const d of parts.lockDogs) d.rotation.x = 0;
+      // The frost is hidden by the MESH rather than by the shared material:
+      // the ghost's materials are all cloned when it is built, so writing to
+      // the rig's material here would touch a material nothing is using and
+      // leave a white cylinder standing where the jar should be.
+      parts.frost.visible = false;
+      for (const b of parts.bubbles) b.mesh.visible = false;
     },
   },
 };

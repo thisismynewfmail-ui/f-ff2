@@ -294,6 +294,16 @@ export class WeaponView {
       parts.mastStage.position.y = 0.135;
       parts.body.position.y = parts.deckFold;
       parts.rf.bar.scale.x = 0.35;
+      // It travels LATCHED, and it travels COLD: the case is shut, the dogs
+      // are back, the glass is frosted over and the brain is dark. The jar is
+      // still full. Nobody drains it between postings.
+      for (const l of parts.latches) l.rotation.x = 0;
+      for (const d of parts.lockDogs) d.rotation.x = -0.9;
+      parts.frost.material.opacity = 0.72;
+      parts.brainMat.emissive.setRGB(0.03, 0.01, 0.015);
+      parts.brainDeep.emissive.setRGB(0.02, 0.008, 0.01);
+      parts.surface.material.opacity = 0.30;
+      for (const b of parts.bubbles) b.mesh.visible = false;
     });
     this.heldRig = this.heldRigs.sentry;
     this.heldRigs.sentry.group.visible = true;

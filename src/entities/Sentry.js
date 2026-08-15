@@ -64,7 +64,9 @@ export const SENTRY_ARC = Math.PI;            // 180°, centred on its facing
 export const SENTRY_DAMAGE = PISTOL.damage;         // 12 — the pistol's, exactly
 export const SENTRY_INTERVAL = PISTOL.fireInterval; // 0.26 s — likewise
 
-const DEPLOY_TIME = 1.05;
+/** Exported because the Mk II's deploy is defined as a multiple of it. */
+export const SENTRY_DEPLOY = 1.05;
+const DEPLOY_TIME = SENTRY_DEPLOY;
 const SCAN_SPEED = 0.85;      // rad/s while sweeping for something to shoot
 const TRACK_SPEED = 4.2;      // rad/s slewing onto a target
 const AIM_TOLERANCE = 0.12;   // how lined up it must be before it will fire

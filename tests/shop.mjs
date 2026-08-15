@@ -428,8 +428,8 @@ const stockOf = (id) => shop.lines.find((l) => l.id === id);
 check('the counter lists the sentry at 100 with six in stock',
   stockOf('sentry').price === 100 && stockOf('sentry').stock === 6,
   `${stockOf('sentry').price} tokens, ${stockOf('sentry').stock} on the shelf`);
-check('...the Mk II at 300, two only',
-  stockOf('sentryTwo').price === 300 && stockOf('sentryTwo').stock === 2,
+check('...the Mk II at 500, two only',
+  stockOf('sentryTwo').price === 500 && stockOf('sentryTwo').stock === 2,
   `${stockOf('sentryTwo')?.price} tokens, ${stockOf('sentryTwo')?.stock} on the shelf`);
 check('...and the adjutant at 500, one only',
   stockOf('companion').price === 500 && stockOf('companion').stock === 1,
@@ -879,6 +879,147 @@ check('...and every twenty-fifth kill really is cut into the plate',
   `${life.kills} kills, plate redrawn at ${life.plateRedrawnAt}`);
 check('...and the ready rack empties over two drums and comes back full',
   life.reloaded && life.rack.join('/') === '2/1/0/2', life.rack.join('/'));
+
+/* ------------------------------------------------------------------ */
+/* 5c. the crew                                                        */
+/* ------------------------------------------------------------------ */
+/* There is a person in this machine. Everything below is the promise that
+ * makes: that the jar is real geometry at a real size, that it has a pulse
+ * whose rate means something, that the trace tells the truth about what is
+ * happening to whoever is in there, and that the gun turns around them
+ * rather than swinging them about. */
+const crew = await page.evaluate(async () => {
+  const THREE = await import('/lib/three.module.js');
+  const { TWO_DEPLOY } = await import('/src/entities/SentryTwo.js');
+  const { SENTRY_DEPLOY } = await import('/src/entities/Sentry.js');
+  const g = window.__game, p = g.player, out = {};
+  g.sentries.reset();
+  const yaw = p.yaw + Math.PI;
+  const two = g.sentries._stand(p.position.x + Math.sin(yaw) * 5,
+    p.position.z + Math.cos(yaw) * 5, yaw, 'sentryTwo');
+  const P = two.rig.parts;
+
+  // THE DEPLOY: exactly twice the Mk I's, and the beats really are in order.
+  out.deployRatio = +(TWO_DEPLOY / SENTRY_DEPLOY).toFixed(3);
+  const seen = [];
+  const mark = (name, test) => { if (!seen.includes(name) && test()) seen.push(name); };
+  for (let i = 0; i < Math.ceil(TWO_DEPLOY * 60) + 45; i++) {
+    two.update(1 / 60, { zombies: [], player: p });
+    mark('latch', () => P.latches[0].rotation.x < -0.7);
+    mark('legs', () => P.legs[0].hip.rotation.x < P.legs[0].splay * 0.5);
+    mark('jacks', () => P.legs[0].jack.position.y < -0.14);
+    mark('spade', () => P.spade.rotation.x > 0.6);
+    mark('mast', () => P.body.position.y > P.deckFold + 0.10);
+    mark('dogs', () => P.lockDogs[0].rotation.x > -0.2);
+    mark('bar', () => P.rf.bar.scale.x > 0.9);
+    mark('prime', () => two.prime > 0.5);
+    mark('awake', () => two.think > 0.25);
+  }
+  out.order = seen.join('>');
+  out.stoodUp = two.state !== 'deploy';
+
+  // THE JAR: real geometry, and a brain at the size a brain is. The world
+  // matrices have to be forced here — nothing has rendered since the sentry
+  // was stood up, so without this the box comes back in model units and the
+  // brain measures two-thirds of its real size.
+  two.mesh.updateMatrixWorld(true);
+  const bb = new THREE.Box3().setFromObject(P.brain);
+  out.brainW = +(bb.max.x - bb.min.x).toFixed(3);
+  out.brainD = +(bb.max.z - bb.min.z).toFixed(3);
+  out.brainH = +(bb.max.y - bb.min.y).toFixed(3);
+  out.donor = Array.isArray(P.donor) ? P.donor.length : 0;
+  out.donorName = P.donor?.[1] ?? '';
+  out.hasScope = !!P.traceGeo && P.traceGeo.attributes.position.count === P.traceN;
+
+  // THE GIMBAL: slew the gun and the jar stays where it was, in world terms.
+  const jarFacing = () => {
+    P.gimbal.updateWorldMatrix(true, false);
+    const q = new THREE.Quaternion();
+    P.gimbal.getWorldQuaternion(q);
+    const f = new THREE.Vector3(0, 0, 1).applyQuaternion(q);
+    return Math.atan2(f.x, f.z);               // the jar's world heading
+  };
+  two.headYaw = 0; two._present(1 / 60, { player: p }); const j0 = jarFacing();
+  two.headYaw = 1.6;
+  for (let i = 0; i < 90; i++) two._present(1 / 60, { player: p });
+  const j1 = jarFacing();
+  out.headTurned = 1.6;
+  out.jarTurned = +Math.abs(Math.atan2(Math.sin(j1 - j0), Math.cos(j1 - j0))).toFixed(3);
+
+  // THE PULSE: it beats, and the rate is the state.
+  // The condition has to be HELD, not merely set: the machine sheds heat every
+  // frame, so a sentry told once that it is boiling is back to resting inside
+  // two seconds and the rate never gets a chance to show.
+  const rateOver = (hold, secs) => {
+    let beats = 0;
+    const count = () => beats++;
+    g.events.on('sentry:pulse', count);
+    for (let i = 0; i < secs * 60; i++) { hold(); two.update(1 / 60, { zombies: [], player: p }); }
+    g.events.off?.('sentry:pulse', count);
+    return beats;
+  };
+  const restBeats = rateOver(() => { two.heat = 0; two.routine = null; two.target = null; }, 8);
+  const hotBeats = rateOver(() => { two.heat = 0.95; two.state = 'cooling'; }, 8);
+  out.restBeats = restBeats;
+  out.hotBeats = hotBeats;
+  out.fasterWhenHot = hotBeats > restBeats * 1.5;
+
+  // THE TRACE: flat while the drum is out, and it comes back with a spike.
+  two.heat = 0; two.state = 'scan'; two.drum = 0;
+  let flatWhileOpen = true, sawRevive = false;
+  g.events.on('sentry:revive', () => { sawRevive = true; });
+  for (let i = 0; i < 200; i++) {
+    two.update(1 / 60, { zombies: [], player: p });
+    if (two.state === 'reload') {
+      const band = Math.max(...[...two.trace].map(Math.abs));
+      if (band > 0.25) flatWhileOpen = false;
+    }
+  }
+  out.flatWhileOpen = flatWhileOpen;
+  out.cameBack = sawRevive && two.trace.some((v) => Math.abs(v) > 0.05);
+
+  // AND IT DREAMS, given long enough alone — then goes back to sleep.
+  let dreamt = false, organised = 0;
+  g.events.on('sentry:dream', () => { dreamt = true; });
+  two.state = 'scan'; two.routine = 'doze'; two.routineT = 25.5; two.quiet = 999;
+  for (let i = 0; i < 160; i++) {
+    two.update(1 / 60, { zombies: [], player: p });
+    if (two.routine === 'dream') organised = Math.max(organised, Math.max(...[...two.trace].map(Math.abs)));
+  }
+  out.dreamt = dreamt;
+  out.dreamingNow = two.routine;
+  out.dreamAmplitude = +organised.toFixed(2);
+  for (let i = 0; i < 600; i++) two.update(1 / 60, { zombies: [], player: p });
+  out.afterDream = two.routine;
+  g.sentries.reset();
+  return out;
+});
+check('the Mk II takes exactly twice the Mk I to come up',
+  crew.deployRatio === 2 && crew.stoodUp, `${crew.deployRatio}× the Mk I's deploy`);
+check('...and the fourteen beats of it happen in the right order',
+  crew.order === 'latch>legs>jacks>spade>mast>dogs>bar>prime>awake', crew.order);
+// A human brain is about 14 cm across, 17 front to back and 9 tall, and with
+// its stem hanging under it the whole assembly is about 13 tall. Those are the
+// numbers this is held to, in metres, in the world — because "in scale with
+// the sentry and the player's view" is a measurement, not an opinion.
+check('there is a brain in it, at the size a brain is',
+  crew.brainW > 0.12 && crew.brainW < 0.18 && crew.brainD > 0.14 && crew.brainD < 0.21
+  && crew.brainH > 0.09 && crew.brainH < 0.17,
+  `${(crew.brainW * 100).toFixed(0)} × ${(crew.brainD * 100).toFixed(0)} × ${(crew.brainH * 100).toFixed(0)} cm`);
+check('...and a brass plate under it saying whose it was',
+  crew.donor === 4 && crew.donorName.length > 3 && crew.hasScope, crew.donorName);
+check('the gun slews and the jar does not',
+  crew.jarTurned < 0.25, `head ${crew.headTurned} rad → jar ${crew.jarTurned} rad`);
+check('it has a pulse, and the pulse races when it is boiling',
+  crew.restBeats >= 4 && crew.fasterWhenHot,
+  `${crew.restBeats} beats at rest vs ${crew.hotBeats} hot, over 8s each`);
+check('...and while the drum is out the trace is flat, then it comes back',
+  crew.flatWhileOpen && crew.cameBack,
+  `flat while open ${crew.flatWhileOpen}, revived ${crew.cameBack}`);
+check('...and left alone long enough, it dreams — then goes back to sleep',
+  crew.dreamt && crew.dreamingNow === 'dream' && crew.dreamAmplitude > 0.3
+  && crew.afterDream === 'doze',
+  `dreaming ${crew.dreamingNow} at ${crew.dreamAmplitude}, then ${crew.afterDream}`);
 
 /* ------------------------------------------------------------------ */
 /* 6. the sentry's new tricks                                          */

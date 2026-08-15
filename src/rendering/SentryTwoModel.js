@@ -29,9 +29,20 @@ import * as THREE from '../../lib/three.module.js';
  *                                that lifts drums out of the rack, feeds them,
  *                                taps the plate, wipes the rangefinder glass,
  *                                and tips the bar at anyone who stands in
- *                                front of it. It is the closest thing this
- *                                machine has to a face, and it is why it reads
- *                                as somebody rather than as something.
+ *                                front of it.
+ *   nobody home                  A PERSON. On the right flank, mirroring the
+ *                                arm: a human brain in a chilled perfusion
+ *                                canister, six electrodes in the top of it,
+ *                                wired into the fire control through a loom
+ *                                you can follow with your eye, with a brass
+ *                                donor plate underneath saying whose it was.
+ *                                THIS IS WHY THE ARM EXISTS. Everything the
+ *                                Mk II does when nothing is shooting at it —
+ *                                the polish, the tally, the salute, the doze —
+ *                                stops being a charming animation the moment
+ *                                you walk round the right side and read the
+ *                                plate. Nothing announces it. There is no log
+ *                                entry and no dialogue. There is a jar.
  *
  * MECHANISM FIRST, panelling left off — the same rule the Mk I is built to. If
  * a part of this moves in SentryTwo.js, the thing that moves it is on show.
@@ -69,6 +80,16 @@ import * as THREE from '../../lib/three.module.js';
  *   steam[i]           boil      what comes out of the relief valve
  *   lamps[i]           say       four status lamps in a bar
  *   setTally(n)        notch     the kill marks SCRATCHED INTO the data plate
+ *   latches[i]         unlatch   four over-centre catches, first beat of all
+ *   lockDogs[i]        lock      three dogs taking the deck at the mast head
+ *   gimbal             hold      the jar staying upright while the gun slews
+ *   fluid / fluidMat   perfuse   level on prime, colour by what it is feeling
+ *   frost / frostMat   chill     the glass clearing as the chiller catches up
+ *   bubbles[i]         pump      one line of bubbles per beat of the pump
+ *   brain / brainMat   think     it lights, and the rate is its pulse
+ *   electrodes[i]      fire      six tips that flash when the gun does
+ *   fan / pump         run       the chiller fan, and the perfusion piston
+ *   trace / traceGeo   read      the EEG, drawn as a real line of 44 points
  */
 
 /**
@@ -110,6 +131,58 @@ const TAU = Math.PI * 2;
  * Redrawn in place on the same canvas, so a tally costs one texture upload and
  * no new objects.
  */
+/**
+ * THE DONOR PLATE — the worst thing on this machine, and it is four lines of
+ * stencilled brass on the outboard side of the vessel where you have to walk
+ * round to read it.
+ *
+ * The gun does not tell you about it. The satchel does not tell you about it.
+ * The shop calls the Mk II a "crewed unit" and leaves it there. You find this
+ * because you went and looked, and once you have read it every single thing
+ * the machine does afterwards — the salute, the polish, the doze — means
+ * something else. That is the whole design: no dialogue, no log, no reveal.
+ * One plate, and the player does the rest.
+ *
+ * Six of them, picked at build, so two Mk IIs standing on the same corner are
+ * two different people.
+ */
+const DONORS = [
+  ['019', 'CPL. E. HALLOWAY', '4 CIV. DEF. — 1961', 'ASKED TO STAY ON'],
+  ['027', 'SGT. M. VOSS', '4 CIV. DEF. — 1961', 'CONSENT ON FILE'],
+  ['031', 'PVT. R. OKONKWO', '2 ENGR. — 1962', 'NEXT OF KIN: NONE'],
+  ['044', 'LT. A. BRENNAN', '4 CIV. DEF. — 1962', 'DECLINED. OVERRULED'],
+  ['052', 'MISS J. DELACROIX', 'CIVILIAN — 1962', 'VOLUNTEER, AGE 19'],
+  ['063', 'CAPT. S. IREMONGER', '1 ARMD. — 1960', 'REQUESTED THE POST'],
+];
+
+function donorTexture(donor) {
+  const W = 128, H = 56;
+  const c = document.createElement('canvas');
+  c.width = W; c.height = H;
+  const x = c.getContext('2d');
+  x.fillStyle = '#8a6f2e'; x.fillRect(0, 0, W, H);                 // the brass
+  x.fillStyle = '#7a6128'; x.fillRect(0, 0, W, 3); x.fillRect(0, H - 3, W, 3);
+  for (let i = 0; i < 90; i++) {                                    // tarnish
+    const px = ((Math.sin(i * 41.1) * 4113.7 % 1) + 1) % 1 * W;
+    const py = ((Math.sin(i * 17.9) * 9271.3 % 1) + 1) % 1 * H;
+    x.fillStyle = i % 4 ? '#96793a' : '#6d5622';
+    x.fillRect(px | 0, py | 0, 1, 1);
+  }
+  x.fillStyle = '#2a2210';
+  x.font = 'bold 10px monospace';
+  x.fillText(`DONOR ${donor[0]}`, 5, 13);
+  x.font = 'bold 9px monospace';
+  x.fillText(donor[1], 5, 26);
+  x.font = '8px monospace';
+  x.fillText(donor[2], 5, 37);
+  x.fillText(donor[3], 5, 50);
+  const t = new THREE.CanvasTexture(c);
+  t.magFilter = t.minFilter = THREE.NearestFilter;
+  t.generateMipmaps = false;
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
 function plateTexture() {
   const W = 96, H = 48;
   const c = document.createElement('canvas');
@@ -217,6 +290,7 @@ export function buildSentryTwoModel(texLib = null) {
   const g = new THREE.Group();
   const parts = {
     legs: [], chain: [], barrels: [], shells: [], lamps: [], steam: [], rack: [],
+    latches: [], lockDogs: [], bubbles: [], electrodes: [],
     lampMat, lensMat, jacketMat, steamMat,
   };
   const box = (w, h, d, m) => new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m);
@@ -238,6 +312,22 @@ export function buildSentryTwoModel(texLib = null) {
   for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
     g.add(at(new THREE.Mesh(new THREE.TorusGeometry(0.016, 0.004, 5, 8), chrome),
       sx * 0.10, HUB_Y + 0.044, sz * 0.10).rotateX(Math.PI / 2));      // lifting eyes
+  }
+  /**
+   * FOUR OVER-CENTRE LATCHES, one to a face, and they are the first thing that
+   * happens when the machine is set down: they snap open before anything else
+   * moves. A deploy that begins with the legs already swinging skips the beat
+   * where the case decides to become a gun.
+   */
+  for (let i = 0; i < 4; i++) {
+    const a = (i / 4) * TAU;
+    const hinge = new THREE.Group();
+    hinge.position.set(Math.sin(a) * 0.136, HUB_Y + 0.014, Math.cos(a) * 0.136);
+    hinge.rotation.y = a;
+    g.add(hinge);
+    hinge.add(at(box(0.036, 0.030, 0.010, chrome), 0, 0.012, 0));       // the lever
+    hinge.add(at(box(0.030, 0.008, 0.014, brass), 0, 0.026, 0.003));    // its hook
+    parts.latches.push(hinge);
   }
 
   // FOUR legs, one to each corner of the case. The Mk I splays three legs off a
@@ -358,6 +448,22 @@ export function buildSentryTwoModel(texLib = null) {
     const t = k / 9, a = t * Math.PI * 3.2;
     mast.add(at(cyl(0.006, 0.006, 0.024, oil, 5),
       Math.sin(a) * 0.066, 0.02 + t * 0.15, Math.cos(a) * 0.066).rotateX(1.2));
+  }
+  /**
+   * THREE LOCK DOGS at the head of the mast, which swing in and take the deck
+   * once it has finished rising. Until they are home the gun is standing on a
+   * hydraulic column and nothing else, and the beat where they go over is the
+   * beat where the machine stops being furniture.
+   */
+  for (let i = 0; i < 3; i++) {
+    const a = (i / 3) * TAU + 0.5;
+    const dog = new THREE.Group();
+    dog.position.set(Math.sin(a) * 0.052, 0.300, Math.cos(a) * 0.052);
+    dog.rotation.y = a;
+    mast.add(dog);
+    dog.add(at(box(0.026, 0.012, 0.034, chrome), 0, 0, 0.016));
+    dog.add(at(cyl(0.006, 0.006, 0.022, brass, 6), 0, 0, 0).rotateX(Math.PI / 2));
+    parts.lockDogs.push(dog);
   }
 
   /* ================================================================== *
@@ -739,6 +845,331 @@ export function buildSentryTwoModel(texLib = null) {
   const spot = at(new THREE.Mesh(new THREE.CircleGeometry(0.022, 12), lampMat.clone()), 0, 0, 0.017);
   lampHood.add(spot);
   parts.spot = spot;
+
+  /* ================================================================== *
+   * THE VESSEL — the crew, and what keeps it alive                     *
+   * ================================================================== */
+
+  /**
+   * A CREW-SERVED GUN THAT HAPPENS TO HAVE NO CREW. Except it does.
+   *
+   * Everything about the Mk II was built to read as a heavier answer to the
+   * Mk I — more legs, more barrels, a longer optic — and none of that explains
+   * the loader arm. A gun does not need to polish its own glass, or notch its
+   * own kills, or tip its brim at somebody walking past. This is what explains
+   * it: a human brain in a perfusion canister, bolted to the right flank
+   * exactly where the loader arm is bolted to the left, wired into the fire
+   * control through a loom you can follow with your eye.
+   *
+   * It is built so that it is IMPOSSIBLE TO MISREAD once you have seen it and
+   * easy to walk past before you have. From the front it is a green-lit jar on
+   * the flank of a gun. From the right it is a brain, in scale, in fluid, with
+   * six electrodes in the top of it and a brass plate underneath saying whose
+   * it was.
+   *
+   * The mechanism is all on show, the same rule as the rest of the machine:
+   *   - a CHILLER under it with condenser coils and a fan that turns,
+   *   - a PERFUSION PUMP whose piston strokes once a beat, with two hoses,
+   *   - a GIMBAL, so that when the gun slews the jar does not — the machine
+   *     turns around the person rather than swinging them about,
+   *   - an EEG SCOPE on the front of the pedestal drawing what it is thinking,
+   *   - and a cage of bars over the glass, because somebody at the county
+   *     thought about the glass breaking and nobody thought about the rest.
+   */
+  const vessel = new THREE.Group();
+  vessel.position.set(0.150, 0.014, -0.060);
+  head.add(vessel);
+  parts.vessel = vessel;
+
+  const glassMat = new THREE.MeshLambertMaterial({
+    color: 0xcdeee6, transparent: true, opacity: 0.15, depthWrite: false,
+  });
+  /**
+   * The fluid is deliberately THIN. It was at a third opacity to begin with
+   * and the jar read as a jar of green — the thing suspended in it came out as
+   * a pale smudge, which is the one failure this whole idea cannot survive.
+   * The tint belongs to the glass and the lighting; the fluid's job is to say
+   * "this is submerged", and it says that with about a seventh.
+   */
+  const fluidMat = new THREE.MeshLambertMaterial({
+    color: 0x74d2a4, emissive: 0x06211a, transparent: true, opacity: 0.13, depthWrite: false,
+  });
+  const frostMat = new THREE.MeshBasicMaterial({
+    color: 0xdff2ff, transparent: true, opacity: 0, depthWrite: false, fog: false,
+  });
+  const bubbleMat = new THREE.MeshBasicMaterial({
+    color: 0xe6fff4, transparent: true, opacity: 0.55, depthWrite: false, fog: false,
+  });
+  // Grey-pink, and it LIGHTS — the emissive is the tell that there is
+  // something going on in there, and the entity drives it off what the gun is
+  // actually doing. Asleep it is nearly dark. Tracking, it is not.
+  //
+  // TWO tones, not one. Seen through fluid and glass at this resolution a
+  // single-material brain is a smooth lump; the folds have to be a shade
+  // darker than the crowns or there is nothing for the eye to read the shape
+  // from. `brainDeep` is the sulci, the fissure and the underside.
+  const brainMat = new THREE.MeshLambertMaterial({ color: 0xba7d78, emissive: 0x2a0d10 });
+  const brainDeep = new THREE.MeshLambertMaterial({ color: 0x8b5450, emissive: 0x1c0a0c });
+  parts.glassMat = glassMat;
+  parts.fluidMat = fluidMat;
+  parts.frostMat = frostMat;
+  parts.brainMat = brainMat;
+  parts.brainDeep = brainDeep;
+
+  /* ---- the pedestal: chiller, pump, and the two instruments on its face ---- */
+  vessel.add(at(box(0.105, 0.026, 0.100, steel), 0, 0.013, 0));
+  vessel.add(at(box(0.115, 0.010, 0.110, plate), 0, 0.001, 0));            // its bed plate
+  for (const [bx, bz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+    vessel.add(at(cyl(0.006, 0.006, 0.008, chrome, 6), bx * 0.046, 0.008, bz * 0.045));
+  }
+  // the chiller block, its coils and its fan — the reason there is frost on
+  // the glass at all
+  vessel.add(at(box(0.088, 0.030, 0.084, dark), 0, 0.041, 0));
+  for (let k = 0; k < 5; k++) {
+    vessel.add(at(new THREE.Mesh(new THREE.TorusGeometry(0.026, 0.0045, 4, 12), copper),
+      0, 0.041, -0.030 + k * 0.015).rotateX(Math.PI / 2));
+  }
+  const fan = new THREE.Group();
+  fan.position.set(0, 0.041, -0.044);
+  vessel.add(fan);
+  fan.add(at(cyl(0.008, 0.008, 0.010, chrome, 6), 0, 0, 0).rotateX(Math.PI / 2));
+  for (let k = 0; k < 4; k++) {
+    const blade = at(box(0.030, 0.008, 0.003, chrome), 0, 0, 0);
+    blade.rotation.z = (k / 4) * TAU;
+    fan.add(blade);
+  }
+  parts.fan = fan;
+
+  // THE PERFUSION PUMP. One cylinder, one piston, two hoses. It strokes once
+  // per beat and the beat is the machine's pulse — set by how hard the thing
+  // in the jar is working, which is the only vital sign this gun has.
+  const pumpBody = at(cyl(0.014, 0.014, 0.034, brass, 8), 0.044, 0.040, 0.030);
+  pumpBody.rotation.z = Math.PI / 2;
+  vessel.add(pumpBody);
+  const piston = at(cyl(0.008, 0.008, 0.030, chrome, 6), 0.062, 0.040, 0.030);
+  piston.rotation.z = Math.PI / 2;
+  vessel.add(piston);
+  parts.pump = piston;
+  parts.pumpX = 0.062;
+  for (const sx of [-1, 1]) {                                  // the two hoses, arcing up
+    for (let k = 0; k < 5; k++) {
+      const t = k / 4;
+      vessel.add(at(cyl(0.0045, 0.0045, 0.016, oil, 5),
+        0.040 + sx * 0.006, 0.050 + t * 0.026, 0.028 - t * 0.030 + Math.sin(t * Math.PI) * 0.006)
+        .rotateX(0.9));
+    }
+  }
+
+  // THE SCOPE. Not a texture that gets redrawn — a real line whose points are
+  // pushed every frame, so the trace is as sharp as the rest of the machine
+  // and costs nothing to run. What it draws is in SentryTwo.js, and it draws
+  // the truth: alpha waves asleep, spikes on a kill, and a flat line while
+  // the drum is being changed, because a gun that is open is a gun with its
+  // crew put under.
+  /**
+   * BOTH INSTRUMENTS FACE OUTBOARD, and that is a deliberate piece of level
+   * design rather than a modelling convenience.
+   *
+   * The scope started on the front of the pedestal, where the receiver stands
+   * squarely in front of it: a screen nobody could see. Putting it on the
+   * outboard face next to the donor plate makes ONE approach — walking round
+   * the right-hand side of a machine you have already deployed — the approach
+   * that gives you the brass, the trace and the brain all at once. The reveal
+   * has an address.
+   */
+  const panel = new THREE.Group();
+  panel.position.set(0.054, 0.038, 0);
+  panel.rotation.y = Math.PI / 2;
+  vessel.add(panel);
+  panel.add(at(box(0.088, 0.076, 0.006, steel), 0, 0.002, -0.004));      // the panel itself
+  panel.add(at(box(0.092, 0.006, 0.008, hazard), 0, 0.042, -0.004));
+
+  const scope = new THREE.Group();
+  scope.position.set(0, 0.020, 0);
+  panel.add(scope);
+  scope.add(at(box(0.070, 0.036, 0.008, dark), 0, 0, 0));
+  scope.add(at(new THREE.Mesh(new THREE.PlaneGeometry(0.058, 0.026),
+    new THREE.MeshBasicMaterial({ color: 0x08160f, fog: false })), 0, 0, 0.005));
+  for (const sx of [-1, 1]) {                                             // bezel screws
+    scope.add(at(cyl(0.003, 0.003, 0.004, chrome, 5), sx * 0.030, 0.014, 0.005).rotateX(Math.PI / 2));
+  }
+  const TRACE_N = 44;
+  const tracePts = new Float32Array(TRACE_N * 3);
+  for (let k = 0; k < TRACE_N; k++) {
+    tracePts[k * 3] = -0.027 + (k / (TRACE_N - 1)) * 0.054;
+    tracePts[k * 3 + 2] = 0.0065;
+  }
+  const traceGeo = new THREE.BufferGeometry();
+  traceGeo.setAttribute('position', new THREE.BufferAttribute(tracePts, 3));
+  const traceMat = new THREE.LineBasicMaterial({ color: 0x7ef0b0, transparent: true, fog: false });
+  const trace = new THREE.Line(traceGeo, traceMat);
+  scope.add(trace);
+  parts.trace = trace;
+  parts.traceGeo = traceGeo;
+  parts.traceMat = traceMat;
+  parts.traceN = TRACE_N;
+
+  // and under it, the brass — you have to walk round for this
+  const donor = DONORS[(Math.random() * DONORS.length) | 0];
+  panel.add(at(new THREE.Mesh(new THREE.PlaneGeometry(0.078, 0.034),
+    new THREE.MeshBasicMaterial({ map: donorTexture(donor) })), 0, -0.020, 0.0035));
+  parts.donor = donor;
+
+  /* ---- the gimbal, and everything that hangs in it ---- */
+  const gimbal = new THREE.Group();
+  gimbal.position.y = 0.058;
+  vessel.add(gimbal);
+  parts.gimbal = gimbal;
+  gimbal.add(at(new THREE.Mesh(new THREE.TorusGeometry(0.058, 0.006, 5, 16), chrome), 0, 0.004, 0)
+    .rotateX(Math.PI / 2));
+  gimbal.add(at(cyl(0.050, 0.054, 0.012, steel, 14), 0, 0.004, 0));        // the seat
+  for (const sx of [-1, 1]) {                                              // trunnion pins
+    gimbal.add(at(cyl(0.005, 0.005, 0.014, chrome, 6), sx * 0.060, 0.004, 0).rotateZ(Math.PI / 2));
+  }
+
+  /**
+   * OPEN-ENDED, all three of them, and that is not a detail.
+   *
+   * A capped glass cylinder inside a capped fluid cylinder inside a capped
+   * frost cylinder is SIX translucent surfaces stacked between the eye and
+   * the brain, and since they cannot depth-write they all composite: the
+   * result was a grey dish sitting across the middle of the jar and a pink
+   * rectangle behind it. Walls only. The lid and the seat already close the
+   * ends off, so the caps were never visible as glass anyway — they were only
+   * ever visible as haze over the one thing worth seeing.
+   *
+   * The liquid surface is then put back deliberately, as a single thin disc,
+   * which is what a surface actually looks like.
+   */
+  const tube = (r, h, m, seg = 16) => new THREE.Mesh(
+    new THREE.CylinderGeometry(r, r, h, seg, 1, true), m);
+  const GLASS_H = 0.132;
+  const glass = at(tube(0.056, GLASS_H, glassMat), 0, 0.010 + GLASS_H / 2, 0);
+  glass.renderOrder = 6;                       // after the brain inside it
+  gimbal.add(glass);
+  const FLUID_H = GLASS_H - 0.012;
+  const fluid = at(tube(0.051, FLUID_H, fluidMat), 0, 0.016 + FLUID_H / 2, 0);
+  fluid.renderOrder = 5;
+  gimbal.add(fluid);
+  parts.fluid = fluid;
+  parts.fluidH = FLUID_H;
+  parts.fluidY = 0.016;
+  // the meniscus: one disc at the top of the column, which rides up with it
+  const surface = at(new THREE.Mesh(new THREE.CircleGeometry(0.051, 16),
+    new THREE.MeshBasicMaterial({
+      color: 0xa8e8c8, transparent: true, opacity: 0.30, depthWrite: false,
+      side: THREE.DoubleSide, fog: false,
+    })), 0, 0.016 + FLUID_H, 0);
+  surface.rotation.x = -Math.PI / 2;
+  surface.renderOrder = 5;
+  gimbal.add(surface);
+  parts.surface = surface;
+  const frost = at(tube(0.0575, GLASS_H, frostMat), 0, 0.010 + GLASS_H / 2, 0);
+  frost.renderOrder = 7;
+  gimbal.add(frost);
+  parts.frost = frost;
+
+  // the bubbles the pump sends up through it
+  for (let k = 0; k < 7; k++) {
+    const b = at(new THREE.Mesh(new THREE.SphereGeometry(0.005 + (k % 3) * 0.0016, 5, 4),
+      bubbleMat.clone()), 0, 0.02, 0);
+    b.visible = false;
+    b.renderOrder = 6;
+    gimbal.add(b);
+    parts.bubbles.push({ mesh: b, i: k, r: 0.016 + (k % 4) * 0.008, a: (k / 7) * TAU });
+  }
+
+  /**
+   * THE BRAIN, at the size a brain is: about 14 cm across, 16 cm front to
+   * back, 9 cm tall, in a jar 17 cm wide — which against a machine 1.4 m tall
+   * puts it at roughly the size of the drum feeding the gun beside it. That
+   * ratio is the point. Too small and it is a curio on a shelf; too big and
+   * it is a monster in a tank. At life size it is just a person's brain,
+   * bolted to a gun, and that is worse than either.
+   */
+  const brain = new THREE.Group();
+  brain.position.y = 0.010 + GLASS_H * 0.52;
+  gimbal.add(brain);
+  parts.brain = brain;
+  for (const sx of [-1, 1]) {
+    // 1 : 0.84 : 1.50 — a brain is longer front-to-back than it is wide and
+    // much flatter than either, and a sphere scaled to those three numbers is
+    // most of the read before a single fold goes on it.
+    const lobe = at(new THREE.Mesh(new THREE.SphereGeometry(0.034, 10, 8), brainMat), sx * 0.014, 0, 0);
+    lobe.scale.set(1, 0.84, 1.50);
+    brain.add(lobe);
+    // THE GYRI. Six crowns laid over each hemisphere in a front-to-back run,
+    // with a darker sulcus dropped between each pair — which is the whole of
+    // what makes this read as a brain rather than as two grey balls, and it is
+    // six spheres and six flattened ones per side.
+    for (let k = 0; k < 6; k++) {
+      const t = k / 5;
+      const z = -0.042 + t * 0.082;
+      const bulge = 0.0105 + Math.sin(t * Math.PI) * 0.0035;
+      const lift = 0.0225 - Math.abs(t - 0.45) * 0.016;
+      const crown = at(new THREE.Mesh(new THREE.SphereGeometry(bulge, 7, 5), brainMat),
+        sx * (0.012 + Math.sin(t * Math.PI) * 0.014), lift, z);
+      crown.scale.set(1.7, 0.78, 1.05);
+      brain.add(crown);
+      const sulcus = at(new THREE.Mesh(new THREE.SphereGeometry(bulge * 0.62, 6, 4), brainDeep),
+        sx * (0.010 + Math.sin(t * Math.PI) * 0.016), lift - 0.004, z + 0.006);
+      sulcus.scale.set(1.9, 0.45, 0.7);
+      brain.add(sulcus);
+    }
+    // the temporal lobe, low and forward — the shape that says "side of a head"
+    const temporal = at(new THREE.Mesh(new THREE.SphereGeometry(0.016, 7, 5), brainMat),
+      sx * 0.030, -0.014, 0.010);
+    temporal.scale.set(0.8, 0.85, 1.5);
+    brain.add(temporal);
+  }
+  brain.add(at(box(0.006, 0.034, 0.100, brainDeep), 0, 0.014, 0));         // the fissure
+  brain.add(at(box(0.004, 0.024, 0.104, oil), 0, 0.020, 0));               // and its shadow
+  const cerebellum = at(new THREE.Mesh(new THREE.SphereGeometry(0.020, 8, 6), brainDeep),
+    0, -0.020, -0.042);
+  cerebellum.scale.set(1.5, 0.78, 0.85);
+  brain.add(cerebellum);
+  for (let k = 0; k < 3; k++) {                                            // its folia
+    brain.add(at(box(0.056, 0.003, 0.020, brainMat), 0, -0.015 - k * 0.009, -0.038));
+  }
+  brain.add(at(cyl(0.009, 0.007, 0.034, brainDeep, 7), 0, -0.032, -0.012));  // the stem
+  brain.add(at(cyl(0.012, 0.012, 0.008, chrome, 8), 0, -0.048, -0.012));     // and its collar
+
+  // SIX ELECTRODES, down through a cap ring into the top of it. They light
+  // when it fires, which is the closest this machine comes to saying anything.
+  const capRing = at(new THREE.Mesh(new THREE.TorusGeometry(0.030, 0.004, 4, 14), chrome),
+    0, 0.030, 0).rotateX(Math.PI / 2);
+  brain.add(capRing);
+  for (let k = 0; k < 6; k++) {
+    const a = (k / 6) * TAU;
+    const rod = at(cyl(0.0022, 0.0022, 0.040, chrome, 4),
+      Math.sin(a) * 0.022, 0.016, Math.cos(a) * 0.022);
+    brain.add(rod);
+    const tip = at(new THREE.Mesh(new THREE.SphereGeometry(0.0045, 5, 4), lampMat.clone()),
+      Math.sin(a) * 0.022, 0.036, Math.cos(a) * 0.022);
+    brain.add(tip);
+    parts.electrodes.push(tip);
+  }
+
+  /* ---- the lid, the cage over the glass, and the loom out of it ---- */
+  const lidY = 0.010 + GLASS_H;
+  gimbal.add(at(cyl(0.058, 0.058, 0.014, steel, 14), 0, lidY + 0.007, 0));
+  gimbal.add(at(new THREE.Mesh(new THREE.TorusGeometry(0.058, 0.005, 4, 16), chrome), 0, lidY, 0)
+    .rotateX(Math.PI / 2));
+  gimbal.add(at(cyl(0.016, 0.016, 0.020, brass, 8), 0, lidY + 0.022, 0));    // the loom boss
+  for (let k = 0; k < 6; k++) {                                             // the cage
+    const a = (k / 6) * TAU;
+    gimbal.add(at(box(0.006, GLASS_H + 0.010, 0.006, chrome),
+      Math.sin(a) * 0.061, 0.010 + GLASS_H / 2, Math.cos(a) * 0.061));
+  }
+  // the loom itself, arcing out of the lid and down into the receiver: this is
+  // the sentence "it is wired into the gun", written in six pieces of conduit
+  for (let k = 0; k < 6; k++) {
+    const t = k / 5;
+    const seg = at(cyl(0.0075, 0.0075, 0.034, oil, 5),
+      -0.020 - t * 0.052, lidY + 0.034 - t * t * 0.030, -0.004 - t * 0.016);
+    seg.rotation.z = 1.15 + t * 0.35;
+    vessel.add(seg);
+  }
 
   /* ================================================================== *
    * STATUS — four lamps, and the plate they keep the score on          *

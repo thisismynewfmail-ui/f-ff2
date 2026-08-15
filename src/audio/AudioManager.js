@@ -33,6 +33,10 @@ export class AudioManager {
       : type === 'companionCube' ? this.cubeChime()
       : type?.startsWith('coin_') ? this.coinChime(type)
       : type === 'sentry' ? this.sentryStow()
+      // Packing a Mk II away is not the same act as folding a tripod: the
+      // pump stops, the trace goes flat and stays flat. One second, no
+      // comment, and it is the reason the player thinks twice the next time.
+      : type === 'sentryTwo' ? this.sentryTwoSleep()
       : this.ammoChime()));
     on('player:damage', () => this.hurt());
     on('player:heal', () => {});
@@ -48,6 +52,11 @@ export class AudioManager {
     on('sentry:reload', ({ pos }) => this.sentryReload(pos));
     on('sentry:tally', ({ pos }) => this.sentryTally(pos));
     on('sentry:handshake', ({ pos }) => this.sentrySalute(pos));
+    // ...and the jar on its flank: one stroke of the perfusion pump, the
+    // trace coming back after a drum change, and what it does in its sleep.
+    on('sentry:pulse', ({ pos, hot, asleep }) => this.sentryTwoPulse(pos, hot, asleep));
+    on('sentry:revive', ({ pos }) => this.sentryTwoRevive(pos));
+    on('sentry:dream', ({ pos }) => this.sentryTwoDream(pos));
     on('sentry:salute', ({ pos }) => this.sentrySalute(pos));
     on('sentry:wake', ({ pos }) => this.sentryWake(pos));
     // The adjutant's voice. Everything she says goes through one door.
@@ -621,16 +630,9 @@ export class AudioManager {
    * half-second it takes to stand up.
    */
   sentryDeploy(pos, kind) {
-    const s = this._spatial(pos, kind === 'sentryTwo' ? 40 : 30);
+    const s = this._spatial(pos, kind === 'sentryTwo' ? 44 : 30);
     if (!s) return;
-    if (kind === 'sentryTwo') {
-      this._noise(0.16, 'bandpass', 620, 2, 0.17 * s.vol, 0, s.pan);       // the legs
-      this._tone('square', 120, 0.10, 0.10 * s.vol, 0.18, s.pan, 180);     // jacks screwing down
-      this._punch(150, 46, 0.09, 0.22 * s.vol, 0.62, s.pan, 'triangle');   // the SPADE going in
-      this._noise(0.09, 'lowpass', 380, 1, 0.13 * s.vol, 0.62, s.pan);
-      this._tone('square', 420, 0.06, 0.05 * s.vol, 0.95, s.pan);          // bolt home
-      return;
-    }
+    if (kind === 'sentryTwo') { this._wardenDeploy(s); return; }
     this._noise(0.12, 'bandpass', 900, 2, 0.14 * s.vol, 0, s.pan);
     this._tone('square', 180, 0.07, 0.08 * s.vol, 0.14, s.pan, 260);
     this._tone('square', 520, 0.05, 0.06 * s.vol, 0.3, s.pan);
@@ -656,6 +658,146 @@ export class AudioManager {
     this._punch(300, 84, 0.045, 0.24 * s.vol, 0, s.pan, 'triangle');
     this._noise(0.035, 'bandpass', 3800, 1.4, 0.22 * s.vol, 0, s.pan);
     this._tone('sine', 5200, 0.04, 0.02 * s.vol, 0.04, s.pan, 3600);
+  }
+
+  /**
+   * THE WARDEN COMING UP — 2.1 seconds, fourteen beats, scheduled against the
+   * same clock the animation runs on so every sound lands on its own moving
+   * part. Read the window table over DEPLOY_TIME in SentryTwo.js beside this.
+   *
+   * The shape of it is the whole trick, and it is stolen wholesale from the
+   * kind of horror that never shows you anything: the first ten beats are
+   * COLD MACHINERY — latches, hydraulics, a spade going into tarmac, steel
+   * dogs going over — hard, dry, mechanical, exactly what a gun emplacement
+   * should sound like. Then the chiller vents, and from there to the end
+   * everything is WET AND ORGANIC: a pump priming, fluid moving, and a tone
+   * that rises, wavers, and settles like something surfacing. The machine
+   * finishes with a bolt going home over the top of a heartbeat.
+   *
+   * Nobody has to be told what the last four seconds mean.
+   */
+  _wardenDeploy(s) {
+    const v = s.vol, pan = s.pan;
+    // .00 four over-centre latches, snapping off in a ragged little run
+    for (let i = 0; i < 4; i++) {
+      this._tone('square', 900 - i * 40, 0.028, 0.055 * v, 0.01 + i * 0.026, pan, 520);
+      this._noise(0.022, 'highpass', 3400, 1, 0.05 * v, 0.012 + i * 0.026, pan);
+    }
+    // .08 the quadrupod scissoring out of the case
+    this._noise(0.30, 'bandpass', 560, 2, 0.16 * v, 0.09, pan, 300);
+    this._tone('sawtooth', 74, 0.34, 0.06 * v, 0.09, pan, 52);
+    // .46 the screw jacks, four turns of thread taking the weight
+    for (let i = 0; i < 4; i++) {
+      this._tone('square', 118 + i * 9, 0.10, 0.055 * v, 0.46 + i * 0.055, pan, 176);
+    }
+    // .88 THE SPADE. The loudest single thing the machine ever does.
+    this._punch(148, 42, 0.11, 0.26 * v, 0.88, pan, 'triangle');
+    this._noise(0.13, 'lowpass', 340, 1, 0.16 * v, 0.88, pan);
+    this._noise(0.20, 'bandpass', 190, 1.4, 0.07 * v, 0.94, pan, 90);      // grit under it
+    // 1.05 / 1.26 the mast, two stages, each a rising hydraulic whine
+    this._tone('sawtooth', 130, 0.30, 0.055 * v, 1.05, pan, 260);
+    this._noise(0.30, 'bandpass', 900, 3, 0.05 * v, 1.05, pan, 1500);
+    this._tone('sawtooth', 190, 0.26, 0.055 * v, 1.26, pan, 380);
+    // 1.45 three lock dogs going over — hard, steel, and final
+    for (let i = 0; i < 3; i++) {
+      this._punch(340, 150, 0.05, 0.11 * v, 1.45 + i * 0.035, pan, 'square');
+    }
+    // 1.50 the ring indexing left, right, and back to centre
+    this._tone('sawtooth', 88, 0.20, 0.05 * v, 1.50, pan, 150);
+    this._tone('sawtooth', 150, 0.20, 0.05 * v, 1.68, pan, 88);
+    this._tone('sawtooth', 110, 0.14, 0.04 * v, 1.84, pan, 120);
+    // 1.62 the rangefinder telescoping out to its full base
+    this._noise(0.18, 'bandpass', 1700, 4, 0.05 * v, 1.62, pan, 2600);
+    this._tone('square', 700, 0.04, 0.035 * v, 1.78, pan);                 // and locking
+    /* ---- and here the machine stops being a machine ------------------- */
+    // 1.64 the chiller vents: the hinge of the whole sequence
+    this._noise(0.34, 'highpass', 2600, 0.7, 0.13 * v, 1.64, pan, 900);
+    // 1.70 the perfusion pump priming — three wet strokes, not clicks
+    for (let i = 0; i < 3; i++) {
+      this._punch(96, 58, 0.075, 0.10 * v, 1.70 + i * 0.075, pan, 'sine');
+      this._noise(0.05, 'lowpass', 480, 1.6, 0.055 * v, 1.71 + i * 0.075, pan, 220);
+    }
+    // 1.78 the jar filling: a rising band of moving water
+    this._noise(0.30, 'bandpass', 300, 1.1, 0.075 * v, 1.78, pan, 760);
+    // 1.85 IT COMES UP. Two tones a beat apart, detuned against each other so
+    // they waver, rising into tune as it surfaces.
+    this._tone('sine', 128, 0.62, 0.075 * v, 1.85, pan, 232);
+    this._tone('sine', 131.5, 0.62, 0.055 * v, 1.88, pan, 232);
+    this._tone('triangle', 64, 0.55, 0.045 * v, 1.90, pan, 116);
+    // 1.96 the charging handle and both bolts, over the top of it
+    this._tone('square', 300, 0.05, 0.06 * v, 1.96, pan, 190);
+    this._punch(210, 78, 0.05, 0.10 * v, 2.02, pan, 'square');
+    // 2.10 the first heartbeat, and the status bar going green
+    this._punch(88, 52, 0.10, 0.11 * v, 2.14, pan, 'sine');
+    this._tone('square', 880, 0.05, 0.045 * v, 2.20, pan);
+    this._tone('square', 1320, 0.07, 0.045 * v, 2.27, pan);
+  }
+
+  /**
+   * ONE STROKE OF THE PERFUSION PUMP. The Mk II's pulse, and the only vital
+   * sign the machine has.
+   *
+   * A wet low thud and a valve seating after it — deliberately NOT a beep.
+   * The rate carries the meaning, so this is quiet enough to disappear at
+   * rest and unmistakable when it is racing. Asleep it is slower, softer and
+   * lower; hot it is faster, sharper, and the valve rattles rather than
+   * seating cleanly, because the one thing a body under strain does not do
+   * is sound tidy.
+   */
+  sentryTwoPulse(pos, hot = false, asleep = false) {
+    const s = this._spatial(pos, hot ? 26 : 18);
+    if (!s) return;
+    const g = (asleep ? 0.045 : hot ? 0.085 : 0.062) * s.vol;
+    const f = asleep ? 74 : hot ? 108 : 88;
+    this._punch(f, f * 0.58, asleep ? 0.13 : 0.085, g, 0, s.pan, 'sine');
+    this._noise(0.035, 'lowpass', hot ? 700 : 430, 1.5, g * 0.55, 0.035, s.pan, 200);
+    if (hot) this._noise(0.05, 'bandpass', 1400, 5, g * 0.4, 0.07, s.pan);   // the rattle
+  }
+
+  /**
+   * IT COMES BACK. The end of a drum change, which is also the end of the
+   * stretch where the trace was flat.
+   *
+   * A single spike: a click, a short rising tone, and one hard beat of the
+   * pump. It is a quarter of a second long and it is the reason a player who
+   * has read the donor plate will never quite hear a reload the same way.
+   */
+  sentryTwoRevive(pos) {
+    const s = this._spatial(pos, 24);
+    if (!s) return;
+    this._noise(0.02, 'highpass', 3000, 1, 0.05 * s.vol, 0, s.pan);
+    this._tone('sine', 140, 0.16, 0.06 * s.vol, 0.01, s.pan, 300);
+    this._punch(92, 54, 0.10, 0.09 * s.vol, 0.10, s.pan, 'sine');
+  }
+
+  /**
+   * WHAT IT DOES IN ITS SLEEP. Two long, quiet, tuned tones a fifth apart,
+   * far below everything else in the mix — the one sound in this game that is
+   * neither machinery nor a weapon, and it only ever plays to somebody who
+   * has stood still beside a dozing Warden for two minutes.
+   */
+  sentryTwoDream(pos) {
+    const s = this._spatial(pos, 14);
+    if (!s) return;
+    this._tone('sine', 174.6, 1.9, 0.030 * s.vol, 0, s.pan, 164);
+    this._tone('sine', 261.6, 1.7, 0.020 * s.vol, 0.35, s.pan, 246);
+    this._tone('triangle', 87.3, 2.2, 0.018 * s.vol, 0.1, s.pan);
+    this._noise(1.4, 'lowpass', 300, 0.8, 0.016 * s.vol, 0.2, s.pan, 140);
+  }
+
+  /**
+   * PUTTING IT AWAY. Played on the satchel pickup, which is the moment the
+   * player takes a Mk II off the street.
+   *
+   * The pump stops mid-stroke, the tone falls, and the last thing you hear is
+   * the trace going flat — one steady tone, held, exactly as long as it needs
+   * to be recognised and not a moment longer.
+   */
+  sentryTwoSleep() {
+    this._noise(0.12, 'lowpass', 900, 1, 0.09, 0, 0, 260);        // the case closing
+    this._punch(84, 46, 0.09, 0.07, 0.05, 0, 'sine');             // one last beat
+    this._tone('sine', 200, 0.44, 0.055, 0.16, 0, 92);            // it going down
+    this._tone('sine', 1000, 0.55, 0.030, 0.52, 0);               // and the flat line
   }
 
   /** The Mk II changing a drum: the old one off, the new one seated, bolt home. */

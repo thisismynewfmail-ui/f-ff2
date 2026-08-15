@@ -1,7 +1,7 @@
 import * as THREE from '../../lib/three.module.js';
 import { Entity } from './Entity.js';
 import { buildSentryTwoModel, TWO_SCALE, TWO_EYE, TWO_MUZZLE, TWO_SPREAD } from '../rendering/SentryTwoModel.js';
-import { SENTRY_RANGE, SENTRY_DAMAGE, SENTRY_INTERVAL } from './Sentry.js';
+import { SENTRY_RANGE, SENTRY_DAMAGE, SENTRY_INTERVAL, SENTRY_DEPLOY } from './Sentry.js';
 
 /**
  * THE SENTRY MK II — "THE WARDEN". A twin-barrel post gun on a quadrupod,
@@ -28,12 +28,35 @@ import { SENTRY_RANGE, SENTRY_DAMAGE, SENTRY_INTERVAL } from './Sentry.js';
  * into it or beats on it: it is a thing you leave behind you and walk away
  * from, not a thing you stand and defend.
  *
+ * ── AND WHO IS FLYING IT ──────────────────────────────────────────────────
+ * A brain, in a jar, bolted to the right flank. See the note over THE VESSEL
+ * in SentryTwoModel.js for what it is and why it is where it is; what matters
+ * here is that every animation below is driven off it, so the machine has a
+ * pulse and the pulse means something:
+ *
+ *   PERFUSION    a beat, emitted as an event so it is heard as well as seen.
+ *                Resting it is slow. Tracking, it is not. Overheating, it is
+ *                frightening. This is the only vital sign the gun has and it
+ *                is readable from across the street by ear alone.
+ *   THE SCOPE    an EEG on the pedestal, drawing what the beat implies —
+ *                slow waves asleep, a scribble awake, spikes when it fires,
+ *                and A FLAT LINE while the drum is out, because a gun that is
+ *                open is a gun with its crew put under. It comes back with a
+ *                spike, every time, and the sound comes with it.
+ *   THE GIMBAL   the jar stays upright and world-stable while the gun slews.
+ *                The machine turns around the person; the person does not go
+ *                round with the machine.
+ *
  * ── STATES ────────────────────────────────────────────────────────────────
- *   deploy   the case opens, four legs scissor out, the jacks screw down, the
- *            mast rises, the SPADE drives in behind it, the rangefinder bar
- *            extends, and the charging handle is pulled once. It cannot fire
- *            during any of that, and the sequence is the point: this thing is
- *            plainly being SET UP rather than dropped.
+ *   deploy   FOURTEEN beats over twice the Mk I's deploy, in this order:
+ *            latches pop · legs scissor out · jacks screw down · SPADE driven
+ *            in · mast stage one · mast stage two · lock dogs over · ring
+ *            bore-sighted left, right, centre · rangefinder bar telescoped
+ *            out · chiller vents and the frost clears · perfusion primes and
+ *            the jar fills · THE BRAIN COMES UP · charging handle pulled ·
+ *            lamps chase to green. It cannot fire during any of it, and the
+ *            length is the point: this is a thing being brought round, and
+ *            the last four beats of it are a person being woken up.
  *   scan     nothing to shoot: the head sweeps its 240°, the drag chain pays
  *            out and winds back, and the rangefinder prisms drift.
  *   track    a target: the prisms toe in and CONVERGE first — the optic sees
@@ -65,6 +88,12 @@ import { SENTRY_RANGE, SENTRY_DAMAGE, SENTRY_INTERVAL } from './Sentry.js';
  *   HANDSHAKE  deploy one within seven metres of a Mk I and the two of them
  *              acknowledge each other — the Mk II dips its bar, the Mk I runs
  *              its lamps. The old machine and the new one, on the same corner.
+ *   DREAM      asleep long enough and the trace stops being noise: it draws a
+ *              slow, regular, unmistakably ORGANISED waveform, the claw closes
+ *              on nothing, and the fluid warms. It is having one. Wake it and
+ *              it stops.
+ *   THE PLATE  walk round the right-hand side and read the brass under the
+ *              jar. That is the whole reveal. There is no other one.
  */
 
 /** Twice the Mk I's reach, off the same constant, so it can never drift. */
@@ -74,7 +103,34 @@ export const TWO_DAMAGE = SENTRY_DAMAGE;            // per bullet — and it fir
 export const TWO_INTERVAL = SENTRY_INTERVAL * 0.85; // 0.221 s: slightly faster
 export const TWO_BARRELS = 2;
 
-const DEPLOY_TIME = 1.75;     // heavier than the Mk I's 1.05, and it shows
+/**
+ * THE DEPLOY, and why it is this long.
+ *
+ * Exactly twice the Mk I's 1.05 s, and roughly four times as many distinct
+ * beats — because the Mk I is a tripod being kicked open and this is a gun
+ * emplacement being brought round, with a person in it. Every beat below has
+ * its own mechanism on screen and its own sound (AudioManager.sentryDeploy),
+ * and they overlap the way real machinery does rather than queueing politely.
+ *
+ * The window each beat owns, as a fraction of DEPLOY_TIME:
+ *
+ *   .00–.07  latches      four over-centre catches snap off the case
+ *   .04–.30  legs         the quadrupod scissors out of the case
+ *   .22–.48  jacks        the screw jacks wind down and take the weight
+ *   .42–.58  spade        driven into the ground behind it — the loud one
+ *   .50–.66  mast 1       the first stage lifts the deck clear
+ *   .60–.74  mast 2       the second stage, and the deck comes up level
+ *   .68–.78  lock dogs    three dogs swing over and take the deck
+ *   .70–.86  bore-sight   the ring indexes left, right, and back to centre
+ *   .76–.88  rangefinder  the bar telescopes out to its full base
+ *   .78–.86  chiller      it vents, and the frost goes off the glass
+ *   .80–.92  perfusion    the pump primes and the jar fills
+ *   .84–1.0  the brain    it comes up: activity, then the trace strikes
+ *   .88–.96  charge       the handle is pulled and both bolts go home
+ *   .92–1.0  lamps        the status bar chases to green
+ */
+export const TWO_DEPLOY = SENTRY_DEPLOY * 2;   // exactly twice, off its own constant
+const DEPLOY_TIME = TWO_DEPLOY;
 const SCAN_SPEED = 0.62;      // rad/s: a slower, heavier sweep over a wider arc
 const TRACK_SPEED = 3.4;      // rad/s slewing onto a target
 const AIM_TOLERANCE = 0.10;
@@ -104,6 +160,24 @@ const RACK_SIZE = 2;          // drums on the flank; must match the rig's rack
  * over the deck. Everything eases back to this rather than to zero.
  */
 const ARM_REST = { yaw: -0.30, shoulder: -0.55, elbow: -1.75, wrist: 0, claw: 0.12 };
+
+/**
+ * THE VITALS. The jar's beat, in seconds between strokes of the pump.
+ *
+ * These four numbers are the machine's whole emotional range and they are
+ * deliberately in the register a person's pulse is: a slow resting beat you
+ * stop hearing, a working beat you notice, and a rate under heat that is
+ * simply too fast for anything that is enjoying itself. The audio is one
+ * event per stroke, so the player hears the change without being told about
+ * it — and hears it from further away than they can read the plate.
+ */
+const PULSE_REST = 1.45;
+const PULSE_WORK = 0.62;
+const PULSE_HOT = 0.34;
+const PULSE_ASLEEP = 2.30;
+/** How long asleep before it starts dreaming, and how long a dream runs. */
+const DREAM_AFTER = 26;
+const DREAM_TIME = 7.5;
 
 const SELFTEST_EVERY = 30;
 const POLISH_EVERY = 44;
@@ -176,6 +250,21 @@ export class SentryTwo extends Entity {
     this.saluteReady = 0;
     this.sawPlayer = 0;
     this._armPose = { ...ARM_REST };   // it comes out of the bag already folded
+
+    /* ---- the vessel: what is actually running this thing ---------------- */
+    this.pulseT = 0;             // seconds until the next stroke of the pump
+    this.pulse = 0;              // 1 at the stroke, decaying — drives everything
+    this.beats = 0;              // strokes since it woke up
+    this.think = 0;              // 0 dark, 1 lit: how hard the jar is working
+    this.prime = 0;              // 0 empty, 1 perfused — filled during deploy
+    this.chill = 1;              // 1 frosted over, 0 clear
+    this.trace = new Float32Array(this.rig.parts.traceN ?? 44);
+    this.traceHead = 0;
+    this.traceSpike = 0;         // a kill, a shot, or coming back from under
+    this.flatline = 0;           // 1 while the drum is out: it is put under
+    this.dreaming = 0;
+    this.donor = this.rig.parts.donor;   // who this one was, for the console
+    this._pulseWasFast = false;
     if (grumpy) { this.routine = 'grumble'; this.routineT = 0; }
     this._handshakeDue = true;
 
@@ -242,6 +331,97 @@ export class SentryTwo extends Entity {
     return Math.atan2(Math.sin(rel), Math.cos(rel));
   }
 
+  /**
+   * THE VITALS, stepped once a frame ahead of everything else.
+   *
+   * The pump beat is not decoration and it is not on a fixed timer: it is
+   * derived from what the gun is doing, so it is a readout. Every stroke is an
+   * event, so a machine working hard on the next street is audible before it
+   * is visible — and a machine whose beat has gone to PULSE_HOT is a machine
+   * in trouble, which the player will learn without ever being told.
+   */
+  _vitals(dt) {
+    // The last third of the deploy is the jar coming up: the chiller vents and
+    // the frost goes off the glass, then the pump primes and it fills. Derived
+    // from the deploy clock rather than kept as its own state, so a machine
+    // half-way through standing up is half-way through waking up.
+    const dep = this.state === 'deploy' ? Math.min(1, this.stateT / DEPLOY_TIME) : 1;
+    this.prime = ease(Math.max(0, Math.min(1, (dep - 0.80) / 0.12)));
+    // Frost clears as the chiller catches, and creeps back a little when it
+    // has been asleep long enough for the chiller to get ahead of the work.
+    const frostWant = dep < 1 ? 1 - ease(Math.max(0, Math.min(1, (dep - 0.78) / 0.08)))
+      : (this.routine === 'doze' || this.routine === 'dream') ? 0.34 : 0.02;
+    this.chill = damp(this.chill, frostWant, dt, dep < 1 ? 9 : 0.5);
+
+    // What it is feeling, in one number. Heat dominates, because heat is the
+    // one thing that is happening TO it rather than being done BY it.
+    const want = this.heat > 0.55 || this.state === 'cooling' ? PULSE_HOT
+      : this.routine === 'doze' || this.routine === 'dream' ? PULSE_ASLEEP
+        : this.target || this.state === 'track' ? PULSE_WORK
+          : PULSE_REST;
+    // Nothing beats until the pump has primed, which is the last third of the
+    // deploy — before that the jar is not perfused and the trace is flat.
+    if (this.prime < 0.5) { this.pulse = Math.max(0, this.pulse - dt * 3); return; }
+    this.pulseT -= dt;
+    if (this.pulseT <= 0) {
+      this.pulseT = want * (0.94 + Math.random() * 0.12);   // never metronomic
+      this.pulse = 1;
+      this.beats++;
+      this.events.emit('sentry:pulse', {
+        pos: this.position.clone(), kind: this.kind,
+        rate: want, hot: want === PULSE_HOT, asleep: want === PULSE_ASLEEP,
+      });
+    }
+    this.pulse = Math.max(0, this.pulse - dt * 4.5);
+    // How lit the brain is. It is dark asleep and bright on a target, and the
+    // per-beat throb rides on top of that rather than replacing it.
+    const lit = this.flatline > 0 ? 0.04
+      : this.routine === 'dream' ? 0.30
+        : this.routine === 'doze' ? 0.10
+          : this.state === 'cooling' ? 0.85
+            : this.target ? 0.80 : 0.34;
+    this.think = damp(this.think, lit, dt, 3.2);
+    if (this.traceSpike > 0) this.traceSpike -= dt * 6;
+    if (this.flatline > 0) this.flatline -= dt;
+    this._stepTrace(dt);
+  }
+
+  /**
+   * The EEG, one sample a frame into a ring buffer.
+   *
+   * What it draws is the state, honestly: a flat line while the drum is out
+   * (it is under), a slow organised wave while it dreams, low alpha asleep, a
+   * busy scribble awake, and a hard spike on a shot or a kill. It is the one
+   * instrument on this machine that reports on the crew rather than the gun.
+   */
+  _stepTrace(dt) {
+    const n = this.trace.length;
+    this.traceHead = (this.traceHead + 1) % n;
+    // ITS OWN CLOCK, not the wall's. The trace is state rather than
+    // decoration, so the waveform has to advance with the simulation — driven
+    // off performance.now() the dream's shape stood still whenever the world
+    // was stepped at anything other than real time, which is exactly when
+    // anybody is looking at it closely.
+    this.traceT = (this.traceT ?? 0) + dt;
+    const t = this.traceT;
+    let v;
+    if (this.prime < 0.5) v = 0;
+    else if (this.flatline > 0) v = (Math.random() - 0.5) * 0.02;
+    else if (this.routine === 'dream') {
+      // ORGANISED. Not noise, not a sawtooth — a shape, repeating, that a
+      // player will notice is not what the other states draw.
+      v = Math.sin(t * 2.1) * 0.42 + Math.sin(t * 4.2 + 1) * 0.16;
+    } else if (this.routine === 'doze') {
+      v = Math.sin(t * 5.5) * 0.14 + (Math.random() - 0.5) * 0.05;
+    } else {
+      const busy = this.target ? 1 : 0.45;
+      v = (Math.random() - 0.5) * 0.30 * busy + Math.sin(t * 21) * 0.10 * busy;
+    }
+    v += this.pulse * 0.18;                      // the pump shows in the trace
+    if (this.traceSpike > 0) v += this.traceSpike * 0.9;
+    this.trace[this.traceHead] = Math.max(-1, Math.min(1, v));
+  }
+
   update(dt, ctx) {
     this.stateT += dt;
     if (this.cooldown > 0) this.cooldown -= dt;
@@ -250,6 +430,7 @@ export class SentryTwo extends Entity {
     this.recoil = Math.max(0, this.recoil - dt * 6.5);
     this.bolt = Math.max(0, this.bolt - dt * 12);
     this.heat = Math.max(0, this.heat - HEAT_SHED * dt);
+    this._vitals(dt);
 
     if (this.state === 'deploy') {
       if (this.stateT >= DEPLOY_TIME) {
@@ -262,13 +443,21 @@ export class SentryTwo extends Entity {
       return;
     }
 
-    // A drum change runs to the end whatever turns up: the gun is open.
+    // A drum change runs to the end whatever turns up: the gun is open — and
+    // an open gun is a gun with its crew put under, so the trace goes flat for
+    // the length of it and comes back with a spike. That is the single most
+    // unpleasant thing this machine does, and it does it every forty pulls
+    // without comment.
     if (this.state === 'reload') {
+      this.flatline = Math.max(this.flatline, RELOAD_TIME - this.stateT);
       if (this.stateT >= RELOAD_TIME) {
         this.drum = DRUM_PULLS;
         this.state = 'scan';
         this.stateT = 0;
+        this.flatline = 0;
+        this.traceSpike = 1.4;                     // it comes back
         this.events.emit('sentry:reload', { pos: this.position.clone(), kind: this.kind });
+        this.events.emit('sentry:revive', { pos: this.position.clone(), kind: this.kind });
       }
       this.target = this._acquire(ctx?.zombies);   // it still watches while it loads
       this._present(dt, ctx);
@@ -430,6 +619,42 @@ export class SentryTwo extends Entity {
     // it snores: a puff off the relief valve every few seconds
     const s = Math.sin(this.routineT * 0.55);
     if (s > 0.995) this._sigh = 1;
+    // ...and asleep long enough, it starts dreaming.
+    if (this.routineT > DREAM_AFTER) { this._begin('dream'); }
+    return false;
+  }
+
+  /**
+   * DREAM — the quietest and worst thing in this build.
+   *
+   * A machine asleep draws noise. This draws a SHAPE: a slow, regular,
+   * plainly organised waveform on the scope, held for seven seconds, while
+   * the claw closes on nothing and the fluid goes warm. Nothing else about
+   * the gun changes — the barrels stay down, the lamps stay on their
+   * heartbeat — so the only way to catch it is to be standing there, looking
+   * at the little green screen on the pedestal, at a machine that has been
+   * left alone for the better part of two minutes.
+   *
+   * There is no reward for finding it. That is rather the point.
+   */
+  _run_dream(dt) {
+    const f = this.routineT / DREAM_TIME;
+    if (f >= 1) { this._begin('doze'); return true; }
+    const k = pulse(f, 0.18, 0.3);
+    this.headPitch = damp(this.headPitch, -0.32, dt, 1.0);
+    this._lampMode = 'heartbeat';
+    this._convergeWant = 0.02;
+    this.dreaming = k;
+    // the hand closes on something that is not there, twice
+    this._armWant = {
+      yaw: 0.15, shoulder: -0.12, elbow: -0.16, wrist: 0.1,
+      claw: Math.max(0, Math.sin(f * Math.PI * 4)) * 0.75 * k,
+    };
+    if (!this._dreamt && f > 0.12) {
+      this._dreamt = true;
+      this.events.emit('sentry:dream', { pos: this.position.clone(), kind: this.kind });
+    }
+    if (f >= 1) this._dreamt = false;
     return false;
   }
 
@@ -558,6 +783,10 @@ export class SentryTwo extends Entity {
     this.roundsFired += TWO_BARRELS;
     this.drum--;
     this.drumSpin += 1;
+    // The electrodes flash and the trace spikes on every pull. Whatever is in
+    // the jar is not watching the gun work — it IS the gun working.
+    this.traceSpike = Math.max(this.traceSpike, 0.75);
+    this.pulseT = Math.min(this.pulseT, 0.10);        // the beat jumps with it
 
     const dx = target.position.x - this.position.x, dz = target.position.z - this.position.z;
     const d = Math.hypot(dx, dz) || 1;
@@ -589,13 +818,32 @@ export class SentryTwo extends Entity {
       this._begin('tally');
     }
 
-    /* ---- the undercarriage: legs, jacks, pads, spade, mast ---- */
+    /* ---- the undercarriage: latches, legs, jacks, pads, spade, mast ---- *
+     *
+     * Every one of these is a window on the deploy clock, and they OVERLAP:
+     * the jacks start before the legs have finished, the mast starts before
+     * the spade is home. Machinery that queues politely reads as a checklist;
+     * machinery that overlaps reads as one movement with parts in it. The
+     * windows are listed in full over DEPLOY_TIME.
+     */
     const deploy = this.state === 'deploy' ? Math.min(1, this.stateT / DEPLOY_TIME) : 1;
-    const open = ease(Math.min(1, deploy / 0.55));                 // legs first
-    const jackOut = ease(Math.max(0, Math.min(1, (deploy - 0.35) / 0.35)));
-    const spadeIn = ease(Math.max(0, Math.min(1, (deploy - 0.62) / 0.28)));
+    const win = (a, b) => ease(Math.max(0, Math.min(1, (deploy - a) / (b - a))));
+    const unlatch = win(0.00, 0.07);
+    const open = win(0.04, 0.30);                                  // legs
+    const jackOut = win(0.22, 0.48);
+    const spadeIn = win(0.42, 0.58);
+    const mast1 = win(0.50, 0.66);
+    const mast2 = win(0.60, 0.74);
+    const dogsIn = win(0.68, 0.78);
+    const boreSight = win(0.70, 0.86);
     const knee = ease(Math.max(0, Math.min(1, (open - 0.18) / 0.82)));
     const shake = this._legShake || 0;
+    // the four case latches, flicked off before anything else moves
+    for (let i = 0; i < p.latches.length; i++) {
+      p.latches[i].rotation.x = -unlatch * 1.5 - (i % 2) * unlatch * 0.15;
+    }
+    // and the three lock dogs, swinging over once the deck is up
+    for (let i = 0; i < p.lockDogs.length; i++) p.lockDogs[i].rotation.x = -0.9 + dogsIn * 0.9;
     for (const leg of p.legs) {
       leg.hip.rotation.x = leg.splay * open + shake;
       leg.knee.rotation.x = leg.fold * knee;
@@ -611,12 +859,21 @@ export class SentryTwo extends Entity {
     // the spade drives in behind it, and a grumble stamps it
     p.spade.rotation.x = -0.15 + spadeIn * 1.05 + (this._spadeStamp || 0);
     this._spadeStamp = 0;
-    p.mastStage.position.y = 0.135 + open * 0.06;
-    p.body.position.y = p.deckFold + 0.14 * open;
+    // TWO STAGES, and they go one after the other rather than together: the
+    // outer tube lifts the deck clear, then the inner one takes it up level.
+    p.mastStage.position.y = 0.135 + mast1 * 0.06;
+    p.body.position.y = p.deckFold + (mast1 * 0.055 + mast2 * 0.085);
 
     /* ---- the ring: yaw, pinion, drag chain, and the counterweight lag ---- */
     const lastYaw = this._lastHeadYaw ?? this.headYaw;
-    p.head.rotation.y = this.headYaw;
+    // BORE-SIGHTING: on the way up it indexes hard left, hard right and back
+    // to centre, which is a machine proving its own travel before it trusts
+    // itself with it — and it is the beat that tells you the arc is 240°
+    // before you have seen it shoot at anything.
+    const aim = deploy < 1
+      ? Math.sin(boreSight * Math.PI * 2) * (TWO_ARC / 2) * (1 - boreSight * 0.15)
+      : this.headYaw;
+    p.head.rotation.y = aim;
     p.pinion.rotation.y -= (this.headYaw - lastYaw) * (34 / 8);
     this._lastHeadYaw = this.headYaw;
     // The drag chain lies in the gutter and pays out as the head turns: the
@@ -653,7 +910,7 @@ export class SentryTwo extends Entity {
     // the charging handle: pulled once during the deploy, and again on a
     // drum change — the beat that says the gun has been made ready.
     const chargePull = this.state === 'deploy'
-      ? Math.max(0, Math.sin(Math.max(0, (deploy - 0.72)) / 0.28 * Math.PI))
+      ? Math.max(0, Math.sin(Math.max(0, Math.min(1, (deploy - 0.88) / 0.08)) * Math.PI))
       : this.state === 'reload'
         ? Math.max(0, Math.sin(Math.max(0, (this.stateT / RELOAD_TIME - 0.7)) / 0.3 * Math.PI))
         : 0;
@@ -714,7 +971,7 @@ export class SentryTwo extends Entity {
     p.arm.rag.visible = !!want?.rag;
 
     /* ---- the rangefinder: it extends on deploy and converges on a target ---- */
-    const ext = ease(Math.max(0, Math.min(1, (deploy - 0.45) / 0.4)));
+    const ext = ease(Math.max(0, Math.min(1, (deploy - 0.76) / 0.12)));
     p.rf.bar.scale.x = 0.35 + ext * 0.65;
     const conv = this._convergeWant ?? this.converge;
     this._convergeWant = null;
@@ -741,6 +998,89 @@ export class SentryTwo extends Entity {
       s.mesh.material.opacity = Math.max(0, (1 - life) * 0.5 * Math.min(1, on));
     }
     this._sigh = Math.max(0, (this._sigh || 0) - dt * 1.2);
+
+    /* ================================================================== *
+     * THE VESSEL — the one part of this machine that is not machinery     *
+     * ================================================================== */
+
+    // THE GIMBAL. The head is turning; the jar is not. Cancelling the head's
+    // own yaw leaves the vessel world-stable, so the gun visibly rotates
+    // AROUND the thing running it — and the fluid's inertia is written as a
+    // small lag on top, so the jar catches up a beat late the way a carried
+    // glass does. This is the single detail that makes the vessel read as a
+    // passenger rather than as a fitting.
+    const slew = this.headYaw - (this._jarLast ?? this.headYaw);
+    this._jarLast = this.headYaw;
+    this._jarV = (this._jarV ?? 0) * 0.86 + slew * 0.55;
+    p.gimbal.rotation.y = -p.head.rotation.y + this._jarV;
+    p.gimbal.rotation.z = Math.max(-0.09, Math.min(0.09, this._jarV * 0.8));
+
+    // THE FLUID. Its level is the prime — the jar fills in the last third of
+    // the deploy — and its colour is the vitals: a cold clinical green at
+    // rest, warm when it is working, and going over to a bad amber-red when
+    // the jackets have. Nothing says "this is going badly" like the colour of
+    // the water somebody is living in.
+    const fh = Math.max(0.02, this.prime);
+    p.fluid.scale.y = fh;
+    p.fluid.position.y = p.fluidY + (p.fluidH * fh) / 2;
+    p.surface.position.y = p.fluidY + p.fluidH * fh;      // the level rides with it
+    p.surface.material.opacity = 0.30 * this.prime;
+    const hot01 = Math.min(1, Math.max(0, (this.heat - 0.35) / 0.65));
+    const work = this.target ? 1 : 0;
+    p.fluidMat.color.setRGB(
+      0.30 + hot01 * 0.62 + work * 0.10,
+      0.82 - hot01 * 0.46,
+      0.64 - hot01 * 0.42,
+    );
+    p.fluidMat.emissive.setRGB(0.03 + hot01 * 0.14, 0.13 - hot01 * 0.06, 0.09 - hot01 * 0.05);
+    // KEEP IT THIN. This number decides whether the player sees a brain or a
+    // jar of green: anything above about a sixth and the folds stop reading
+    // through it at the distance you actually stand at.
+    p.fluidMat.opacity = 0.05 + this.prime * 0.10;
+    p.frostMat.opacity = this.chill * 0.55;
+
+    // THE BRAIN. Lit by `think`, throbbing on the pump beat, and it swells a
+    // little with each stroke — about two per cent, which is nothing to look
+    // at and everything to notice out of the corner of an eye.
+    const glow = this.think * (0.72 + this.pulse * 0.5);
+    p.brainMat.emissive.setRGB(glow * 0.55, glow * 0.16, glow * 0.20);
+    p.brainDeep.emissive.setRGB(glow * 0.34, glow * 0.09, glow * 0.12);
+    const swell = 1 + this.pulse * 0.022 + this.dreaming * 0.01;
+    p.brain.scale.set(swell, swell, swell);
+    p.brain.rotation.z = this.dreaming * Math.sin(now * 0.0012) * 0.05;
+    this.dreaming = Math.max(0, this.dreaming - dt * 0.5);
+    // the six electrodes, which flash on a pull and idle at what it is thinking
+    const spark = Math.max(this.flashT > 0 ? 1 : 0, this.traceSpike * 0.8);
+    for (let i = 0; i < p.electrodes.length; i++) {
+      const e = spark > 0.02 ? spark : this.think * 0.22 * (0.6 + 0.4 * Math.sin(now * 0.004 + i));
+      p.electrodes[i].material.emissive.setRGB(e * 0.8, e * 0.85, e * 0.45);
+    }
+
+    // THE PUMP AND THE CHILLER: a piston that strokes on the beat, a fan that
+    // turns while there is anything to keep cold, and one line of bubbles per
+    // stroke rising through the fluid.
+    p.pump.position.x = p.pumpX - this.pulse * 0.014;
+    p.fan.rotation.z += dt * (2.5 + hot01 * 22);
+    for (const b of p.bubbles) {
+      const life = ((now * 0.00022 * (1 + hot01) + b.i / p.bubbles.length) % 1);
+      b.mesh.visible = this.prime > 0.3 && life < 0.94;
+      if (!b.mesh.visible) continue;
+      b.mesh.position.set(Math.sin(b.a) * b.r, p.fluidY + life * p.fluidH * this.prime,
+        Math.cos(b.a) * b.r);
+      b.mesh.material.opacity = 0.55 * Math.min(1, (1 - life) * 3) * this.prime;
+    }
+
+    // THE SCOPE. The ring buffer, unrolled onto the line's 44 points so the
+    // newest sample is at the right-hand edge and the trace scrolls left.
+    const tn = this.trace.length;
+    const tp = p.traceGeo.attributes.position;
+    for (let i = 0; i < tn; i++) {
+      const v = this.trace[(this.traceHead + 1 + i) % tn];
+      tp.setY(i, v * 0.013);
+    }
+    tp.needsUpdate = true;
+    // it dims while it is under, and the whole screen is greener when awake
+    p.traceMat.opacity = this.prime < 0.3 ? 0.15 : this.flatline > 0 ? 0.45 : 0.95;
 
     /* ---- the eye and the spotting lamp ---- */
     const eyeGlow = this.state === 'reload' ? 0.25 : this.target ? 0.85 : 0.3;
