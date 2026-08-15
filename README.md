@@ -79,8 +79,8 @@ the desktop shell.
 | 1–6 | Pistol / Shotgun / Assault Rifle / Sniper / Bat / Alien Blaster (once found) |
 | Mouse wheel | Cycle weapons (also reveals the weapon menu) |
 | R | Reload |
-| E | Interact (talk to the vendor, order the adjutant, pack up a deployed sentry) |
-| Tab | Satchel — click a sentry to take it in hand, or the adjutant to unfold her |
+| E | Interact (talk to the vendor, order the adjutant, pack up a deployed sentry of either mark) |
+| Tab | Satchel — click a sentry (Mk I or Mk II) to take it in hand, or the adjutant to unfold her |
 | R (sentry in hand) | Swing its arc 25° |
 | LMB / RMB (sentry in hand) | Set it down / put it back in the satchel |
 | E / click outside | At an arcade cabinet, the vendor's pitch or the order dial, step away from it |
@@ -215,7 +215,7 @@ keyboard while open and the game keeps running behind it. Commands:
 | `give` | Fill every weapon's magazine and reserve |
 | `tp <x> <z>` | Teleport to map coordinates (spawn is `0 20`) |
 | `speed <mult>` | Movement speed multiplier (0.1–10) |
-| `spawn <type> [n]` | Spawn `n` enemies near you (`walker`/`sprinter`/`tank`/`exploder`/`spitter`), or `citizen` for a captive in a random building — she ignores `n`, skips her 100-kill gate, and the console prints which building to `tp` to — or `sentry`, which stands `n` **ordinary** sentries a foot in front of you (fanned out, since they refuse to stand on each other), already inside their own [E] radius |
+| `spawn <type> [n]` | Spawn `n` enemies near you (`walker`/`sprinter`/`tank`/`exploder`/`spitter`), or `citizen` for a captive in a random building — she ignores `n`, skips her 100-kill gate, and the console prints which building to `tp` to — or `sentry` / `sentry2`, which stand `n` **ordinary** Mk I or Mk II sentries a foot in front of you (fanned out, since they refuse to stand on each other), already inside their own [E] radius |
 | `pos` | Print current position |
 | `help` / `clear` | List commands / clear the log |
 
@@ -544,8 +544,9 @@ There is deliberately no command that touches the kill counter — the
   scratch (die at wave 45 → back to 40). The district barriers re-seal to match
   the rolled-back kill count, so any sections you'd opened stand again and must
   be re-earned. **The hardware does not roll back.** Dying costs you the wave,
-  not the kit you paid tokens for: every sentry folds up — the ones bolted to
-  the pavement and the one in your hands — the adjutant folds up, and the
+  not the kit you paid tokens for: every sentry folds up, both marks — the ones
+  bolted to the pavement and the one in your hands, each returning to its own
+  satchel slot rather than being pooled — the adjutant folds up, and the
   Companion Cube comes back from wherever you set it down, all of it stowed in
   the satchel and none of it left across town from where you respawn. Whatever
   was already in the satchel is untouched.
@@ -833,9 +834,10 @@ There is deliberately no command that touches the kill counter — the
   with. The fourth is Escape, which by specification grants none — so that one
   exit leans on the silent recapture described under Controls rather than on a
   plate telling the player to go and click something. It sells a
-  **Portable Sentry at 100 tokens, six of them**; the **adjutant android at
-  500, one only**; **every ammunition type separately at 10** a crate; and
-  carries one dead bay at the bottom for whatever has not arrived yet.
+  **Portable Sentry at 100 tokens, six of them**; the **Sentry Mk II "Warden"
+  at 300, two only**; the **adjutant android at 500, one only**; **every
+  ammunition type separately at 10** a crate; and carries one dead bay at the
+  bottom for whatever has not arrived yet.
 - **Portable Sentry:** a tripod auto-pistol that stows in the satchel. Click it
   there and it comes up **into your hands** (the gun goes away — you cannot hold
   a rifle and a tripod at once), and the ground ahead of you shows exactly where
@@ -876,6 +878,71 @@ There is deliberately no command that touches the kill counter — the
   vertical, hold it, and put it back down**. Every twenty-fifth kill it taps the
   barrel twice, like a gunner notching a stock. Pick one up and set it down
   three times inside twenty seconds and it deploys with a shake of the head.
+- **Sentry Mk II "WARDEN" — 300 tokens, two only.** The Mk I holds a doorway.
+  This holds a junction. It carries in the satchel and comes out into your
+  hands the same way, shows the same kind of preview — its own ghost, its own
+  green wedge — and the wedge is visibly a different machine's: a **240° fan of
+  exactly twice the radius**, about a hundred and twenty feet, drawn from the
+  numbers the entity actually fights with rather than from a second set kept in
+  the renderer. [R] steps its arc the same 25° a press, a click sets it down,
+  and **[E] on a deployed one packs it into its own satchel slot**, never the
+  Mk I's. Nothing on the map hunts it, exactly like the Mk I.
+
+  **What it is worth, stated plainly:** twice the reach, a 240° arc instead of
+  180°, and **two barrels that fire together** — one pull, two rounds, each for
+  the same damage as the Mk I's — on a **slightly shorter interval**. It is not
+  a better gun; it is the same gun twice, further out and pointed at more of
+  the street, and the price and the shelf limit are set against that.
+
+  **It is a four-legged thing that anchors itself.** Set it down and it takes
+  most of two seconds to be ready: four legs kick out and lock, **screw jacks
+  wind down until the pads take the weight**, a **ground spade drives in
+  behind it** with a thump you can hear, and a two-stage mast stands the body
+  up. It finishes about **1.4 m tall** — half again the Mk I, and low enough
+  that you still look down on it — standing on the pads rather than resting on
+  its case, which is a sentence worth writing down because getting it wrong is
+  invisible in the code and unmissable on screen. On top: a **drum magazine of forty pulls** that spins as it feeds, a
+  **rack of spares**, twin water-jacketed barrels with a **relief valve** that
+  lifts and vents steam when the jackets go over (past its ceiling it stops
+  firing and cools, then picks up where it left off), a **drag chain** whose
+  links are why the arc stops at 240° and not 360°, a counterweight that swings
+  against the head, and a **rangefinder bar** across the brow with a spotting
+  lamp under it. Spent cases come out of the port, the bolts cycle in their
+  rails, and the muzzle flashes are additive and small — a gun going off at
+  night, not two cream-coloured cards.
+
+  **It changes its own drum.** Forty pulls in, it stops, the drum comes off,
+  one comes out of the rack, and it is nineteen-tenths of a second before it
+  will shoot again — it holds fire the whole time, and the loader arm does the
+  work in view. The two drums on the flank are the **ready rack**, not the
+  reserve: they drain over two changes and the third brings a fresh pair up
+  from the case it is standing on, so a rack you watched go empty is full again
+  the next time you look.
+
+  **The loader arm is the point of the machine.** It stands on a **slewing
+  base** on the deck rather than hanging off it, and it is the same arm for
+  every job the machine does when nothing is shooting at it, which is where
+  most of its character lives:
+  - **Self-test** — lamps in a chase, the arm run once through its whole
+    travel, the legs shaken down.
+  - **Polish** — a rag comes out of the claw and the rangefinder glass gets a
+    wipe, the optic hunting in and out while it works.
+  - **Tally** — every twenty-fifth kill the arm reaches **behind itself to the
+    data plate and cuts another mark**, and the mark is not a gesture: the
+    plate's texture is redrawn with one more stroke, gates of five, and it
+    stays. Leave one on a busy corner, come back, and you can read off its
+    afternoon from six feet away.
+  - **Doze** — nothing for a minute and the barrels sink, the lamps drop to one
+    slow beat, the arm goes slack on its post, and it **snores**: a puff off
+    the relief valve every few seconds until something turns up.
+  - **Salute** — the Mk I puts its barrel up; this one has a brim, so it
+    **tips the rangefinder bar at you and waves with the claw**, and only ever
+    at the player.
+  - **Handshake** — stand one up near a Mk I already on that corner and it
+    **dips its bar at the older machine** once, the first time it sees it.
+  - **Grumble** — set one down for the third time in a hurry and it plants the
+    spade twice as hard, shakes on its jacks, and puts its lamps to red about
+    it.
 - **The adjutant — "NEKO", 500 tokens, one only.** A refurbished companion
   android, and the only thing in this town that walks beside you on purpose.
   She stows in the satchel folded into a ball; click her and she unfolds on the
@@ -903,9 +970,10 @@ There is deliberately no command that touches the kill counter — the
   square, and **two arc emitters** that hinge up off her shoulder blades and
   split open. Her chest core spins up and lights before either fires, so there
   is always a tell. Melee hits harder and needs her to close; the arc **reaches
-  22 m — further than the sentry's sixty feet**, which is the division of labour
-  between them: the sentry holds a doorway, she covers the street you are
-  crossing. It costs a charge cycle for the range. On ATTACK she picks whichever
+  22 m — further than the Mk I sentry's sixty feet**, which is the division of
+  labour between the three of them: the Mk I holds a doorway, she covers the
+  street you are crossing, and the Mk II sits behind both of them and reaches
+  past her. It costs a charge cycle for the range. On ATTACK she picks whichever
   the distance asks for, preferring the blades inside six metres. On GUARD the
   leash governs how far she will WALK off her post, not how far she can shoot
   from standing on it — she engages anything inside arc range and stays put.
@@ -956,15 +1024,17 @@ src/ai/             NPC AI: senses (360° ring + memory), context steering,
                     shared navigator, behaviour arbiter, opt-in flag registry
 src/entities/       player, zombies, exploder, spitter, NPC, savable citizen,
                     cockroach, shopkeeper (the vendor animatronic), the
-                    adjutant android (Companion.js) and the sentry, the
-                    deployable sentry, pickups (ammo, health, keys, coins)
+                    adjutant android (Companion.js), the two deployable
+                    sentries (Sentry.js, SentryTwo.js), pickups (ammo,
+                    health, keys, coins)
 src/weapons/        weapon configs + firing/ammo/hit resolution
 src/rendering/      renderer, texture pipeline, billboards, HUD (console bar +
                     Portrait CRT + HudTextures), 3D weapon view + PBR weapon
                     materials, effects, the arcade cabinets and the four
                     machines in them (Arcade.js), the vendor rig + its
                     animation state machine (VendorModel.js), the shop
-                    overlay (ShopUI.js), the sentry model (SentryModel.js)
+                    overlay (ShopUI.js), the sentry rigs (SentryModel.js,
+                    SentryTwoModel.js)
 src/audio/          WebAudio synthesis (all sounds)
 src/world/          terrain, buildings, props, vegetation, zones, nav, secrets,
                     anomalies (cosmic-horror layer + dynamic props and
@@ -972,8 +1042,8 @@ src/world/          terrain, buildings, props, vegetation, zones, nav, secrets,
                     piece, its easter-egg chain and the crash site), sky
 src/systems/        score/win condition, waves, spawning, savable-citizen
                     director, game state, inventory, tokens (currency +
-                    the coin drop table), sentries (carrying, placement
-                    preview, deployed turrets)
+                    the coin drop table), sentries of both marks (carrying,
+                    per-kind placement previews, deployed turrets)
 src/engine/Shell.js desktop-shell bridge (detects the Electron launcher)
 launcher/           Windows desktop launcher (Electron): startup window,
                     harmonograph boot animation, isolated fullscreen game window
@@ -1026,6 +1096,15 @@ tests/              headless AI tests (ai.mjs), NPC behaviour tests against the
   through the same event everything else in the world is collected by, so the
   till never needs to know which is which. Stock and payment are enforced in
   one place (`Game._buy`), not in the button.
+- **New deployable sentry:** add a row to `SENTRY_KINDS` in
+  `src/systems/SentrySystem.js` — its label, entity class, model builder, its
+  own `range`/`arc` constants, a footprint, the hand hint, and a `pose` that
+  freezes the rig into its deployed stance for the ghost. That row is the whole
+  contract: the satchel slot, the placement ghost, the green wedge, the
+  spacing rule, the save file and the death-recall are all written against the
+  table rather than against a particular machine. Add the matching
+  `DROPPABLE` entry in `src/systems/Inventory.js` and a shelf line, and it is
+  a deployable.
 - **New coin / drop rate:** the coin values live in `COINS`
   (`src/systems/TokenSystem.js`) and who drops what, how often, in
   `COIN_DROPS` (`src/systems/TokenDrops.js`), keyed by the archetype's own

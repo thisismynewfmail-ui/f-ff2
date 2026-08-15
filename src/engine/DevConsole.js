@@ -112,9 +112,9 @@ const COMMANDS = {
     con.print('tp <x> <z>      teleport to map coordinates (spawn is 0 20)');
     con.print('speed <mult>    movement speed multiplier (0.1 – 10)');
     con.print('cull <s|off>    remove zombies blind to the player for s seconds');
-    con.print('spawn <type> [n] spawn n enemies near you (walker/sprinter/tank/exploder/spitter)');
+    con.print('spawn <type> [n] spawn n near you (walker/sprinter/tank/exploder/spitter/sentry/sentry2)');
     con.print('                or "citizen" — a captive in a random building, ignores n');
-    con.print('                or "sentry"  — deployed sentries a foot in front of you');
+    con.print('                or "sentry"/"sentry2" — deployed turrets a foot in front of you');
     con.print('kill [n]        add n kills through the scoring pipeline (default 1)');
     con.print('time <0-24>     set the time of day (6=dawn, 12=noon, 0=midnight)');
     con.print('pos             print current position');
@@ -173,7 +173,7 @@ const COMMANDS = {
 
   spawn(con, game, args) {
     const type = (args[0] || '').toLowerCase();
-    const valid = ['walker', 'sprinter', 'tank', 'exploder', 'spitter', 'citizen', 'sentry'];
+    const valid = ['walker', 'sprinter', 'tank', 'exploder', 'spitter', 'citizen', 'sentry', 'sentry2'];
     if (!valid.includes(type)) throw new Error('usage: spawn <' + valid.join('|') + '> [count]');
     // The savable citizen is not horde stock: she spawns captive inside a
     // random building rather than near you, and only one is ever live, so she
@@ -196,12 +196,15 @@ const COMMANDS = {
     // puts it inside its own interact radius — spawn it and it is already
     // yours to pick up. Fanned out slightly for a count above one, since
     // sentries refuse to stand on top of each other.
-    if (type === 'sentry') {
+    if (type === 'sentry' || type === 'sentry2') {
+      const kind = type === 'sentry2' ? 'sentryTwo' : 'sentry';
+      const gap = kind === 'sentryTwo' ? 1.9 : 1.25;   // the Mk II wants a wider berth
       let stood = 0;
       for (let i = 0; i < n; i++) {
-        if (game.sentries.spawnAhead(game.player, 0.3048 + i * 1.25)) stood++;
+        if (game.sentries.spawnAhead(game.player, 0.3048 + i * gap, kind)) stood++;
       }
-      con.print(`stood up ${stood} sentr${stood === 1 ? 'y' : 'ies'} — [E] to pack up`, stood ? 'ok' : 'err');
+      const what = kind === 'sentryTwo' ? `Mk II${stood === 1 ? '' : 's'}` : `sentr${stood === 1 ? 'y' : 'ies'}`;
+      con.print(`stood up ${stood} ${what} — [E] to pack up`, stood ? 'ok' : 'err');
       return;
     }
     let made = 0;

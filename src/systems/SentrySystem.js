@@ -1,6 +1,8 @@
 import * as THREE from '../../lib/three.module.js';
 import { Sentry, SENTRY_RANGE, SENTRY_ARC } from '../entities/Sentry.js';
+import { SentryTwo, TWO_RANGE, TWO_ARC } from '../entities/SentryTwo.js';
 import { buildSentryModel } from '../rendering/SentryModel.js';
+import { buildSentryTwoModel } from '../rendering/SentryTwoModel.js';
 
 /**
  * Owns every sentry: the ones folded up in the satchel, the one currently in
@@ -26,10 +28,82 @@ import { buildSentryModel } from '../rendering/SentryModel.js';
  * turret's own targeting reads, so the two cannot drift apart: if the wedge
  * says it covers that doorway, it covers that doorway.
  */
+/**
+ * THE TWO MACHINES THIS SYSTEM OWNS.
+ *
+ * Everything below is written against this table rather than against the Mk I,
+ * because the loop — buy, take, aim, place, pack up — is IDENTICAL for both and
+ * only the numbers differ. A third deployable would be another row here and no
+ * new code anywhere else: the satchel slot, the ghost, the wedge, the save and
+ * the death-recall all read the row.
+ *
+ * `range` and `arc` are the entity's OWN constants, so the green wedge a player
+ * lines a doorway up with is drawn from the same numbers the turret's targeting
+ * reads. The two cannot drift apart.
+ */
+export const SENTRY_KINDS = {
+  sentry: {
+    label: 'Portable Sentry',
+    Class: Sentry,
+    build: buildSentryModel,
+    range: SENTRY_RANGE,
+    arc: SENTRY_ARC,
+    clearRadius: 0.30,
+    bodyH: 0.62,
+    spacing: 1.1,
+    hint: 'Sentry in hand. Click to set it down; [R] swings its arc 25° a press.',
+    stowLine: 'The sentry folds its legs and goes back in the satchel.',
+    // how the ghost stands: the deployed pose, frozen
+    pose: (parts) => {
+      for (const leg of parts.legs) {
+        leg.hip.rotation.x = leg.splay;
+        leg.knee.rotation.x = leg.fold;
+        leg.pad.rotation.x = -(leg.splay + leg.fold);
+        leg.ram.position.y = -0.175;
+        leg.ram.scale.y = 1.35;
+      }
+      parts.mastStage.position.y = 0.145;
+      parts.body.position.y = 0.26;
+    },
+  },
+  sentryTwo: {
+    label: 'Sentry Mk II',
+    Class: SentryTwo,
+    build: buildSentryTwoModel,
+    range: TWO_RANGE,
+    arc: TWO_ARC,
+    clearRadius: 0.36,
+    bodyH: 0.90,
+    // A bigger machine needs a bigger berth, and two of these overlapping
+    // would be two guns in the same hole rather than a crossfire.
+    spacing: 1.7,
+    hint: 'Mk II in hand — 240° of cover, twice the reach. Click to set it down; [R] swings its arc.',
+    stowLine: 'The Mk II pulls its spade, folds its legs and goes back in the satchel.',
+    pose: (parts) => {
+      for (const leg of parts.legs) {
+        leg.hip.rotation.x = leg.splay;
+        leg.knee.rotation.x = leg.fold;
+        leg.pad.rotation.x = -(leg.splay + leg.fold);
+        leg.ram.position.y = -0.154;
+        leg.ram.scale.y = 1.35;
+        leg.jack.position.y = -0.158;
+      }
+      parts.spade.rotation.x = 0.90;
+      parts.mastStage.position.y = 0.195;
+      parts.body.position.y = parts.deckY;
+      parts.rf.bar.scale.x = 1;
+    },
+  },
+};
+/** The satchel type of every deployable this system answers for. */
+export const SENTRY_TYPES = Object.keys(SENTRY_KINDS);
+
 const PLACE_DIST = 2.2;       // how far ahead of the player the ghost sits
 const WALL_H = 0.9;           // how tall the bubble's boundary curtain stands
 const GROUND_STEP = 0.4;      // max height change from the player's feet
-const REPLACE_CLEARANCE = 1.1; // no two sentries closer together than this
+// No two machines closer together than this — the berth is per kind now and
+// lives in SENTRY_KINDS.spacing above, since a Mk II needs more room than a
+// Mk I and a pair of them needs more still.
 /**
  * How far [R] swings the arc, per press.
  *
@@ -54,19 +128,27 @@ export class SentrySystem {
     this.scene = scene;
     this.player = player;
 
-    this.stored = 0;          // folded up in the satchel
-    this.holding = false;     // one is in the player's hands right now
-    this.deployed = [];
+    // How many of each are folded up in the satchel. One tally per kind, and
+    // `stored` below keeps reading as the Mk I's for everything that only ever
+    // knew about one machine.
+    this.count = { sentry: 0, sentryTwo: 0 };
+    this.holding = null;      // the KIND in the player's hands, or null
+    this.deployed = [];       // both kinds, in the order they were set down
     this.spot = null;         // where the held one would land: {x, z, y, yaw, ok}
     this.trim = 0;            // [R] while holding: extra yaw on the arc, in steps
     this._placeTimes = [];    // when the last few were set down (see GRUMBLE_*)
 
-    this._buildPreview();
+    this.previews = {};
+    for (const kind of SENTRY_TYPES) this.previews[kind] = this._buildPreview(kind);
 
     // Bought from the vendor, or picked back up off the ground.
-    events.on('pickup', ({ type }) => { if (type === 'sentry') { this.stored++; this._syncSatchel(); } });
+    events.on('pickup', ({ type }) => {
+      if (!SENTRY_KINDS[type]) return;
+      this.count[type]++;
+      this._syncSatchel();
+    });
     // Clicked in the satchel: into the hands, not onto the floor.
-    events.on('inventory:drop', ({ type }) => { if (type === 'sentry') this.takeToHand(); });
+    events.on('inventory:drop', ({ type }) => { if (SENTRY_KINDS[type]) this.takeToHand(type); });
     events.on('sentry:retrieve', ({ sentry }) => this.retrieve(sentry));
   }
 
@@ -79,10 +161,15 @@ export class SentrySystem {
    * own that a checkpoint rollback could leave stale.
    */
   _syncSatchel() {
-    this.events.emit('inventory:sync', {
-      type: 'sentry', label: 'Portable Sentry', count: this.stored,
-    });
+    for (const kind of SENTRY_TYPES) {
+      this.events.emit('inventory:sync', {
+        type: kind, label: SENTRY_KINDS[kind].label, count: this.count[kind],
+      });
+    }
   }
+
+  /** The Mk I's tally, for everything written before there were two of them. */
+  get stored() { return this.count.sentry; }
 
   /* ---------------- the placement preview ---------------- */
 
@@ -97,11 +184,17 @@ export class SentrySystem {
    * no depth WRITING, so they lie over grass, kerbs and bodies without
    * z-fighting any of them.
    */
-  _buildPreview() {
-    this.preview = new THREE.Group();
-    this.preview.visible = false;
+  _buildPreview(kind) {
+    const K = SENTRY_KINDS[kind];
+    const preview = new THREE.Group();
+    preview.visible = false;
 
-    const SEG = 28, RINGS = 8;
+    // The wider, longer wedge wants more segments to stay smooth and more
+    // rings to stay draped: the Mk II's fan is twice the radius over a third
+    // more arc, and a segment count that reads as a curve at six metres reads
+    // as a polygon at eighteen.
+    const SEG = Math.round(28 * (K.arc / SENTRY_ARC) * (K.range > SENTRY_RANGE ? 1.5 : 1));
+    const RINGS = K.range > SENTRY_RANGE ? 12 : 8;
     /**
      * The ground fan, as a polar GRID rather than a single flat triangle fan.
      *
@@ -125,21 +218,20 @@ export class SentrySystem {
      * in front of the mount, which is exactly the half a sentry covers.
      */
     const fanGeo = new THREE.RingGeometry(
-      0, SENTRY_RANGE, SEG, RINGS, -Math.PI, SENTRY_ARC);
+      0, K.range, SEG, RINGS, -Math.PI - (K.arc - SENTRY_ARC) / 2, K.arc);
     fanGeo.rotateX(-Math.PI / 2);
-    this._fanGeo = fanGeo;
     // Bright enough to READ on grass in daylight, and no brighter. The wedge
     // covers most of a street at this range, so what was a legible tint over
     // six metres becomes a coat of paint over eighteen; the bright EDGE below
     // is what carries the boundary, and the fill only has to say "inside".
-    this.fanMat = new THREE.MeshBasicMaterial({
+    const fanMat = new THREE.MeshBasicMaterial({
       color: 0x4cff88, transparent: true, opacity: 0.20,
       side: THREE.DoubleSide, depthWrite: false, fog: false,
     });
-    const fan = new THREE.Mesh(fanGeo, this.fanMat);
+    const fan = new THREE.Mesh(fanGeo, fanMat);
     fan.renderOrder = 3;
     fan.frustumCulled = false;   // its bounds move every frame
-    this.preview.add(fan);
+    preview.add(fan);
 
     // --- the wall of the bubble: a curtain standing on the boundary arc.
     //
@@ -151,60 +243,55 @@ export class SentrySystem {
     // curtain on the boundary has no inside to be caught in: you read the
     // edge of the cover as a wall of light, from either side of it.
     const wallGeo = new THREE.CylinderGeometry(
-      SENTRY_RANGE, SENTRY_RANGE, WALL_H, SEG, 1, true, -SENTRY_ARC / 2, SENTRY_ARC);
-    this.domeMat = new THREE.MeshBasicMaterial({
+      K.range, K.range, WALL_H, SEG, 1, true, -K.arc / 2, K.arc);
+    const domeMat = new THREE.MeshBasicMaterial({
       color: 0x4cff88, transparent: true, opacity: 0.22,
       side: THREE.DoubleSide, depthWrite: false, fog: false,
     });
-    const wall = new THREE.Mesh(wallGeo, this.domeMat);
+    const wall = new THREE.Mesh(wallGeo, domeMat);
     wall.position.y = WALL_H / 2;
     wall.renderOrder = 3;
     wall.frustumCulled = false;
-    this.preview.add(wall);
+    preview.add(wall);
 
     // --- the edge: the two limits and the arc between them, so the boundary
     // of the cover is a line you can actually put a doorway on. Draped with
     // the fan, for the same reason.
     const edge = [new THREE.Vector3(0, 0, 0)];
     for (let i = 0; i <= SEG; i++) {
-      const a = -SENTRY_ARC / 2 + (i / SEG) * SENTRY_ARC;
-      edge.push(new THREE.Vector3(Math.sin(a) * SENTRY_RANGE, 0, Math.cos(a) * SENTRY_RANGE));
+      const a = -K.arc / 2 + (i / SEG) * K.arc;
+      edge.push(new THREE.Vector3(Math.sin(a) * K.range, 0, Math.cos(a) * K.range));
     }
     edge.push(new THREE.Vector3(0, 0, 0));
-    this.edgeMat = new THREE.LineBasicMaterial({ color: 0xc8ffd8, transparent: true, opacity: 0.95, fog: false });
-    const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(edge), this.edgeMat);
+    const edgeMat = new THREE.LineBasicMaterial({ color: 0xc8ffd8, transparent: true, opacity: 0.95, fog: false });
+    const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(edge), edgeMat);
     line.renderOrder = 4;
     line.frustumCulled = false;
-    this._edgeGeo = line.geometry;
-    this.preview.add(line);
+    preview.add(line);
 
     // --- the ghost of the machine itself, so you can see which way it faces
-    this.ghost = buildSentryModel(this.texLib);
-    this.ghostMats = [];
-    this.ghost.group.traverse((o) => {
+    const ghost = K.build(this.texLib);
+    const ghostMats = [];
+    ghost.group.traverse((o) => {
       if (!o.isMesh) return;
       o.material = o.material.clone();
       o.material.transparent = true;
       o.material.opacity = 0.45;
       o.material.depthWrite = false;
-      this.ghostMats.push(o.material);
+      ghostMats.push(o.material);
     });
     // Stand the ghost up in its deployed pose: legs out, knees folded, pads
     // flat, mast up. It is a still frame of the machine, so every joint the
     // real one animates has to be posed here or the preview is a different
     // shape from the thing it is previewing.
-    for (const leg of this.ghost.parts.legs) {
-      leg.hip.rotation.x = leg.splay;
-      leg.knee.rotation.x = leg.fold;
-      leg.pad.rotation.x = -(leg.splay + leg.fold);
-      leg.ram.position.y = -0.175;
-      leg.ram.scale.y = 1.35;
-    }
-    this.ghost.parts.mastStage.position.y = 0.145;
-    this.ghost.parts.body.position.y = 0.26;
-    this.preview.add(this.ghost.group);
-    this.scene.add(this.preview);
+    K.pose(ghost.parts);
+    preview.add(ghost.group);
+    this.scene.add(preview);
+    return { group: preview, fanGeo, edgeGeo: line.geometry, fanMat, domeMat, edgeMat, ghostMats };
   }
+
+  /** The preview belonging to whatever is in the player's hands. */
+  get preview() { return this.previews[this.holding]?.group ?? null; }
 
   /**
    * Lay the fan (and its edge) on the actual ground under the preview.
@@ -225,7 +312,7 @@ export class SentrySystem {
    * terrain cell of itself, which puts the whole sheet above the triangles it
    * lies over while still following the slope.
    */
-  _drapeFan(px, py, pz, yaw) {
+  _drapeFan(view, px, py, pz, yaw) {
     const cos = Math.cos(yaw), sin = Math.sin(yaw);
     const terrain = this.world.terrain;
     const lift = 0.09;
@@ -234,7 +321,7 @@ export class SentrySystem {
       this.world.groundHeightFor(wx, wz, py + 1.2),
       terrain.meshHeightAt ? terrain.meshHeightAt(wx, wz) : -Infinity,
     );
-    for (const geo of [this._fanGeo, this._edgeGeo]) {
+    for (const geo of [view.fanGeo, view.edgeGeo]) {
       const p = geo.attributes.position;
       for (let i = 0; i < p.count; i++) {
         const lx = p.getX(i), lz = p.getZ(i);
@@ -253,17 +340,18 @@ export class SentrySystem {
 
   /* ---------------- carrying ---------------- */
 
-  /** Take one out of the satchel and into the hands. */
-  takeToHand() {
-    if (this.holding || this.stored <= 0) { this._syncSatchel(); return false; }
-    this.stored--;
+  /** Take one of `kind` out of the satchel and into the hands. */
+  takeToHand(kind = 'sentry') {
+    const K = SENTRY_KINDS[kind];
+    if (!K || this.holding || this.count[kind] <= 0) { this._syncSatchel(); return false; }
+    this.count[kind]--;
     this._syncSatchel();
-    this.holding = true;
+    this.holding = kind;
     this.trim = 0;
-    this.events.emit('sentry:hold', { on: true });
-    this.events.emit('subtitle', {
-      text: 'Sentry in hand. Click to set it down; [R] swings its arc 25° a press.',
-    });
+    // The viewmodel needs to know WHICH machine came up: the thing in your
+    // hands is the thing you are about to put down, or it is a lie.
+    this.events.emit('sentry:hold', { on: true, kind });
+    this.events.emit('subtitle', { text: K.hint });
     return true;
   }
 
@@ -279,25 +367,33 @@ export class SentrySystem {
   /** Put the held one back in the satchel without deploying it. */
   stow() {
     if (!this.holding) return false;
-    this.holding = false;
-    this.stored++;
+    const kind = this.holding;
+    if (this.preview) this.preview.visible = false;
+    this.holding = null;
+    this.count[kind]++;
     this._syncSatchel();
-    this.preview.visible = false;
-    this.events.emit('sentry:hold', { on: false });
+    this.events.emit('sentry:hold', { on: false, kind });
     return true;
   }
 
-  /** Fold a deployed sentry back up — the [E] on a placed one. */
+  /**
+   * Fold a deployed machine back up — the [E] on a placed one.
+   *
+   * The kind comes off the ENTITY rather than off the caller, so packing up a
+   * Mk II can only ever credit a Mk II: the prompt, the interactable and the
+   * satchel slot are all the same object's business.
+   */
   retrieve(sentry) {
     const i = this.deployed.indexOf(sentry);
     if (i < 0) return false;
+    const kind = sentry.kind || 'sentry';
     this.deployed.splice(i, 1);
     sentry.toRemove = true;
     this.scene.remove(sentry.mesh);
     sentry.dispose();
-    this.stored++;
+    this.count[kind]++;
     this._syncSatchel();
-    this.events.emit('subtitle', { text: 'The sentry folds its legs and goes back in the satchel.' });
+    this.events.emit('subtitle', { text: SENTRY_KINDS[kind].stowLine });
     return true;
   }
 
@@ -330,16 +426,23 @@ export class SentrySystem {
     const x = p.position.x + Math.sin(facing) * PLACE_DIST;
     const z = p.position.z + Math.cos(facing) * PLACE_DIST;
     const y = this.world.groundHeightFor(x, z, p.position.y + 1.0);
+    const K = SENTRY_KINDS[this.holding] ?? SENTRY_KINDS.sentry;
     let ok = Math.abs(y - p.position.y) <= GROUND_STEP;
     if (ok) {
-      // Solid geometry: probe the capsule the sentry's own body would occupy.
+      // Solid geometry: probe the capsule this machine's own body occupies —
+      // the Mk II is wider and taller, and a spot the Mk I fits is not
+      // automatically a spot the Mk II fits.
       const probe = new THREE.Vector3(x, y, z);
-      this.world.collision.resolveCapsule(probe, 0.3, 0.62);
+      this.world.collision.resolveCapsule(probe, K.clearRadius, K.bodyH);
       if (Math.hypot(probe.x - x, probe.z - z) > 0.06) ok = false;
     }
     if (ok) {
+      // ...and it may not stand on top of another machine of either kind. The
+      // berth is the larger of the two involved, so a Mk II never lands in a
+      // Mk I's lap just because the Mk I was placed first.
       for (const s of this.deployed) {
-        if (Math.hypot(s.position.x - x, s.position.z - z) < REPLACE_CLEARANCE) { ok = false; break; }
+        const gap = Math.max(K.spacing, SENTRY_KINDS[s.kind || 'sentry'].spacing);
+        if (Math.hypot(s.position.x - x, s.position.z - z) < gap) { ok = false; break; }
       }
     }
     return { x, y, z, yaw, ok };
@@ -351,12 +454,13 @@ export class SentrySystem {
       if (this.holding) this.events.emit('subtitle', { text: 'No footing for it there.' });
       return null;
     }
+    const kind = this.holding;
     const { x, z, yaw } = this.spot;
-    const s = this._stand(x, z, yaw);
-    this.holding = false;
+    if (this.preview) this.preview.visible = false;
+    this.holding = null;
     this.trim = 0;
-    this.preview.visible = false;
-    this.events.emit('sentry:hold', { on: false });
+    const s = this._stand(x, z, yaw, kind);
+    this.events.emit('sentry:hold', { on: false, kind });
     return s;
   }
 
@@ -368,13 +472,14 @@ export class SentrySystem {
    * picked up and put down repeatedly is exactly the sort of thing a player
    * does while fiddling with cover, so it is a thing they will find.
    */
-  _stand(x, z, yaw) {
+  _stand(x, z, yaw, kind = 'sentry') {
     const now = performance.now() / 1000;
     this._placeTimes = this._placeTimes.filter((t) => now - t < GRUMBLE_WINDOW);
     this._placeTimes.push(now);
     const grumpy = this._placeTimes.length >= GRUMBLE_COUNT;
     if (grumpy) this._placeTimes.length = 0;
-    const s = new Sentry(this.events, this.world, this.texLib, { x, z, yaw, grumpy });
+    const K = SENTRY_KINDS[kind] ?? SENTRY_KINDS.sentry;
+    const s = new K.Class(this.events, this.world, this.texLib, { x, z, yaw, grumpy });
     this.scene.add(s.mesh);
     this.deployed.push(s);
     return s;
@@ -390,11 +495,11 @@ export class SentrySystem {
    * lands inside the interact radius: you spawn it and it is already yours to
    * pick up.
    */
-  spawnAhead(player, dist = 0.3048) {
+  spawnAhead(player, dist = 0.3048, kind = 'sentry') {
     const yaw = player.yaw + Math.PI;          // players face -sin/-cos; entities +
     const x = player.position.x + Math.sin(yaw) * dist;
     const z = player.position.z + Math.cos(yaw) * dist;
-    return this._stand(x, z, yaw);
+    return this._stand(x, z, yaw, kind);
   }
 
   /* ---------------- frame ---------------- */
@@ -406,29 +511,38 @@ export class SentrySystem {
    * satchel — so a click on a shop button never also drops a turret.
    */
   update(dt, ctx, input, blocked = false) {
-    for (const s of this.deployed) s.update(dt, ctx);
+    // Both kinds are stepped with the same context, and the context carries
+    // the deployed list so a Mk II coming up beside a Mk I can find it (see
+    // SentryTwo's handshake).
+    const shared = ctx ? { ...ctx, sentries: this.deployed } : { sentries: this.deployed };
+    for (const s of this.deployed) s.update(dt, shared);
 
+    // Only the held kind's preview is ever visible; the other is parked.
+    for (const kind of SENTRY_TYPES) {
+      if (kind !== this.holding) this.previews[kind].group.visible = false;
+    }
     if (!this.holding || !this.player.alive) {
-      this.preview.visible = false;
+      if (this.preview) this.preview.visible = false;
       return;
     }
+    const view = this.previews[this.holding];
     this.spot = this._resolveSpot();
     const { x, y, z, yaw, ok } = this.spot;
-    this.preview.visible = true;
-    this.preview.position.set(x, y, z);
-    this.preview.rotation.y = yaw;
-    this._drapeFan(x, y, z, yaw);
+    view.group.visible = true;
+    view.group.position.set(x, y, z);
+    view.group.rotation.y = yaw;
+    this._drapeFan(view, x, y, z, yaw);
     // green means it will go there; red means the click will be refused
     const tint = ok ? 0x4cff88 : 0xff5040;
-    this.fanMat.color.setHex(tint);
-    this.domeMat.color.setHex(tint);
-    this.edgeMat.color.setHex(ok ? 0x8dffb4 : 0xff9080);
-    for (const m of this.ghostMats) m.opacity = ok ? 0.45 : 0.25;
+    view.fanMat.color.setHex(tint);
+    view.domeMat.color.setHex(tint);
+    view.edgeMat.color.setHex(ok ? 0x8dffb4 : 0xff9080);
+    for (const m of view.ghostMats) m.opacity = ok ? 0.45 : 0.25;
     // a slow breath on the bubble, so it reads as a projection rather than
     // as a piece of level geometry somebody left switched on
     const b = 0.9 + Math.sin(performance.now() * 0.003) * 0.1;
-    this.fanMat.opacity = 0.20 * b;
-    this.domeMat.opacity = 0.22 * b;
+    view.fanMat.opacity = 0.20 * b;
+    view.domeMat.opacity = 0.22 * b;
 
     if (blocked || !input) return;
     // [R] trims the arc. It is read through the ACTION rather than the raw key
@@ -448,11 +562,13 @@ export class SentrySystem {
     }
     this.deployed.length = 0;
     if (this.holding) {
-      this.holding = false;
+      this.holding = null;
       this.events.emit('sentry:hold', { on: false });
     }
-    this.preview.visible = false;
-    if (!keepStored) this.stored = 0;
+    for (const kind of SENTRY_TYPES) {
+      this.previews[kind].group.visible = false;
+      if (!keepStored) this.count[kind] = 0;
+    }
     this._syncSatchel();
   }
 
@@ -466,29 +582,50 @@ export class SentrySystem {
    * came home, so the caller can say so.
    */
   recallAll() {
-    const back = this.deployed.length + (this.holding ? 1 : 0);
+    const home = { sentry: 0, sentryTwo: 0 };
+    for (const s of this.deployed) home[s.kind || 'sentry']++;
+    if (this.holding) home[this.holding]++;
+    const back = home.sentry + home.sentryTwo;
     this.reset({ keepStored: true });
-    this.stored += back;
+    for (const kind of SENTRY_TYPES) this.count[kind] += home[kind];
     this._syncSatchel();
     return back;
   }
 
-  /** Freeze the hardware for a checkpoint / the save. */
+  /**
+   * Freeze the hardware for a checkpoint / the save.
+   *
+   * `stored` is still written as the Mk I's count so a save made by this build
+   * can be read by anything that only knew about one machine; `counts` carries
+   * the whole truth, and `kind` rides on each deployed one.
+   */
   snapshot() {
+    const counts = { ...this.count };
+    if (this.holding) counts[this.holding]++;    // in the hands is still owned
     return {
-      stored: this.stored + (this.holding ? 1 : 0),
-      deployed: this.deployed.map((s) => ({ x: s.position.x, z: s.position.z, yaw: s.yaw })),
+      stored: counts.sentry,
+      counts,
+      deployed: this.deployed.map((s) => ({
+        x: s.position.x, z: s.position.z, yaw: s.yaw, kind: s.kind || 'sentry',
+      })),
     };
   }
 
-  /** Put back what snapshot() froze, standing the turrets up where they were. */
+  /**
+   * Put back what snapshot() froze, standing the machines up where they were.
+   *
+   * An older save has no `counts` and no `kind` on its deployed entries, and
+   * reads back as what it was: Mk Is, and none of the new machine.
+   */
   restore(snap) {
     if (!snap) return;
     this.reset();
-    this.stored = Math.max(0, snap.stored | 0);
+    const counts = snap.counts ?? { sentry: snap.stored | 0, sentryTwo: 0 };
+    for (const kind of SENTRY_TYPES) this.count[kind] = Math.max(0, counts[kind] | 0);
     this._syncSatchel();
     for (const d of snap.deployed ?? []) {
-      const s = new Sentry(this.events, this.world, this.texLib, { x: d.x, z: d.z, yaw: d.yaw });
+      const K = SENTRY_KINDS[d.kind] ?? SENTRY_KINDS.sentry;
+      const s = new K.Class(this.events, this.world, this.texLib, { x: d.x, z: d.z, yaw: d.yaw });
       this.scene.add(s.mesh);
       this.deployed.push(s);
     }

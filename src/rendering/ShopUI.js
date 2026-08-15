@@ -51,6 +51,11 @@ export const SHOP_STOCK = [
     buy: (events) => events.emit('pickup', { type: 'sentry', amount: 1, label: 'Portable Sentry' }),
   },
   {
+    id: 'sentryTwo', name: 'SENTRY MK II "WARDEN"', price: 300, stock: 2, bay: 'hardware',
+    blurb: 'Twin-barrel post gun. 240° of cover, twice the reach, and it loads itself.',
+    buy: (events) => events.emit('pickup', { type: 'sentryTwo', amount: 1, label: 'Sentry Mk II' }),
+  },
+  {
     id: 'companion', name: 'ADJUTANT UNIT "NEKO"', price: 500, stock: 1, bay: 'hardware',
     blurb: 'Refurbished companion android. Walks, follows, and has opinions about doorways.',
     buy: (events) => events.emit('pickup', { type: 'companion', amount: 1, label: 'Adjutant Unit' }),
@@ -271,6 +276,29 @@ export class ShopUI {
       ctx.fillStyle = '#8f9a6a'; ctx.fillRect(20, 9, 13, 9);
       ctx.fillStyle = '#3a3d42'; ctx.fillRect(32, 11, 15, 4);
       ctx.fillStyle = '#ffd24a'; ctx.fillRect(21, 5, 4, 4);
+      return;
+    }
+    if (entry.id === 'sentryTwo') {
+      // The Mk II as the catalogue would show it, and drawn so the three
+      // things that make it the Mk II are the three things you see: FOUR
+      // legs, TWO barrels, and the rangefinder bar across the top.
+      const hull = '#5c6a48', bar = '#8f9a6a', warn = '#e0b840', gun = '#3a3d42';
+      ctx.strokeStyle = bar; ctx.lineWidth = 2;
+      ctx.beginPath();                              // four legs, splayed
+      ctx.moveTo(26, 32); ctx.lineTo(11, 46);
+      ctx.moveTo(26, 32); ctx.lineTo(41, 46);
+      ctx.moveTo(26, 32); ctx.lineTo(18, 47);
+      ctx.moveTo(26, 32); ctx.lineTo(34, 47);
+      ctx.stroke();
+      ctx.fillStyle = hull; ctx.fillRect(18, 23, 17, 10);      // the receiver
+      ctx.fillStyle = warn; ctx.fillRect(16, 20, 21, 3);       // hazard band
+      ctx.fillStyle = gun;                                     // TWO barrels
+      ctx.fillRect(33, 24, 16, 3);
+      ctx.fillRect(33, 29, 16, 3);
+      ctx.fillStyle = hull; ctx.fillRect(20, 12, 13, 8);       // the shield
+      ctx.fillStyle = '#7ce8d0'; ctx.fillRect(22, 15, 9, 2);   // its slit, lit
+      ctx.fillStyle = bar; ctx.fillRect(6, 8, 40, 3);          // the rangefinder bar
+      ctx.fillStyle = gun; ctx.fillRect(6, 5, 6, 6); ctx.fillRect(40, 5, 6, 6);
       return;
     }
     if (entry.id === 'companion') {

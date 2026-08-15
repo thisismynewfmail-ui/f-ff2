@@ -20,7 +20,7 @@ import { Inventory } from '../systems/Inventory.js';
 import { SaveSystem } from '../systems/SaveSystem.js';
 import { SettingsStore } from '../systems/SettingsStore.js';
 import { TokenSystem } from '../systems/TokenSystem.js';
-import { SentrySystem } from '../systems/SentrySystem.js';
+import { SentrySystem, SENTRY_KINDS } from '../systems/SentrySystem.js';
 import { CompanionSystem } from '../systems/CompanionSystem.js';
 import { Effects } from '../rendering/Effects.js';
 import { WeaponView } from '../rendering/WeaponView.js';
@@ -672,9 +672,11 @@ export class Game {
      * cannot come back is the cube nobody has found yet: it is not the
      * player's until they have found it once.
      *
-     * These three ARE the satchel's droppables (Inventory's DROPPABLE), which
-     * is the invariant to keep: anything the satchel can put out into the
-     * world is something this has to be able to fetch back.
+     * These ARE the satchel's droppables (Inventory's DROPPABLE), which is the
+     * invariant to keep: anything the satchel can put out into the world is
+     * something this has to be able to fetch back. `recallAll` covers every
+     * kind of sentry there is, so a new mark of machine is already handled
+     * here the day it is added.
      */
     const recovered = this.sentries.recallAll()
       + (this.companions.recall({ quiet: true }) ? 1 : 0)
@@ -774,8 +776,10 @@ export class Game {
 
     // interaction
     const it = this.world.nearestInteractable(this.player.position.x, this.player.position.y, this.player.position.z);
+    // Name the machine that is actually in the hands: with two marks of
+    // sentry in the satchel, "the sentry" stops being an identification.
     this._prompt = this.sentries.holding
-      ? 'Click to place the sentry · right-click to put it away'
+      ? `Click to place the ${SENTRY_KINDS[this.sentries.holding].label} · right-click to put it away`
       : it ? it.prompt : null;
     if (it && !this.sentries.holding && this.input.wasActionPressed('interact')) it.onInteract();
 
