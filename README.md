@@ -898,7 +898,10 @@ There is deliberately no command that touches the kill counter — the
   most of two seconds to be ready: four legs kick out and lock, **screw jacks
   wind down until the pads take the weight**, a **ground spade drives in
   behind it** with a thump you can hear, and a two-stage mast stands the body
-  up. On top: a **drum magazine of forty pulls** that spins as it feeds, a
+  up. It finishes about **1.4 m tall** — half again the Mk I, and low enough
+  that you still look down on it — standing on the pads rather than resting on
+  its case, which is a sentence worth writing down because getting it wrong is
+  invisible in the code and unmissable on screen. On top: a **drum magazine of forty pulls** that spins as it feeds, a
   **rack of spares**, twin water-jacketed barrels with a **relief valve** that
   lifts and vents steam when the jackets go over (past its ceiling it stops
   firing and cools, then picks up where it left off), a **drag chain** whose

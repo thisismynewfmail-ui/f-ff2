@@ -36,9 +36,11 @@ import * as THREE from '../../lib/three.module.js';
  * MECHANISM FIRST, panelling left off — the same rule the Mk I is built to. If
  * a part of this moves in SentryTwo.js, the thing that moves it is on show.
  *
- * Built facing +Z with its feet at the origin, so the entity places it exactly
- * as it places any other object and `mesh.rotation.y = yaw` points it where
- * the player was looking. Three callers want one: the deployed gun, the
+ * Built facing +Z with its feet ON the origin plane — the four pads land at
+ * y=0 and only the spade goes below it — so the entity places it exactly as it
+ * places any other object and `mesh.rotation.y = yaw` points it where the
+ * player was looking. Case height, deck height and leg length are one
+ * calculation and not three opinions: see HUB_Y and DECK_Y. Three callers want one: the deployed gun, the
  * translucent ghost in the placement preview, and the copy in the player's
  * hands.
  *
@@ -59,7 +61,8 @@ import * as THREE from '../../lib/three.module.js';
  *   barrels[i].flash   fire      twin muzzle flashes
  *   shells[i]          eject     one case out of each side, per pair
  *   drum               feed      the saddle drum, turning as it empties
- *   arm.*              load      shoulder / elbow / wrist / claw
+ *   arm.*              load      base (it slews) / shoulder / elbow / wrist /
+ *                                claw, and it rests FOLDED — see ARM_REST
  *   rf.bar             extend    the rangefinder, folded for carry
  *   rf.headL/R         converge  the prisms toeing in onto a target
  *   jacketMat          heat      the water jacket going over

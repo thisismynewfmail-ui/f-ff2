@@ -324,7 +324,7 @@ export class SentryTwo extends Entity {
       // up from the base — which is why a rack you watched go empty is full
       // again the next time you look, rather than a gun that reloads out of
       // nowhere off an empty rack.
-      this.spares = this.spares > 0 ? this.spares - 1 : RACK_SIZE - 1;
+      this.spares = this.spares > 0 ? this.spares - 1 : RACK_SIZE;
     }
     this._present(dt, ctx);
   }

@@ -815,6 +815,71 @@ check('...and the Mk II sits in the hands on the same line as the Mk I, not over
   Math.abs(twoHeld.h - oneHeld.h) < 0.05 && Math.abs(twoHeld.mid - oneHeld.mid) < 0.05,
   `mk1 ${oneHeld.h} tall at ${oneHeld.mid}, mk2 ${twoHeld.h} at ${twoHeld.mid}`);
 
+/* The things it does when nobody has asked it to. These are the whole reason
+ * the loader arm exists, and each one is a thing a player finds rather than is
+ * told about — so each one is checked here, driven the way a player drives it:
+ * put a Mk II down beside a Mk I, stand in front of it, let it kill things,
+ * let it run dry. */
+const life = await page.evaluate(() => {
+  const g = window.__game, p = g.player, seen = [];
+  for (const e of ['sentry:handshake', 'sentry:salute', 'sentry:tally', 'sentry:reload'])
+    g.events.on(e, () => seen.push(e));
+  g.sentries.reset();
+  const yaw = p.yaw + Math.PI;
+  const x = p.position.x + Math.sin(yaw) * 5, z = p.position.z + Math.cos(yaw) * 5;
+  const step = (n) => { for (let i = 0; i < n; i++) g.sentries.update(1 / 60, { zombies: [], player: p }, null, true); };
+  const out = {};
+
+  // IT SAYS HELLO to the older machine already on this corner — once, ever.
+  g.sentries._stand(x, z, yaw, 'sentry');
+  const two = g.sentries._stand(x + 2.2, z, yaw, 'sentryTwo');
+  step(160);
+  out.handshakes = seen.filter((s) => s === 'sentry:handshake').length;
+
+  // AND IT NOTICES YOU, standing in front of it inside its arc doing nothing.
+  p.position.x = two.position.x + Math.sin(two.yaw) * 4;
+  p.position.z = two.position.z + Math.cos(two.yaw) * 4;
+  step(500);
+  out.saluted = seen.includes('sentry:salute');
+
+  // EVERY 25th KILL it reaches back and cuts a mark into its own plate, and
+  // the mark is a real redraw of the plate's texture, not a gesture.
+  let redrawn = 0;
+  const realSet = two.rig.parts.setTally;
+  two.rig.parts.setTally = (n) => { redrawn = n; realSet(n); };
+  const los = g.world.hasLineOfSight;
+  g.world.hasLineOfSight = () => true;
+  const dummy = { state: 'walk', height: 1.8, takeDamage() { this.state = 'dead'; },
+    position: { x: two.position.x + Math.sin(two.yaw) * 12, y: two.position.y,
+      z: two.position.z + Math.cos(two.yaw) * 12 } };
+  two.kills = 24; two.routine = null; two.headYaw = 0; two.converge = 1; two.cooldown = 0;
+  for (let i = 0; i < 40; i++) two.update(1 / 60, { zombies: [dummy], player: p });
+  out.kills = two.kills;
+  for (let i = 0; i < 200; i++) two.update(1 / 60, { zombies: [], player: p });
+  g.world.hasLineOfSight = los;
+  out.tallied = seen.includes('sentry:tally');
+  out.plateRedrawnAt = redrawn;
+
+  // THE READY RACK drains over two changes and comes back full on the third.
+  out.rack = [two.spares];
+  for (let k = 0; k < 3; k++) {
+    two.drum = 0;
+    for (let i = 0; i < 220; i++) two.update(1 / 60, { zombies: [], player: p });
+    out.rack.push(two.spares);
+  }
+  out.reloaded = seen.includes('sentry:reload');
+  g.sentries.reset();
+  return out;
+});
+check('it says hello to the older machine on the corner, once and only once',
+  life.handshakes === 1, `${life.handshakes} handshake(s)`);
+check('...and it notices you standing in front of it', life.saluted);
+check('...and every twenty-fifth kill really is cut into the plate',
+  life.tallied && life.kills === 25 && life.plateRedrawnAt === 25,
+  `${life.kills} kills, plate redrawn at ${life.plateRedrawnAt}`);
+check('...and the ready rack empties over two drums and comes back full',
+  life.reloaded && life.rack.join('/') === '2/1/0/2', life.rack.join('/'));
+
 /* ------------------------------------------------------------------ */
 /* 6. the sentry's new tricks                                          */
 /* ------------------------------------------------------------------ */
