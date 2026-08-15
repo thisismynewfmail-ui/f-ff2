@@ -838,7 +838,11 @@ There is deliberately no command that touches the kill counter — the
   at 300, two only**; the **adjutant android at 500, one only**; **every
   ammunition type separately at 10** a crate; and carries one dead bay at the
   bottom for whatever has not arrived yet.
-- **Portable Sentry:** a tripod auto-pistol that stows in the satchel. Click it
+- **Portable Sentry:** a tripod auto-pistol that stows in the satchel. It
+  **stands on its three feet** — the hub height is derived from the leg
+  geometry so the pads land on the ground by construction, and the knees fold
+  the shins back up against the thighs for carry rather than hanging straight
+  down through the pavement. Click it
   there and it comes up **into your hands** (the gun goes away — you cannot hold
   a rifle and a tripod at once), and the ground ahead of you shows exactly where
   it would go: a **green 180° wedge** of precisely the radius it will cover,

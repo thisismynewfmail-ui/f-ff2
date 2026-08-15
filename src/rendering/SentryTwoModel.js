@@ -1291,13 +1291,30 @@ export function buildSentryTwoModel(texLib = null, subject = SUBJECTS[0]) {
   // covered the bottom third of the glass and most of the occupant with it.
   // Down here it is read by looking down at the machine, and it obscures
   // nothing but the floor pan.
+  /**
+   * SINGLE-SIDED, AND STANDING CLEAR OF ITS OWN BACKING.
+   *
+   * Two ways to lose a decal, both of which this one managed at once. It was
+   * DoubleSided, so with the frame now open on every face you could read the
+   * subject's name from behind the machine, mirrored, floating in the middle
+   * of the frame between the ammunition drums. And its backing panel was set
+   * 0.003 behind it while being 0.008 thick, so the armour poked straight
+   * through the text and won the depth test.
+   *
+   * The backing is offset along the placard's OWN normal rather than in z,
+   * because the placard is tilted and an offset in the wrong axis at 35° is
+   * how it ended up intersecting in the first place.
+   */
+  const SUBJ_TILT = -0.62;
   const subjPlate = at(new THREE.Mesh(
     new THREE.PlaneGeometry(0.150, 0.047),
-    new THREE.MeshBasicMaterial({ map: subjTex, side: THREE.DoubleSide }),
+    new THREE.MeshBasicMaterial({ map: subjTex }),
   ), 0, FR_Y0 + 0.030, FR_X + 0.026);
-  subjPlate.rotation.x = -0.62;
-  const subjBack = at(box(0.164, 0.056, 0.008, plateMat), 0, FR_Y0 + 0.028, FR_X + 0.023);
-  subjBack.rotation.x = -0.62;
+  subjPlate.rotation.x = SUBJ_TILT;
+  const subjBack = at(box(0.164, 0.056, 0.008, plateMat),
+    0, FR_Y0 + 0.030 - Math.sin(-SUBJ_TILT) * 0.010,
+    FR_X + 0.026 - Math.cos(-SUBJ_TILT) * 0.010);
+  subjBack.rotation.x = SUBJ_TILT;
   frame.add(subjBack);
   frame.add(subjPlate);
   parts.subjectPlate = subjPlate;
@@ -1787,10 +1804,16 @@ export function buildSentryTwoModel(texLib = null, subject = SUBJECTS[0]) {
     rf[sx < 0 ? 'capL' : 'capR'] = cap;
     rf[sx < 0 ? 'headL' : 'headR'] = headG;
   }
-  // the range card on the eyepiece box, because a machine this fussy has one
-  const card = at(new THREE.Mesh(new THREE.PlaneGeometry(0.048, 0.048),
-    new THREE.MeshBasicMaterial({ map: rfCard })), 0.040, 0.006, -0.026);
-  card.rotation.y = Math.PI / 2;
+  /**
+   * The range card, on the BACK of the eyepiece box — where the operator's eye
+   * would be — rather than on its right-hand cheek, which is where it was and
+   * where the bar, the right prism head and the eyepiece itself all stand
+   * between it and anyone trying to read it. A card on the side of an
+   * instrument that is 0.38 wide is a card inside the instrument.
+   */
+  const card = at(new THREE.Mesh(new THREE.PlaneGeometry(0.042, 0.042),
+    new THREE.MeshBasicMaterial({ map: rfCard })), 0, 0.004, -0.049);
+  card.rotation.y = Math.PI;
   bar.add(card);
 
   /**
@@ -1871,12 +1894,24 @@ export function buildSentryTwoModel(texLib = null, subject = SUBJECTS[0]) {
       .rotateX(Math.PI / 2));
     parts.lamps.push(l);
   }
-  // the data plate, with the tally the loader arm cuts into it
+  /**
+   * THE DATA PLATE, on the back of the COUNTERWEIGHT.
+   *
+   * It used to sit on the head's rear face at z −0.1265 — one millimetre in
+   * front of a 0.13 × 0.075 block of cast steel. From the only direction the
+   * plate faces, the counterweight is between you and it, so the tally the arm
+   * spends the whole run cutting into it was unreadable from anywhere.
+   *
+   * The mass's own rear face is the obvious place for it and always was: it is
+   * the flattest, largest, most rearward surface on the machine. It swings
+   * with the counterweight's lag, which is correct — the plate is bolted to
+   * the thing that swings.
+   */
   const plateTex = plateTexture(subject.word);
   const dataPlate = at(new THREE.Mesh(new THREE.PlaneGeometry(0.115, 0.058),
-    new THREE.MeshBasicMaterial({ map: plateTex.texture })), 0, 0.024, -0.1265);
+    new THREE.MeshBasicMaterial({ map: plateTex.texture })), 0, -0.010, -0.0690);
   dataPlate.rotation.y = Math.PI;
-  head.add(dataPlate);
+  cw.add(dataPlate);
   parts.dataPlate = dataPlate;
   parts.setTally = (kills) => { plateTex.draw(kills); plateTex.texture.needsUpdate = true; };
 

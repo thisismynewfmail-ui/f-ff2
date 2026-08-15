@@ -442,7 +442,11 @@ export class Sentry extends Entity {
     const shake = this._legShake || 0;
     for (const leg of p.legs) {
       leg.hip.rotation.x = leg.splay * open + shake;
-      leg.knee.rotation.x = leg.fold * knee;
+      // The knee travels from its STOWED angle to its deployed one rather than
+      // from zero: stowed is the shin folded back up against the thigh, which
+      // is what keeps the feet above the pavement while the legs are still
+      // coming out. See FOLD_STOW in SentryModel.
+      leg.knee.rotation.x = leg.foldStow + (leg.fold - leg.foldStow) * knee;
       // the pad stays flat to the ground whatever the two joints above it do
       leg.pad.rotation.x = -(leg.hip.rotation.x + leg.knee.rotation.x);
       // the ram extends as the leg opens — it is doing the work, visibly
