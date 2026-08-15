@@ -534,11 +534,23 @@ export class SentryTwo extends Entity {
     }
   }
 
-  /** Eased progress through one named beat of the deploy, 0..1. */
-  _stage(id) {
-    if (this.state !== 'deploy') return 1;
-    const b = BEATS.find((x) => x.id === id);
-    return ease(sat((Math.min(1, this.stateT / DEPLOY_TIME) - b.a) / (b.b - b.a)));
+  /**
+   * Eased progress through every named beat of the deploy, as one record.
+   *
+   * Built in a single pass over the table rather than looked up per beat: the
+   * presenter wants all sixteen every frame, and asking for them one at a time
+   * turned a sixteen-element table into two hundred and fifty-six comparisons
+   * a frame for no reason at all.
+   */
+  _stages() {
+    const st = {};
+    if (this.state !== 'deploy') {
+      for (const b of BEATS) st[b.id] = 1;
+      return st;
+    }
+    const f = Math.min(1, this.stateT / DEPLOY_TIME);
+    for (const b of BEATS) st[b.id] = ease(sat((f - b.a) / (b.b - b.a)));
+    return st;
   }
 
   /**
@@ -691,6 +703,22 @@ export class SentryTwo extends Entity {
     this.routineT = 0;
     this._lastSlot = -1;
     this._dreamSeg = -1;
+    /**
+     * AND CLEAR THE ONE-SHOTS, HERE, WHERE IT ACTUALLY HAPPENS.
+     *
+     * Each routine that fires a sound part-way through guards it with a flag,
+     * and each of them used to clear that flag with a line reading
+     * `if (f >= 1) this._saluted = false;` — sitting UNDERNEATH the routine's
+     * own `if (f >= 1) return true;`. Unreachable, every one of them. The
+     * visible symptom is nothing at all the first time and silence for ever
+     * after: a machine salutes you once in its life, cuts exactly one tally
+     * however long you leave it out, and grumbles quietly the second time you
+     * annoy it. Clearing them at the START of a routine is the only place that
+     * cannot be skipped, because a routine that never begins has nothing to
+     * reset.
+     */
+    this._saluted = this._regarded = this._stared = false;
+    this._startled = this._tapped = this._notched = this._grumbled = false;
     if (init) Object.assign(this, init);
   }
 
@@ -877,7 +905,6 @@ export class SentryTwo extends Entity {
       this._saluted = true;
       this.events.emit('sentry:salute', { pos: this.position.clone(), kind: this.kind });
     }
-    if (f >= 1) this._saluted = false;
     return false;
   }
 
@@ -914,7 +941,6 @@ export class SentryTwo extends Entity {
       this._regarded = true;
       this.events.emit('sentry:voice', { pos: this.position.clone(), phrase: 'query' });
     }
-    if (f > 0.98) this._regarded = false;
     return false;
   }
 
@@ -984,7 +1010,6 @@ export class SentryTwo extends Entity {
       this._startled = true;
       this.events.emit('sentry:vessel', { pos: this.position.clone(), kind: 'startle' });
     }
-    if (f > 0.95) this._startled = false;
     return false;
   }
 
@@ -1023,11 +1048,7 @@ export class SentryTwo extends Entity {
    */
   _run_service(dt) {
     const f = this.routineT / 3.0;
-    if (f >= 1) {
-      this.perfusion = Math.min(1, this.perfusion + 0.55);
-      this._tapped = false;
-      return true;
-    }
+    if (f >= 1) { this.perfusion = Math.min(1, this.perfusion + 0.55); return true; }
     const k = pulse(f, 0.22, 0.28);
     this.headYaw = damp(this.headYaw, -0.55, dt, 2.2);
     this.headPitch = damp(this.headPitch, -0.14, dt, 2);
@@ -1079,7 +1100,6 @@ export class SentryTwo extends Entity {
       this.rig.parts.setTally?.(this.kills);
       this.events.emit('sentry:tally', { pos: this.position.clone(), kills: this.kills });
     }
-    if (f >= 1) this._notched = false;
     return false;
   }
 
@@ -1264,7 +1284,10 @@ export class SentryTwo extends Entity {
       this._oscWord -= dt;
       if (!this._oscWordDrawn) { p.osc.word(this.subject.word); this._oscWordDrawn = true; }
       p.osc.needle.rotation.z = Math.sin(now * 0.004) * 0.05;
-    } else {
+    } else if (this.state !== 'deploy' || this._beat >= 12) {
+      // ...and nothing is written at all until the thirteenth beat lowers the
+      // needle onto the paper. A trace that starts before the pen is down is a
+      // record of a machine that was not switched on yet.
       this._oscWordDrawn = false;
       this._oscT += dt;
       const step = 1 / 24;
@@ -1288,8 +1311,7 @@ export class SentryTwo extends Entity {
     }
 
     /* ---- the sixteen beats, as sixteen numbers ---- */
-    const st = {};
-    for (const b of BEATS) st[b.id] = this._stage(b.id);
+    const st = this._stages();
 
     /* ---- the undercarriage: latches, legs, jacks, spade ---- */
     const shake = this._legShake || 0;

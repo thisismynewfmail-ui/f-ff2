@@ -303,7 +303,20 @@ export class Sentry extends Entity {
     }
   }
 
-  _begin(name) { this.routine = name; this.routineT = 0; }
+  /**
+   * Start a routine — and clear the one-shot the routine guards its sound with.
+   *
+   * `_run_salute` ends with `if (f >= 1) this._saluted = false;` sitting under
+   * its own `if (f >= 1) return true;`, so the flag was never cleared and the
+   * salute chirp fired exactly once in a machine's life: the first time it
+   * noticed you, and never again however long you left it out. The start of a
+   * routine is the one moment that cannot be skipped.
+   */
+  _begin(name) {
+    this.routine = name;
+    this.routineT = 0;
+    this._saluted = false;
+  }
 
   /** Lamps chase, the iris cycles, the legs take a shake down. ~3.2 s. */
   _run_selftest(dt) {
@@ -355,7 +368,6 @@ export class Sentry extends Entity {
       this._saluted = true;
       this.events.emit('sentry:salute', { pos: this.position.clone() });
     }
-    if (f >= 1) this._saluted = false;
     return false;
   }
 

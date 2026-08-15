@@ -841,6 +841,12 @@ const life = await page.evaluate(() => {
   p.position.z = two.position.z + Math.cos(two.yaw) * 4;
   step(500);
   out.saluted = seen.includes('sentry:salute');
+  // ...and it keeps noticing. The chirp used to be guarded by a flag that was
+  // only ever cleared by an unreachable line, so a machine saluted once in its
+  // life; standing here past the cooldown has to produce a second one.
+  step(60 * 45);
+  out.salutes = seen.filter((e) => e === 'sentry:salute').length;
+  out.saluteWindow = 53;
 
   // EVERY 25th KILL it reaches back and cuts a mark into its own plate, and
   // the mark is a real redraw of the plate's texture, not a gesture.
@@ -874,6 +880,8 @@ const life = await page.evaluate(() => {
 check('it says hello to the older machine on the corner, once and only once',
   life.handshakes === 1, `${life.handshakes} handshake(s)`);
 check('...and it notices you standing in front of it', life.saluted);
+check('...and goes on noticing you, rather than exactly once per machine',
+  life.salutes >= 2, `${life.salutes} salutes over ${life.saluteWindow}s`);
 check('...and every twenty-fifth kill really is cut into the plate',
   life.tallied && life.kills === 25 && life.plateRedrawnAt === 25,
   `${life.kills} kills, plate redrawn at ${life.plateRedrawnAt}`);
