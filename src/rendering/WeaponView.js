@@ -269,9 +269,11 @@ export class WeaponView {
     // thing in your hands is a different shape from the thing you put down.
     carry('sentry', buildSentryModel(texLib), 0.26, -0.10, (parts) => {
       for (const leg of parts.legs) {
+        // Knees folded back up against the thighs — the shape a tripod packs
+        // into, and the pose the deploy animation starts from.
         leg.hip.rotation.x = 0.06;
-        leg.knee.rotation.x = 0;
-        leg.pad.rotation.x = -0.06;
+        leg.knee.rotation.x = leg.foldStow;
+        leg.pad.rotation.x = -(0.06 + leg.foldStow);
         leg.ram.position.y = -0.14;
         leg.ram.scale.y = 1;
       }

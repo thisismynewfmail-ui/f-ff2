@@ -1122,6 +1122,91 @@ check('every Warden is somebody, the same somebody every time you set it down',
   `stable ${warden.sameSpot}, ${warden.distinctSubjects} distinct across 24 spots`);
 
 /* ------------------------------------------------------------------ */
+/* 5d. standing on the ground, and being able to read what it says      */
+/* ------------------------------------------------------------------ */
+/* Two whole classes of bug that are invisible in the code and unmissable on
+ * screen, so both are pinned by measurement rather than by eye.
+ *
+ * THE TRIPOD. Each hip carries a fixed Y that aims the leg at its third of the
+ * circle and an animated X that swings it out, and under the default XYZ Euler
+ * order the X lands in the PARENT's frame — which makes it a lean, not a
+ * splay. All three legs tipped the same way, the pads sat at three different
+ * heights, and every one of them was under the pavement.
+ *
+ * THE DECALS. A machine covered in stencils and plates is only telling you
+ * anything if you can see them: a placard behind its own backing panel, a
+ * tally plate with a block of cast steel directly behind the only face it
+ * shows, or a double-sided plane readable in mirror-writing through the far
+ * side of an open frame are all "there" and all useless. */
+const standing = await page.evaluate(async () => {
+  const THREE = await import('/lib/three.module.js');
+  const one = await import('/src/rendering/SentryModel.js');
+  const two = await import('/src/rendering/SentryTwoModel.js');
+  const out = {};
+
+  // --- the Mk I, posed exactly as its deploy leaves it
+  const rig = one.buildSentryModel(null);
+  for (const leg of rig.parts.legs) {
+    leg.hip.rotation.x = leg.splay;
+    leg.knee.rotation.x = leg.fold;
+    leg.pad.rotation.x = -(leg.splay + leg.fold);
+  }
+  rig.group.updateMatrixWorld(true);
+  const v = new THREE.Vector3();
+  const feet = rig.parts.legs.map((leg) => {
+    leg.pad.getWorldPosition(v);
+    return { y: v.y, r: Math.hypot(v.x, v.z), a: Math.atan2(v.x, v.z) };
+  });
+  out.footY = feet.map((f) => +f.y.toFixed(4));
+  out.footR = feet.map((f) => +f.r.toFixed(3));
+  // a tripod is three feet ON the ground, all the same distance out, evenly
+  // spaced round the circle — any one of those failing is a broken stance
+  out.onTheGround = feet.every((f) => Math.abs(f.y) < 0.005);
+  out.evenReach = Math.max(...out.footR) - Math.min(...out.footR) < 0.01;
+  const bearings = feet.map((f) => ((f.a * 180 / Math.PI) + 360) % 360).sort((p, q) => p - q);
+  out.gaps = [bearings[1] - bearings[0], bearings[2] - bearings[1], 360 - bearings[2] + bearings[0]]
+    .map((d) => Math.round(d));
+  out.evenlySpaced = out.gaps.every((d) => Math.abs(d - 120) < 2);
+
+  // --- every textured plane on both machines
+  const rc = new THREE.Raycaster();
+  const N = new THREE.Vector3(), P = new THREE.Vector3(), O = new THREE.Vector3(), Q = new THREE.Quaternion();
+  const audit = (group) => {
+    group.updateMatrixWorld(true);
+    const planes = [];
+    group.traverse((o) => {
+      if (o.isMesh && o.geometry.type === 'PlaneGeometry' && o.material.map && o.visible) planes.push(o);
+    });
+    const bad = [];
+    for (const m of planes) {
+      if (m.material.side === THREE.DoubleSide) { bad.push('double-sided'); continue; }
+      m.getWorldPosition(P);
+      N.set(0, 0, 1).applyQuaternion(m.getWorldQuaternion(Q)).normalize();
+      O.copy(P).addScaledVector(N, 2);
+      rc.set(O, N.clone().negate());
+      const hits = rc.intersectObject(group, true);
+      const i = hits.findIndex((h) => h.object === m);
+      // anything solid in front of it, at any distance, hides it
+      if (i < 0 || hits.slice(0, i).some((h) => (h.object.material.opacity ?? 1) > 0.6)) {
+        bad.push('blocked');
+      }
+    }
+    return { planes: planes.length, bad };
+  };
+  out.mk1 = audit(rig.group);
+  out.mk2 = audit(two.buildSentryTwoModel(null, two.SUBJECTS[0]).group);
+  return out;
+});
+check('the Mk I stands on three feet, level, evenly splayed — not through the floor',
+  standing.onTheGround && standing.evenReach && standing.evenlySpaced,
+  `feet at y ${standing.footY.join('/')}, reach ${standing.footR.join('/')} m, `
+  + `${standing.gaps.join('°/')}° apart`);
+check('...and every plate and stencil on both machines faces out with nothing in front of it',
+  standing.mk1.bad.length === 0 && standing.mk2.bad.length === 0,
+  `Mk I ${standing.mk1.planes} decals (${standing.mk1.bad.join(',') || 'all clear'}), `
+  + `Mk II ${standing.mk2.planes} decals (${standing.mk2.bad.join(',') || 'all clear'})`);
+
+/* ------------------------------------------------------------------ */
 /* 6. the sentry's new tricks                                          */
 /* ------------------------------------------------------------------ */
 // Three things the machine gained: it can be spawned from the console as an

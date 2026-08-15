@@ -115,19 +115,58 @@ export function buildSentryModel(texLib = null) {
    * THE UNDERCARRIAGE — three legs, and the rams that fold them        *
    * ================================================================== */
 
-  const HUB_Y = 0.20;
+  /**
+   * THE TRIPOD, AND THE TWO THINGS IT USED TO GET WRONG.
+   *
+   * FIRST: THE ROTATION ORDER. Each hip carries a fixed Y that aims the leg at
+   * its third of the circle, and an animated X that swings it out. Under the
+   * default XYZ order the X is applied in the PARENT's frame — so it is not a
+   * splay at all, it is a LEAN, and all three legs tipped the same way in model
+   * space. Measured, the deployed tripod put its three pads at −0.08, −0.15 and
+   * −0.15 below the ground plane, at radii of 0.40, 0.22 and 0.22, all of them
+   * behind the mount: not a tripod, a machine lying on its back with its feet
+   * buried. YXZ applies the third-of-a-circle FIRST, which is what turns the X
+   * into a splay.
+   *
+   * SECOND: WHICH WAY IS OUT. With the bearing applied first, local +Z points
+   * radially outward and a POSITIVE X rotation tips the leg toward local −Z,
+   * which is inward. So splay is negative and the knee folds back positive —
+   * the same convention the Mk II is built to, stated once here and read from
+   * the parts record by every pose.
+   *
+   * And the hub height is DERIVED from all of it rather than asserted, so the
+   * pads land on y = 0 by construction. Change an angle or a bone length and
+   * the machine still stands on the ground instead of in it.
+   */
+  const SPLAY = -1.10;                 // hip, deployed: 63° out from vertical
+  const FOLD = 0.58;                   // knee, deployed: folds back under
+  /**
+   * And where the knee sits STOWED, which is not zero.
+   *
+   * A straight leg hanging off the hub is 0.32 long and the hub is 0.20 up, so
+   * a tripod folded with its knees straight has its feet twelve centimetres
+   * under the pavement for the whole first half of the deploy. Real folding
+   * kit does not do that: the shin comes back up alongside the thigh. Folded
+   * to −1.55 the shin lies almost horizontal and the pads sit just clear of
+   * the ground, which is both what a packed tripod looks like and the only way
+   * this one starts its deploy above the floor.
+   */
+  const FOLD_STOW = -1.55;
+  const thighH = 0.19;
+  const shinH = 0.131;
+  const HUB_Y = thighH * Math.cos(SPLAY) + shinH * Math.cos(SPLAY + FOLD);
   for (let i = 0; i < 3; i++) {
     const a = (i / 3) * TAU + Math.PI;              // one leg to the rear
     // hip: swings the whole leg outward as it deploys
     const hip = new THREE.Group();
     hip.position.set(Math.sin(a) * 0.055, HUB_Y, Math.cos(a) * 0.055);
+    hip.rotation.order = 'YXZ';        // bearing first, then splay. See above.
     hip.rotation.y = a;
     g.add(hip);
 
     // the hip casting itself, so the pivot is a THING and not a gap
     hip.add(at(cyl(0.032, 0.032, 0.07, chrome, 8), 0, 0, 0).rotateZ(Math.PI / 2));
     // thigh: an I-section rather than a stick — two flanges and a web
-    const thighH = 0.19;
     hip.add(at(box(0.052, thighH, 0.016, steel), 0, -thighH / 2, 0.014));
     hip.add(at(box(0.052, thighH, 0.016, steel), 0, -thighH / 2, -0.014));
     hip.add(at(box(0.018, thighH, 0.030, dark), 0, -thighH / 2, 0));
@@ -152,13 +191,14 @@ export function buildSentryModel(texLib = null) {
     knee.position.set(0, -thighH, 0);
     hip.add(knee);
     knee.add(at(cyl(0.024, 0.024, 0.055, chrome, 8), 0, 0, 0).rotateZ(Math.PI / 2));
-    const shinH = 0.17;
     knee.add(at(box(0.036, shinH, 0.036, steel), 0, -shinH / 2, 0));
     knee.add(at(box(0.010, shinH * 0.8, 0.048, dark), 0, -shinH / 2, 0));  // web
-    // a spring wound round the shin, because a leg that takes a landing has one
+    // a spring wound round the shin, because a leg that takes a landing has
+    // one — spaced off the shin's own length so the coils stay ON the shin if
+    // it is ever resized, rather than hanging off the end of it
     for (let k = 0; k < 5; k++) {
       knee.add(at(new THREE.Mesh(new THREE.TorusGeometry(0.026, 0.005, 4, 10), chrome),
-        0, -0.045 - k * 0.022, 0).rotateX(Math.PI / 2));
+        0, -shinH * (0.30 + k * 0.145), 0).rotateX(Math.PI / 2));
     }
 
     // pad: kept flat to the ground whatever the leg above it is doing
@@ -172,7 +212,7 @@ export function buildSentryModel(texLib = null) {
       pad.add(at(box(0.014, 0.010, 0.042, oil), Math.sin(ga) * 0.03, -0.020, Math.cos(ga) * 0.03)
         .rotateY(ga));
     }
-    parts.legs.push({ hip, knee, pad, ram: rod, splay: 0.55, fold: -0.42 });
+    parts.legs.push({ hip, knee, pad, ram: rod, splay: SPLAY, fold: FOLD, foldStow: FOLD_STOW });
   }
 
   // the hub the legs hang off: a machined block with bolt heads on show
