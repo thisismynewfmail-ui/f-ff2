@@ -64,7 +64,15 @@ export const SENTRY_ARC = Math.PI;            // 180°, centred on its facing
 export const SENTRY_DAMAGE = PISTOL.damage;         // 12 — the pistol's, exactly
 export const SENTRY_INTERVAL = PISTOL.fireInterval; // 0.26 s — likewise
 
-const DEPLOY_TIME = 1.05;
+/**
+ * How long the Mk I takes to stand up.
+ *
+ * Exported because the Mk II's deploy is defined as exactly twice this, and a
+ * second machine that "takes about two seconds" is a number that drifts the
+ * first time anyone touches this one.
+ */
+export const SENTRY_DEPLOY_TIME = 1.05;
+const DEPLOY_TIME = SENTRY_DEPLOY_TIME;
 const SCAN_SPEED = 0.85;      // rad/s while sweeping for something to shoot
 const TRACK_SPEED = 4.2;      // rad/s slewing onto a target
 const AIM_TOLERANCE = 0.12;   // how lined up it must be before it will fire
@@ -295,7 +303,20 @@ export class Sentry extends Entity {
     }
   }
 
-  _begin(name) { this.routine = name; this.routineT = 0; }
+  /**
+   * Start a routine — and clear the one-shot the routine guards its sound with.
+   *
+   * `_run_salute` ends with `if (f >= 1) this._saluted = false;` sitting under
+   * its own `if (f >= 1) return true;`, so the flag was never cleared and the
+   * salute chirp fired exactly once in a machine's life: the first time it
+   * noticed you, and never again however long you left it out. The start of a
+   * routine is the one moment that cannot be skipped.
+   */
+  _begin(name) {
+    this.routine = name;
+    this.routineT = 0;
+    this._saluted = false;
+  }
 
   /** Lamps chase, the iris cycles, the legs take a shake down. ~3.2 s. */
   _run_selftest(dt) {
@@ -347,7 +368,6 @@ export class Sentry extends Entity {
       this._saluted = true;
       this.events.emit('sentry:salute', { pos: this.position.clone() });
     }
-    if (f >= 1) this._saluted = false;
     return false;
   }
 

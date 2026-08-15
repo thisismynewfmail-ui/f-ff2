@@ -2,7 +2,7 @@ import * as THREE from '../../lib/three.module.js';
 import { Sentry, SENTRY_RANGE, SENTRY_ARC } from '../entities/Sentry.js';
 import { SentryTwo, TWO_RANGE, TWO_ARC } from '../entities/SentryTwo.js';
 import { buildSentryModel } from '../rendering/SentryModel.js';
-import { buildSentryTwoModel } from '../rendering/SentryTwoModel.js';
+import { buildSentryTwoModel, poseTwoDeployed, TWO_HEIGHT } from '../rendering/SentryTwoModel.js';
 
 /**
  * Owns every sentry: the ones folded up in the satchel, the one currently in
@@ -72,27 +72,19 @@ export const SENTRY_KINDS = {
     build: buildSentryTwoModel,
     range: TWO_RANGE,
     arc: TWO_ARC,
-    clearRadius: 0.36,
-    bodyH: 0.90,
+    clearRadius: 0.38,
+    bodyH: TWO_HEIGHT,
     // A bigger machine needs a bigger berth, and two of these overlapping
     // would be two guns in the same hole rather than a crossfire.
     spacing: 1.7,
     hint: 'Mk II in hand — 240° of cover, twice the reach. Click to set it down; [R] swings its arc.',
-    stowLine: 'The Mk II pulls its spade, folds its legs and goes back in the satchel.',
-    pose: (parts) => {
-      for (const leg of parts.legs) {
-        leg.hip.rotation.x = leg.splay;
-        leg.knee.rotation.x = leg.fold;
-        leg.pad.rotation.x = -(leg.splay + leg.fold);
-        leg.ram.position.y = -0.154;
-        leg.ram.scale.y = 1.35;
-        leg.jack.position.y = -0.158;
-      }
-      parts.spade.rotation.x = 0.90;
-      parts.mastStage.position.y = 0.195;
-      parts.body.position.y = parts.deckY;
-      parts.rf.bar.scale.x = 1;
-    },
+    stowLine: 'The Mk II draws its spade, shuts its doors and folds into the satchel.',
+    // The Mk II's standing pose is not written out here. It has upwards of a
+    // dozen moving parts now — doors, spade, posts, loom, rack, wings, clamps,
+    // the gun's run-out — and a second copy of that list in this file is a
+    // second thing to forget to update. The rig exports the pose it is in when
+    // it is standing up, and the ghost simply asks for it.
+    pose: poseTwoDeployed,
   },
 };
 /** The satchel type of every deployable this system answers for. */

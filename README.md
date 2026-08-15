@@ -892,57 +892,144 @@ There is deliberately no command that touches the kill counter — the
   180°, and **two barrels that fire together** — one pull, two rounds, each for
   the same damage as the Mk I's — on a **slightly shorter interval**. It is not
   a better gun; it is the same gun twice, further out and pointed at more of
-  the street, and the price and the shelf limit are set against that.
+  the street. Against that: it costs three times as much, there are only ever
+  two, and it takes **exactly twice as long to come up** as a Mk I.
 
-  **It is a four-legged thing that anchors itself.** Set it down and it takes
-  most of two seconds to be ready: four legs kick out and lock, **screw jacks
-  wind down until the pads take the weight**, a **ground spade drives in
-  behind it** with a thump you can hear, and a two-stage mast stands the body
-  up. It finishes about **1.4 m tall** — half again the Mk I, and low enough
-  that you still look down on it — standing on the pads rather than resting on
-  its case, which is a sentence worth writing down because getting it wrong is
-  invisible in the code and unmissable on screen. On top: a **drum magazine of forty pulls** that spins as it feeds, a
-  **rack of spares**, twin water-jacketed barrels with a **relief valve** that
-  lifts and vents steam when the jackets go over (past its ceiling it stops
-  firing and cools, then picks up where it left off), a **drag chain** whose
-  links are why the arc stops at 240° and not 360°, a counterweight that swings
-  against the head, and a **rangefinder bar** across the brow with a spotting
-  lamp under it. Spent cases come out of the port, the bolts cycle in their
-  rails, and the muzzle flashes are additive and small — a gun going off at
-  night, not two cream-coloured cards.
+  ### The computing section
 
-  **It changes its own drum.** Forty pulls in, it stops, the drum comes off,
-  one comes out of the rack, and it is nineteen-tenths of a second before it
-  will shoot again — it holds fire the whole time, and the loader arm does the
-  work in view. The two drums on the flank are the **ready rack**, not the
-  reserve: they drain over two changes and the third brings a fresh pair up
-  from the case it is standing on, so a rack you watched go empty is full again
-  the next time you look.
+  The county's manual calls the bottom half of this machine the COMPUTING
+  SECTION and leaves it at that. Behind two armoured doors in the front of it
+  there is a **glass vessel with a human brain in it** — perfused, wired to a
+  six-pin platinum crown, and doing the fire control. It is life-size, it is at
+  the height of your own chest, and there is a **brass plate screwed to the
+  sill under the glass with a name on it**:
 
-  **The loader arm is the point of the machine.** It stands on a **slewing
-  base** on the deck rather than hanging off it, and it is the same arm for
-  every job the machine does when nothing is shooting at it, which is where
-  most of its character lives:
+  ```
+  COMPUTING SECTION MK II        SEALED — DO NOT OPEN
+  SUBJ 07-1219
+  REDDING, M.                    NON-VOL.
+  ```
+
+  Eight of them exist and a machine picks one from where it is standing, so it
+  keeps the same identity across a save, a checkpoint rollback and a pack-up —
+  and **two Wardens on the same street are two different people**. Three of the
+  eight are marked NON-VOL.
+
+  Nothing in the game ever says any of this out loud. The doors open on deploy,
+  the plate is at waist height, and that is the whole delivery. What it does to
+  everything else is retroactive: the salute, the little self-tests, the tally
+  it cuts into its own data plate — the second time you look at any of it, none
+  of it is charming.
+
+  **It has a pulse**, and the pulse is a real value on the entity rather than a
+  looping animation. Fifty beats a minute asleep, sixty-eight at rest, a
+  hundred and thirty-two in a fight, and a hundred and fifty when it is
+  frightened; every pull of the trigger drives it up over whatever the state
+  asked for. One value swells the organ, strokes the **perfusion piston** on
+  the machine's left flank, brightens the perfusate, kicks the **pressure
+  gauge**, writes the **oscillograph** on the back — and thumps, audibly, lub
+  and dub, out of the hull. It carries about sixteen metres. Stand near a
+  Warden for long enough and you will hear it before you work out what it is.
+
+  Walk round one. It has a face to each point of the compass and each is worth
+  finding: the **vessel bay** on the front, the **perfusion plant** on the left
+  (a bottle in a cage that visibly empties over a long run — and when it gets
+  low the loader arm reaches down the front of its own body and taps it), the
+  **heat louvres** on the right with **somebody's spanner still clipped beside
+  them**, and on the back a genuine scrolling **paper trace** of what the thing
+  in the jar is doing, plus a **chimney whose cowl turns whenever it is
+  thinking**.
+
+  ### Standing up: two seconds, sixteen beats
+
+  Setting one down takes **2.10 s — exactly twice `SENTRY_DEPLOY_TIME`**, off
+  the same constant, so the two machines can never drift apart. Where the Mk I
+  animates four channels off one ramp, this runs a table of **sixteen named
+  beats**, each with its own window, its own moving part and **its own sound**:
+
+  | # | Beat | What moves | # | Beat | What moves |
+  |--:|------|------------|--:|------|------------|
+  | 1 | `latch` | four transit latches pop | 9 | `battery` | the gun runs out on its rails |
+  | 2 | `clamp` | the clamps over the gun swing clear | 10 | `wings` | shield wings out, ready rack drops |
+  | 3 | `splay` | four legs scissor out | 11 | `shutter` | **the doors open** |
+  | 4 | `knee` | knees fold, a beat behind | 12 | `perfuse` | the pump primes — **first heartbeat** |
+  | 5 | `jack` | screw jacks wind down, turning | 13 | `cortex` | the crown seats, the needle drops |
+  | 6 | `level` | the jacks argue and it rocks level | 14 | `range` | the bar telescopes, the caps drop |
+  | 7 | `spade` | the drop spade goes in — THUMP | 15 | `charge` | the handle, drawn and released |
+  | 8 | `rise` | twin posts stand the deck up | 16 | `ready` | lamps run, the talkback answers |
+
+  They overlap deliberately — a real machine has the legs still going out while
+  the gun is already running into battery — but the order is mechanically true,
+  and the **sound design carries the reveal before the picture does**: beats one
+  to ten are dry (metal, pneumatics, screw threads, a spade in dirt), and then
+  the doors go on a seal breaking and the last five are wet — a pump priming,
+  fluid climbing, six contacts seating on something soft, and a heartbeat.
+
+  The **spade genuinely reaches the ground** now. It used to be a blade on a
+  hinged arm whose pivot sat 0.36 m up and whose reach was 0.17 m, so at no
+  angle in its whole travel could it touch the turf; it is a **drop spade on a
+  vertical guide**, which is what real gun mounts use, and the suite asserts the
+  teeth end up under the machine's own feet.
+
+  It finishes about **1.47 m tall**, standing on its pads, with the gun deck
+  still below your eye line and the rangefinder bar just under it.
+
+  ### The loader arm, and everything it does when nobody is looking
+
+  It stands on a **slewing base** on the deck rather than hanging off it, and it
+  is the same arm for every job:
+
+  - **Reload** — forty pulls in, the drum comes off, one comes out of the rack,
+    and it is nineteen-tenths of a second before it will shoot again. The two
+    drums on the flank are the **ready rack**, not the reserve: they drain over
+    two changes and the third brings a fresh pair up from the case, so a rack
+    you watched go empty is full again next time you look.
   - **Self-test** — lamps in a chase, the arm run once through its whole
     travel, the legs shaken down.
   - **Polish** — a rag comes out of the claw and the rangefinder glass gets a
     wipe, the optic hunting in and out while it works.
-  - **Tally** — every twenty-fifth kill the arm reaches **behind itself to the
-    data plate and cuts another mark**, and the mark is not a gesture: the
-    plate's texture is redrawn with one more stroke, gates of five, and it
-    stays. Leave one on a busy corner, come back, and you can read off its
-    afternoon from six feet away.
-  - **Doze** — nothing for a minute and the barrels sink, the lamps drop to one
-    slow beat, the arm goes slack on its post, and it **snores**: a puff off
-    the relief valve every few seconds until something turns up.
-  - **Salute** — the Mk I puts its barrel up; this one has a brim, so it
-    **tips the rangefinder bar at you and waves with the claw**, and only ever
-    at the player.
-  - **Handshake** — stand one up near a Mk I already on that corner and it
-    **dips its bar at the older machine** once, the first time it sees it.
-  - **Grumble** — set one down for the third time in a hurry and it plants the
-    spade twice as hard, shakes on its jacks, and puts its lamps to red about
-    it.
+  - **Service** — the perfusate runs down over a long run; the arm reaches down
+    the front of its own body and **taps the bottle**, twice, the way you tap a
+    gauge you do not trust. Entirely as a matter of routine.
+  - **Tally** — every twenty-fifth kill the arm reaches behind itself to the
+    data plate and cuts another mark, and the mark is a real redraw of the
+    texture, gates of five, and it stays. Past the twenty-first gate the hand
+    stops keeping the lines straight; **past a hundred and fifty the strokes
+    stop being tally marks and resolve into a word.** It is the
+    longest-fused thing on the machine and the only one you have to earn.
+  - **Doze** — nothing for a minute and the barrels sink, **a shutter drops
+    half over its eye**, the lamps go to one slow beat, the pulse falls to
+    about forty, and it snores: a puff off the relief valve every few seconds.
+  - **Dream** — dozing long enough, it starts dreaming. The pulse goes fast and
+    irregular, the eye shuts right over and **flickers behind the lid**, the
+    barrels twitch onto bearings there is nothing at, something that is almost
+    a word comes out of the talkback horn — and the oscillograph, which has
+    written nothing but a trace since the day it was built, **writes the
+    subject's word on the paper**. Walk round the back while it is asleep.
+  - **Salute** — it tips the rangefinder bar at you like a hat brim and waves
+    with the claw. Only ever at the player.
+  - **Regard** — and once in a long while it does not do that. It stops, turns,
+    **puts its lamps out**, and looks at you for three and a half seconds with
+    its pulse climbing and one held, wavering note on an open carrier. Then it
+    catches itself and runs a self-test to cover.
+  - **Stare** — go right up to the glass and look *into* it, and **the brain
+    turns in its cradle to face you**, against six pins that are supposed to be
+    holding it still. It holds, the pulse all but stops, and then there is one
+    hard beat and it turns back. The gun above never acknowledges any of it.
+    (They all sit a few degrees off the axis of their own doors. None of them is
+    quite looking at the door.)
+  - **Startle** — the town whispers (see the cosmic-horror layer below) and the
+    machine hears it too. It breaks off, slews onto a bearing with nothing on
+    it, converges its optics on empty street, and holds.
+  - **Handshake** — stand one up near a Mk I already on that corner and it dips
+    its bar at the older machine, once, the first time it sees it.
+  - **Commune** — stand up **two Wardens** within nine metres of each other and
+    leave them alone, and they will eventually start **talking to each other in
+    lamps**, taking turns, each answering the other's tones.
+  - **Grumble** — set one down for the third time in a hurry and it stamps the
+    spade, shakes on its jacks, puts its lamps to red and says something about
+    it through the horn.
+
 - **The adjutant — "NEKO", 500 tokens, one only.** A refurbished companion
   android, and the only thing in this town that walks beside you on purpose.
   She stows in the satchel folded into a ball; click her and she unfolds on the
@@ -1034,7 +1121,9 @@ src/rendering/      renderer, texture pipeline, billboards, HUD (console bar +
                     machines in them (Arcade.js), the vendor rig + its
                     animation state machine (VendorModel.js), the shop
                     overlay (ShopUI.js), the sentry rigs (SentryModel.js,
-                    SentryTwoModel.js)
+                    SentryTwoModel.js — which also exports the Mk II's two
+                    static poses, so the ghost, the carry model and the deploy
+                    animation cannot disagree about what "folded" means)
 src/audio/          WebAudio synthesis (all sounds)
 src/world/          terrain, buildings, props, vegetation, zones, nav, secrets,
                     anomalies (cosmic-horror layer + dynamic props and
