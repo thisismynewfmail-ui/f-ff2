@@ -919,8 +919,8 @@ There is deliberately no command that touches the kill counter — the
   calls the Mk II a "crewed unit" and leaves it — so you find it by walking
   round the right-hand side of a machine you have already deployed, and the
   moment you read the plate every charming thing this gun does stops being
-  charming. Six donors, picked per machine, so two Warden on the same corner
-  are two different people. One of them declined.
+  charming. Six donors, picked per machine, so two Wardens on the same corner
+  are two different people. One of the six declined and was overruled.
 
   **The mechanism keeping it alive is all on show**, the same rule as the rest
   of the machine: a **chiller** with condenser coils and a fan that spins

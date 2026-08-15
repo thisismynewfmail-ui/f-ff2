@@ -102,6 +102,7 @@ export const SENTRY_KINDS = {
       // the rig's material here would touch a material nothing is using and
       // leave a white cylinder standing where the jar should be.
       parts.frost.visible = false;
+      parts.surface.visible = false;          // and the liquid line, same reason
       for (const b of parts.bubbles) b.mesh.visible = false;
     },
   },
