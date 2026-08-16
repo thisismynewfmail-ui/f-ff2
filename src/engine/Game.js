@@ -32,6 +32,15 @@ import { Shell } from './Shell.js';
 import { Arcade, MACHINE_IDS } from '../rendering/Arcade.js';
 
 /**
+ * Framing ladder for the title-screen orbit (see Game._menuCinematic): each
+ * rung is an [orbit radius multiplier, extra height] pair, widest first. The
+ * camera takes the widest rung that still has a clear line to the player, so a
+ * run quit from an alley or a back room climbs and tightens into a shot of the
+ * roof they are under rather than swinging the lens through a wall.
+ */
+const MENU_FRAMINGS = [[1.00, 0], [0.85, 8], [0.62, 18], [0.45, 30]];
+
+/**
  * Wires every system together and runs the frame loop. Owns nothing
  * domain-specific itself: gameplay flows through the event bus and the
  * per-frame update order below.
@@ -50,6 +59,7 @@ export class Game {
     this._lastT = performance.now();
     this.runStarted = false; // has THIS session's run been entered at least once
     this._menuT = Math.random() * 400; // cinematic orbit clock (random start angle)
+    this._menuFrame = 0;               // eased rung of the orbit framing ladder
     // x-ray cheat (dev console): draw every NPC sprite through walls. `xray` is
     // the desired state; `_xrayActive` is the last-applied state, so exactly one
     // restore pass runs the frame after it is switched off (see applyXray).
@@ -746,21 +756,69 @@ export class Game {
   }
 
   /**
-   * The title-screen backdrop: a slow cinematic orbit of the plaza through
-   * the LIVE town — the same scene, sky and ambient systems the run uses
-   * (day cycle rolling, clouds drifting, the clocktower keeping time, the
-   * windmill turning), with the combat sim itself left untouched.
+   * The title-screen backdrop: a slow cinematic orbit through the LIVE town —
+   * the same scene, sky and ambient systems the run uses (day cycle rolling,
+   * clouds drifting, the clocktower keeping time, the windmill turning), with
+   * the combat sim itself left untouched.
+   *
+   * The orbit is held on THE PLAYER, not on the middle of the map. It used to
+   * be nailed to the world origin, which is not where anybody ever is: the
+   * spawn itself stands twenty metres up the square, and quitting to the title
+   * mid-run (RETURN TO TITLE, which leaves the run live behind the menu) showed
+   * you Old Town no matter whether you had walked out to Chapel Ridge or the
+   * industrial flats. Now the camera swings around wherever the player actually
+   * stands, with that spot dead centre of frame — so the title screen is always
+   * a shot of where you are, and picking RESUME drops you into the place you
+   * were just looking at.
    */
   _menuCinematic(dt) {
     this._menuT += dt;
     const t = this._menuT;
     const cam = this.renderer.camera;
+    const f = this.player.position;
     const ang = t * 0.045;
-    const r = 38 + Math.sin(t * 0.021) * 6;
-    cam.position.set(Math.cos(ang) * r, 14.5 + Math.sin(t * 0.037) * 2.5, Math.sin(ang) * r);
-    cam.lookAt(0, 3.5, 0);
+    const baseR = 38 + Math.sin(t * 0.021) * 6;
+    const baseY = 14.5 + Math.sin(t * 0.037) * 2.5;
+    // What the shot is centred on: the ground the player is standing on, a
+    // little above their boots so the framing carries some of the street.
+    const tx = f.x, ty = f.y + 2.2, tz = f.z;
+
+    // Take the widest framing that still has a clear line to that spot, then
+    // EASE onto it — the ladder is sampled continuously, so when a wall or a
+    // rooftop comes between the lens and the player the shot climbs and tightens
+    // over a beat instead of snapping the moment a chimney clips the line.
+    let want = MENU_FRAMINGS.length - 1;
+    for (let i = 0; i < MENU_FRAMINGS.length; i++) {
+      const p = this._menuEye(f, ang, baseR, baseY, i);
+      if (this.world.hasLineOfSight(p.x, p.y, p.z, tx, ty, tz)) { want = i; break; }
+    }
+    this._menuFrame += (want - this._menuFrame) * Math.min(1, dt * 1.6);
+    const eye = this._menuEye(f, ang, baseR, baseY, this._menuFrame);
+
+    cam.position.set(eye.x, eye.y, eye.z);
+    cam.lookAt(tx, ty, tz);
     this.sky.update(dt, cam.position);
     this.world.updateAmbient(dt, this.time + t, cam.position);
+  }
+
+  /**
+   * Camera position for one (fractional) rung of the title-orbit framing
+   * ladder — see MENU_FRAMINGS and _menuCinematic.
+   */
+  _menuEye(f, ang, baseR, baseY, rung) {
+    const last = MENU_FRAMINGS.length - 1;
+    const lo = Math.max(0, Math.min(last, Math.floor(rung)));
+    const hi = Math.min(last, lo + 1);
+    const k = Math.max(0, Math.min(1, rung - lo));
+    const rMul = MENU_FRAMINGS[lo][0] + (MENU_FRAMINGS[hi][0] - MENU_FRAMINGS[lo][0]) * k;
+    const lift = MENU_FRAMINGS[lo][1] + (MENU_FRAMINGS[hi][1] - MENU_FRAMINGS[lo][1]) * k;
+    const r = baseR * rMul;
+    const x = f.x + Math.cos(ang) * r;
+    const z = f.z + Math.sin(ang) * r;
+    // ...and never let the lens dip into the ground it is swinging over: the
+    // orbit is a fixed radius, but the town underneath it is a heightfield.
+    const y = Math.max(f.y + baseY + lift, this.world.groundHeightFor(x, z, 1e9) + 5);
+    return { x, y, z };
   }
 
   update(dt) {

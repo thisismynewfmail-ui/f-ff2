@@ -6,7 +6,8 @@ aesthetic. There is exactly one way to win: **kill 250,000 zombies.**
 
 Boot runs through an animated loading screen (a Hilbert-curve "texture
 memory map" walked in step with real asset progress) into a CS-1.6-style
-title menu rendered over a live cinematic orbit of the town, with NEW GAME /
+title menu rendered over a live cinematic orbit **held on the player** — it
+circles wherever you actually are, not the middle of the map — with NEW GAME /
 RESUME LAST SESSION / SETTINGS and a LAST SESSION stats card. The pause menu
 carries the run's readouts as a full instrument panel, plus a working SAVE RUN
 button.
@@ -262,6 +263,14 @@ There is deliberately no command that touches the kill counter — the
 - **Zombies:** Walkers (30 HP, 1 pt), Sprinters (15 HP, fast, 2 pts), Tanks
   (220 HP, 5 pts), each spawned at a slightly randomised size and given an
   individual weaving gait so a horde never marches in stamped straight columns.
+  The Tank is a **character, not a size**: it has its own sheet — a white-robed,
+  gold-sashed swordsman in a jewelled turban
+  (`assets/sprites/advanced_standard_npc.png`) — and stands in the ordinary size
+  range of the horde. It used to be the basic sheet tinted green and scaled to
+  half again everybody else's height, which read as a rendering artefact rather
+  than as a different enemy; what makes it dangerous is its 220 HP and its
+  reach, not its silhouette. It is also **rare** — it enters the spawn table
+  after wave 2 and stays at a flat ~2% of it (see the wave mix below).
   State machine: idle → wandering → alerted → chasing → attacking → dead. They
   have **global awareness of the player** (always know where you are, anywhere
   on the map) but must earn a clear line of sight to attack or beeline vs.
@@ -514,11 +523,16 @@ There is deliberately no command that touches the kill counter — the
   there is one more on the WAVE clock: **past wave 6** the horde starts pressing
   harder whether or not the kills are there — shorter interval, fatter pulses,
   higher cap — and the per-wave ramp itself steepens as it goes, reaching full
-  tilt around wave 14. Waves 1–6 are untouched. Sprinter/tank share rises with wave
+  tilt around wave 14. Waves 1–6 are untouched. Sprinter share rises with wave
   number and progress toward 250,000,
   spitters join the table once you clear 100 kills (their share stepping up
   past 120), and exploders once you clear 120 kills (their share stepping up
-  past 150). **Wave 3 is the Exploder's wave and nothing else's** — one
+  past 150). The **Tank is the exception to all of that**: it enters the table
+  after wave 2 and holds a flat **~2% of every spawn** for the rest of the run,
+  never ramping with the wave or with progress. It is a rare variant of the
+  standard enemy, not a rung of the difficulty curve — one turns up roughly
+  every fiftieth body, and it is meant to be worth noticing when it does.
+  **Wave 3 is the Exploder's wave and nothing else's** — one
   scripted round where the whole field is bombers, so you meet the type
   properly instead of first learning what one is by standing next to it. It is
   the only wave that overrides the mix; wave 4 picks the ordinary progression
@@ -552,9 +566,19 @@ There is deliberately no command that touches the kill counter — the
   was already in the satchel is untouched.
 - **Progression:** six districts unlock at kill milestones — Old Town
   (start), Eastgate Residential (50), Downtown (150), Hollow Park
-  (2,500), Southside Industrial (4,500), Chapel Ridge (7,000). Barricades
-  rumble and sink into the ground when a district opens; the world tells
-  you, not a popup.
+  (2,500), Southside Industrial (4,500), Chapel Ridge (7,000). The world tells
+  you, not a popup — and it tells you by **demolishing the wall**. The breaching
+  charges go up along the whole length of the barrier (one every ~9 m, so a
+  two-hundred-metre border does not open with a single distant puff), and then
+  it keeps coming apart the entire time it takes to fall: a rolling chain of
+  secondary detonations hopping down the length, fireballs climbing the arcade,
+  marble blown off it in chunks that arc out and land, a smoke column you can
+  see from the far side of the district, and the ground shaking under you the
+  whole way down until tonnes of it hit the street. Every district segment goes
+  at once, so an unlock is a barrage across the town rather than one bang —
+  the audio folds the segments into one rolling collapse instead of playing the
+  same blast five times over itself, and it carries far enough that you hear a
+  wall come down anywhere on the map.
 - **The ground is four grasses, not one.** A district mown for a century does
   not look like the ravine in Hollow Park, and neither looks like the flats
   past the last kerb — so the terrain carries a **kept lawn**, a **parched**

@@ -56,6 +56,10 @@ const SEGMENTS = [
 // group is removed, so nothing pops out of existence above ground.
 const SINK_DEPTH = 20;
 const SINK_TIME = 3.5;
+// Height of a barrier's solid body above its footing — the arcade wall the
+// collider seals, and the height the demolition's fireballs climb. Shared so
+// the blast never plays at a different scale than the wall it is taking down.
+const WALL_H = 6.2;
 
 export class Zones {
   constructor(events, propKit, collision, nav, terrain, scene) {
@@ -81,7 +85,7 @@ export class Zones {
       const hx = alongX ? len / 2 : 1.2;
       const hz = alongX ? 1.2 : len / 2;
       const y = terrain.heightAt(mx, mz);
-      const colliderId = collision.addBox(mx - hx, y - 1, mz - hz, mx + hx, y + 6.2, mz + hz, 'barrier');
+      const colliderId = collision.addBox(mx - hx, y - 1, mz - hz, mx + hx, y + WALL_H, mz + hz, 'barrier');
       // `force`: a sealed district must close even where a building's carved
       // doorway portal happens to fall on the barrier line.
       nav.blockBox(mx - hx, mz - hz, mx + hx, mz + hz, true);
@@ -106,14 +110,20 @@ export class Zones {
       this.collision.remove(b.colliderId);
       this.nav.unblockBox(...b.navRect);
       this.sinking.push({ group: b.group, t: 0, y0: b.group.position.y });
-      // The wall doesn't just quietly sink — it goes down as if blown apart:
-      // a chain of explosive debris/fire bursts along its length (Effects) and
-      // a huge blast (AudioManager) both hang off this one event.
+      // The wall doesn't just quietly sink — it is DEMOLISHED. The breaching
+      // charges go up along its length, then it keeps coming apart the whole
+      // way down and lands on the street: a rolling chain of fireballs, dust
+      // and flying masonry (Effects) over a blast that carries across the town
+      // (AudioManager), both staged off this one event. `duration` is the sink
+      // itself, so the show is over at the exact moment the wall is gone rather
+      // than before or after it.
       const [minX, minZ, maxX, maxZ] = b.navRect;
       this.events.emit('barrier:explode', {
         x: (minX + maxX) / 2, z: (minZ + maxZ) / 2, y: b.group.position.y,
         minX, minZ, maxX, maxZ,
         length: Math.hypot(maxX - minX, maxZ - minZ),
+        height: WALL_H,
+        duration: SINK_TIME,
       });
     }
     const zone = ZONES[zoneId];

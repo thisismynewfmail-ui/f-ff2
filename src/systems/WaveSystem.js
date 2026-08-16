@@ -40,6 +40,17 @@ export const EXPLODER_RAMP_GATE = 150;
 // Exploder somewhere in a crowd, which is a bad way to learn what one is.
 // Wave 4 resumes the ordinary progression untouched.
 export const EXPLODER_WAVE = 3;
+// The Advanced — the white-robed swordsman (ZombieTypes.tank) — is a RARE
+// VARIANT of the standard enemy, not a rung of the difficulty ramp. It joins
+// the table the wave after this one and then holds a flat, small share of the
+// mix for the rest of the run: you meet one occasionally, and meeting one is
+// meant to be worth noticing. (It used to open at wave 4 and climb with
+// progress to 15% of every spawn, which is not a rare variant — at that share
+// it is simply a second standard enemy.) Note the scripted all-bomber round at
+// EXPLODER_WAVE overrides the whole mix, so the first one is actually seen on
+// wave 4.
+export const ADVANCED_WAVE_GATE = 2;
+export const ADVANCED_SHARE = 0.02;
 // Past this many kills the STANDARD horde (the plain walkers) thickens: bigger
 // spawn pulses and a higher concurrent cap, so the ordinary NPC pressure ramps
 // up well before the later heat/surge gates ever engage.
@@ -155,7 +166,12 @@ export class WaveSystem {
       return { walker: 0, sprinter: 0, tank: 0, exploder: 1, spitter: 0 };
     }
     const sprinter = Math.min(0.38, 0.04 + this.wave * 0.012 + this.progress * 0.34);
-    const tank = Math.min(0.15, Math.max(0, (this.wave - 3) * 0.008 + this.progress * 0.12));
+    // The rare white variant: in the table from the wave after the gate, and a
+    // flat ~2% of every spawn from then on. Deliberately does NOT ramp with the
+    // wave or with progress the way the sprinter, exploder and spitter shares
+    // do — those are pressure, this one is a rarity, and a rarity that climbs
+    // to one spawn in seven stops being one. See ADVANCED_SHARE.
+    const tank = this.wave > ADVANCED_WAVE_GATE ? ADVANCED_SHARE : 0;
     // Only spawn exploders once past the kill gate at a modest share, then step
     // their spawn rate up once the player is past EXPLODER_RAMP_GATE kills.
     let exploder = 0;
