@@ -53,6 +53,12 @@ export const ZOMBIE_TYPES = {
     attackCooldown: 0.9,
     knockbackResist: 0,
   },
+  // The Advanced: the horde's heavy. It used to be nothing but the basic sheet
+  // tinted green and blown up to half again the size of everything else, which
+  // read as a rendering artefact rather than as a different enemy. It now has
+  // its own character art (SPRITES.npcAdvanced — a white-robed swordsman in a
+  // jewelled turban) and stands in the ordinary size range of the horde: the
+  // threat is its 220 HP and its reach, not its silhouette.
   tank: {
     name: 'Tank',
     hp: 220,
@@ -62,9 +68,19 @@ export const ZOMBIE_TYPES = {
     wanderSpeed: 0.7,
     chaseSpeed: 1.4,
     sightRange: 55,
-    height: 2.35,
-    scale: 1.45,
-    tint: 'tank',        // sickly green bulk
+    // Sized off its own sheet exactly the way the Walker is sized off the base
+    // sheet: the billboard maps a whole 256px cell onto `height` from the feet
+    // up, this character's eyes sit at ~0.62 of its cell, and the player's
+    // standing eye is at 1.62 m (Player EYE_STAND) — so 2.6 puts the two of
+    // them eye to eye, shoulder to shoulder with the rest of the horde rather
+    // than towering over it.
+    height: 2.6,
+    // As with the Walker, the over-tall billboard navigates on an ordinary
+    // humanoid capsule so it never snags its head on awnings and door lintels
+    // (see Zombie.collisionHeight).
+    collisionHeight: 1.75,
+    scale: 1.0,          // ...and no bulk multiplier: same body as the horde
+    tint: null,          // its sheet is already its own character
     walkFps: 4,
     attackWindup: 0.7,
     attackCooldown: 1.6,

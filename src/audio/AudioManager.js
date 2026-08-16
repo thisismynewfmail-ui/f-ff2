@@ -428,29 +428,70 @@ export class AudioManager {
   }
 
   /**
-   * A border wall blown down: much bigger and longer than a single exploder —
-   * a stack of deep detonation booms marched a beat apart (the charges going up
-   * along the wall's length), a hard initial crack, a long crumbling-masonry
-   * rubble tail and a heavy sub-bass drop as tonnes of stone hit the ground.
-   * Spatialised but carried very far (120 m) and mixed hot so it dominates.
+   * A border wall blown down — the biggest sound in the game, and the only one
+   * the entire town is meant to hear.
+   *
+   * Two things it does not do. It does not fall off a cliff: `_spatial` returns
+   * null past its range, so a "carried 120 m" blast was a whisper at 119 m and
+   * SILENT at 121 m, with nothing in between — for an event this size the
+   * fall-off is done here instead, with a floor, so a district gate coming down
+   * is audible from anywhere on the map, just flatter and less directional the
+   * further off it is. And it does not stack: Zones.unlock opens every segment
+   * of a district at once, and firing the whole sequence per segment was one
+   * sound played five times over itself. The first blast of a salvo is the
+   * demolition; the rest fold in behind it, offset down the street and dropping
+   * in level, so a district's walls read as one rolling barrage.
    */
   barrierBlast(b) {
     if (!this.ctx) return;
-    const s = this._spatial({ x: b.x, z: b.z }, 120);
-    if (!s) { this._detonation(0.9, 0); return; } // out of range: still felt, centred
-    this._detonation(s.vol, s.pan);
+    const dx = b.x - this.listener.x, dz = b.z - this.listener.z;
+    const near = Math.max(0, 1 - Math.hypot(dx, dz) / 300);
+    const v = 0.36 + 0.64 * near * near;
+    const ang = Math.atan2(dx, dz) - this.listener.yaw;
+    const pan = Math.max(-1, Math.min(1, Math.sin(ang) * 0.8 * near));
+
+    const now = this.t;
+    if (!this._salvo || now - this._salvo.at > 0.9) this._salvo = { at: now, n: 0 };
+    const i = this._salvo.n++;
+    this._detonation(v / (1 + i * 0.85), pan, i * 0.21, b.duration || 3.5, i === 0);
   }
 
-  _detonation(v, pan) {
-    // three booms a beat apart — the charges walking down the wall
-    for (const [w, g] of [[0, 0.7], [0.09, 0.55], [0.19, 0.4]]) {
-      this._tone('sine', 150, 0.55, g * v, w, pan, 34);   // body boom
-      this._tone('sine', 66, 0.85, g * 0.8 * v, w, pan, 20); // sub layer
+  /**
+   * The demolition itself, scheduled end to end on the audio clock so it plays
+   * out over the whole time the wall takes to fall: the breach, the charges
+   * walking down its length, a rumble bed held under the collapse, masonry
+   * raining off it the whole way down, and the ground impact when it lands.
+   *
+   * `full` is false for the trailing segments of a salvo — they contribute the
+   * breach and the walking charges (which is what gives the barrage its width)
+   * without laying down a second and third copy of the bed and the impact.
+   */
+  _detonation(v, pan, at = 0, dur = 3.5, full = true) {
+    // 1. the breach: the charge, then the shockwave off the face of the wall
+    this._noise(0.09, 'highpass', 4200, 1, 0.34 * v, at, pan);
+    this._noise(0.22, 'lowpass', 2800, 0.8, 0.78 * v, at, pan, 260);
+    // 2. the charges walking down the length — each a body tone over a sub
+    //    layer, both sweeping down as the wall gives
+    for (const [w, g] of [[0, 0.85], [0.11, 0.72], [0.24, 0.6], [0.41, 0.46]]) {
+      this._tone('sine', 160, 0.6, g * v, at + w, pan, 32);
+      this._tone('sine', 70, 0.95, g * 0.85 * v, at + w, pan, 19);
     }
-    this._noise(0.14, 'lowpass', 2600, 0.8, 0.62 * v, 0, pan, 320);  // hard crack
-    this._noise(1.3, 'lowpass', 620, 0.6, 0.4 * v, 0.06, pan, 90);   // long rubble tail
-    this._noise(0.7, 'highpass', 3200, 1, 0.22 * v, 0.05, pan);      // masonry debris crackle
-    this._tone('sine', 44, 1.1, 0.5 * v, 0.22, pan, 18);             // tonnes of stone hit the ground
+    if (!full) return;
+    // 3. the bed: the wall coming apart for as long as it takes to go down
+    this._noise(dur, 'lowpass', 520, 0.6, 0.44 * v, at + 0.06, pan, 90);
+    this._noise(dur * 0.8, 'bandpass', 1500, 1.2, 0.18 * v, at + 0.2, pan, 600);
+    for (let i = 0; i < 5; i++) {
+      const w = at + 0.35 + i * dur * 0.15;
+      this._noise(0.5, 'highpass', 3000, 1, 0.2 * v * (1 - i * 0.13), w, pan * 0.8);
+      this._tone('sine', 120 - i * 8, 0.5, 0.3 * v * (1 - i * 0.15), w + 0.05, pan, 30);
+    }
+    // 4. it lands: tonnes of marble on the street, a sub drop under it, and the
+    //    long settle of a heap of rubble finding its own shape
+    const land = at + dur * 0.86;
+    this._tone('sine', 52, 1.5, 0.8 * v, land, pan, 16);
+    this._noise(0.5, 'lowpass', 900, 0.7, 0.6 * v, land, pan, 120);
+    this._noise(1.8, 'lowpass', 380, 0.6, 0.34 * v, land + 0.1, pan, 70);
+    this._noise(1.1, 'highpass', 2600, 1, 0.16 * v, land + 0.05, pan);
   }
 
   /**

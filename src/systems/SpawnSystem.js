@@ -39,7 +39,7 @@ export class SpawnSystem {
     this.materials = {
       walker: makeSpriteMaterial(texLib.get('zombieBasic')),
       sprinter: makeSpriteMaterial(texLib.tinted('zombieBasic', 'sprinter')),
-      tank: makeSpriteMaterial(texLib.tinted('zombieBasic', 'tank')),
+      tank: makeSpriteMaterial(texLib.get('npcAdvanced')),
       exploder: makeSpriteMaterial(texLib.get('npcExploder')),
       spitter: makeSpriteMaterial(texLib.get('spitter')),
     };

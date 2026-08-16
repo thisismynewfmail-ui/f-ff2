@@ -6,7 +6,8 @@ aesthetic. There is exactly one way to win: **kill 250,000 zombies.**
 
 Boot runs through an animated loading screen (a Hilbert-curve "texture
 memory map" walked in step with real asset progress) into a CS-1.6-style
-title menu rendered over a live cinematic orbit of the town, with NEW GAME /
+title menu rendered over a live cinematic orbit **held on the player** — it
+circles wherever you actually are, not the middle of the map — with NEW GAME /
 RESUME LAST SESSION / SETTINGS and a LAST SESSION stats card. The pause menu
 carries the run's readouts as a full instrument panel, plus a working SAVE RUN
 button.
@@ -262,6 +263,13 @@ There is deliberately no command that touches the kill counter — the
 - **Zombies:** Walkers (30 HP, 1 pt), Sprinters (15 HP, fast, 2 pts), Tanks
   (220 HP, 5 pts), each spawned at a slightly randomised size and given an
   individual weaving gait so a horde never marches in stamped straight columns.
+  The Tank is a **character, not a size**: it has its own sheet — a white-robed,
+  gold-sashed swordsman in a jewelled turban
+  (`assets/sprites/advanced_standard_npc.png`) — and stands in the ordinary size
+  range of the horde. It used to be the basic sheet tinted green and scaled to
+  half again everybody else's height, which read as a rendering artefact rather
+  than as a different enemy; what makes it dangerous is its 220 HP and its
+  reach, not its silhouette.
   State machine: idle → wandering → alerted → chasing → attacking → dead. They
   have **global awareness of the player** (always know where you are, anywhere
   on the map) but must earn a clear line of sight to attack or beeline vs.
@@ -552,9 +560,19 @@ There is deliberately no command that touches the kill counter — the
   was already in the satchel is untouched.
 - **Progression:** six districts unlock at kill milestones — Old Town
   (start), Eastgate Residential (50), Downtown (150), Hollow Park
-  (2,500), Southside Industrial (4,500), Chapel Ridge (7,000). Barricades
-  rumble and sink into the ground when a district opens; the world tells
-  you, not a popup.
+  (2,500), Southside Industrial (4,500), Chapel Ridge (7,000). The world tells
+  you, not a popup — and it tells you by **demolishing the wall**. The breaching
+  charges go up along the whole length of the barrier (one every ~9 m, so a
+  two-hundred-metre border does not open with a single distant puff), and then
+  it keeps coming apart the entire time it takes to fall: a rolling chain of
+  secondary detonations hopping down the length, fireballs climbing the arcade,
+  marble blown off it in chunks that arc out and land, a smoke column you can
+  see from the far side of the district, and the ground shaking under you the
+  whole way down until tonnes of it hit the street. Every district segment goes
+  at once, so an unlock is a barrage across the town rather than one bang —
+  the audio folds the segments into one rolling collapse instead of playing the
+  same blast five times over itself, and it carries far enough that you hear a
+  wall come down anywhere on the map.
 - **The ground is four grasses, not one.** A district mown for a century does
   not look like the ravine in Hollow Park, and neither looks like the flats
   past the last kerb — so the terrain carries a **kept lawn**, a **parched**

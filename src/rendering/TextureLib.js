@@ -66,7 +66,6 @@ export class TextureLib {
    * Tinted copy of a keyed sprite/texture. `mode`:
    *  - 'multiply': channel-wise multiply (colored ammo boxes)
    *  - 'sprinter': shift toward feverish red
-   *  - 'tank': darker, sickly green, higher contrast
    *  - 'gray': desaturate (mannequin)
    */
   tinted(name, mode, factors = [1, 1, 1]) {
@@ -84,8 +83,6 @@ export class TextureLib {
         r *= factors[0]; g *= factors[1]; b *= factors[2];
       } else if (mode === 'sprinter') {
         r = r * 1.25 + 24; g *= 0.72; b *= 0.68;
-      } else if (mode === 'tank') {
-        r *= 0.62; g = g * 0.82 + 10; b *= 0.6;
       } else if (mode === 'gray') {
         const l = r * 0.3 + g * 0.59 + b * 0.11;
         r = g = b = l * 0.85;

@@ -193,6 +193,16 @@ export const TEXTURES = {
 export const SPRITES = {
   npcPeaceful: 'npc_spritesheet_peacefull.png',
   zombieBasic: 'npc_zombie_basic_update.png',
+  // The Advanced enemy (the horde's heavy — ZombieTypes.tank): a white-robed,
+  // gold-sashed swordsman in a jewelled turban, drawn as its OWN character
+  // rather than as a recoloured, oversized copy of the basic sheet. Standard
+  // 3x4 walk-cycle sheet on the uniform grid (SHEET_LAYOUT): every figure sits
+  // inside its own 170x256 cell, feet on the cell's bottom edge, so no facing
+  // bleeds into its neighbour and no per-row anchor table is needed. The art is
+  // mostly white but every silhouette carries its own dark outline, so the
+  // white-backdrop key (see TextureLib.keyOutBackground) takes the background
+  // and nothing else — the robe survives, and no white fringe is left behind.
+  npcAdvanced: 'advanced_standard_npc.png',
   // The Exploder's CS:GO retexture — a masked, turban'd bomber in a green vest
   // strapped with red charges. Standard 3x4 walk-cycle sheet: the top (front)
   // row carries the aim/fire frames the enemy shows the player while it primes.
