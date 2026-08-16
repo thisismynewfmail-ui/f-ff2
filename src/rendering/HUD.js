@@ -3,6 +3,7 @@ import { Portrait } from './Portrait.js';
 import { hudTextures } from './HudTextures.js';
 import { TitleMenu } from './TitleMenu.js';
 import { SettingsPanel } from './SettingsPanel.js';
+import * as Inst from './Instruments.js';
 
 /** How long a posted notice holds on screen, and how fast it teletypes in. */
 const NOTICE_TIME = 10;
@@ -245,92 +246,17 @@ export class HUD {
     }
   }
 
-  /** Deterministic 0..1 hash for the aged-paper speckles on the gauge faces. */
-  _n01(i, j) {
-    let h = i * 374761393 + j * 668265263 + 1013904223;
-    h = (h ^ (h >> 13)) * 1274126177;
-    return ((h >>> 0) % 100000) / 100000;
-  }
-
   /**
    * The analog needle gauge module: an ivory dial card in a dark bezel with a
    * red-tipped needle behind glass and a caption strip below. Returns the
    * caption element and set(ratio) which sweeps the needle 0 → 1.
+   *
+   * The gauge — like the odometer, the tape, the lamps and the split-flap
+   * board below — comes out of the shared instrument kit, because the title
+   * screen's LAST SESSION panel is built from the same instruments as this one
+   * (see rendering/Instruments.js).
    */
-  _deviceGauge(parent, opts) {
-    const mod = this._el('div', null, parent, 'dev-gauge');
-    const bezel = this._el('div', null, mod, 'dev-gauge-bezel');
-    const face = this._el('div', null, bezel, 'dev-gauge-face');
-    const cv = document.createElement('canvas');
-    cv.width = 192; cv.height = 128; cv.className = 'dev-gauge-dial';
-    this._drawGaugeFace(cv, opts);
-    face.appendChild(cv);
-    const needle = this._el('div', null, face, 'dev-needle');
-    this._el('div', null, face, 'dev-needle-cap');
-    this._el('div', null, face, 'dev-glass');
-    const caption = this._el('div', null, mod, 'dev-gauge-cap');
-    let last = null;
-    return {
-      caption,
-      set(ratio) {
-        const deg = (-55 + Math.max(0, Math.min(1, ratio)) * 110).toFixed(1);
-        if (last === deg) return;
-        last = deg;
-        needle.style.transform = `translateX(-50%) rotate(${deg}deg)`;
-      },
-    };
-  }
-
-  /** Bake the static gauge face: aged ivory card, condition band, tick arc,
-   *  scale numbers and unit label. Drawn once at 2x for crisp downscale. */
-  _drawGaugeFace(cv, { sub = '', majors = [], bands = [] }) {
-    const ctx = cv.getContext('2d');
-    ctx.save();
-    ctx.scale(2, 2);
-    const W = cv.width / 2, H = cv.height / 2;
-    // Aged dial card, yellowed toward the rim + foxing speckles. Kept well
-    // below paper-white: on a chassis this dark a bright dial is the first
-    // thing the eye goes to, and the dial is not the readout that matters.
-    const age = ctx.createRadialGradient(W / 2, H - 5, 6, W / 2, H - 5, W * 0.72);
-    age.addColorStop(0, '#cdc3a0'); age.addColorStop(0.7, '#bcb18d'); age.addColorStop(1, '#9d9370');
-    ctx.fillStyle = age; ctx.fillRect(0, 0, W, H);
-    for (let i = 0; i < 26; i++) {
-      ctx.fillStyle = `rgba(122,96,54,${(0.03 + this._n01(i, 4) * 0.05).toFixed(3)})`;
-      ctx.beginPath();
-      ctx.arc(this._n01(i, 1) * W, this._n01(i, 2) * H, 1 + this._n01(i, 3) * 5, 0, Math.PI * 2);
-      ctx.fill();
-    }
-    ctx.strokeStyle = '#5a5140'; ctx.lineWidth = 1;
-    ctx.strokeRect(0.5, 0.5, W - 1, H - 1);
-    // needle sweep: -55° to +55° off vertical; the pivot sits at the bottom
-    // edge so its cap is half-hidden below the dial window, meter-style
-    const px = W / 2, py = H - 2;
-    const at = (t) => (-145 + 110 * t) * Math.PI / 180;
-    for (const b of bands) { // painted condition band under the ticks
-      ctx.beginPath(); ctx.arc(px, py, 48, at(b.from), at(b.to));
-      ctx.strokeStyle = b.color; ctx.lineWidth = 4.5; ctx.stroke();
-    }
-    ctx.strokeStyle = '#2e2a1e';
-    ctx.beginPath(); ctx.arc(px, py, 56, at(0), at(1)); ctx.lineWidth = 1.2; ctx.stroke();
-    const step = 20 / (majors.length - 1); // minor ticks per major interval
-    for (let i = 0; i <= 20; i++) {
-      const major = i % step === 0;
-      const a = at(i / 20), cos = Math.cos(a), sin = Math.sin(a);
-      const r1 = major ? 50.5 : 52.5;
-      ctx.beginPath();
-      ctx.moveTo(px + cos * r1, py + sin * r1);
-      ctx.lineTo(px + cos * 56, py + sin * 56);
-      ctx.lineWidth = major ? 1.8 : 1; ctx.stroke();
-    }
-    ctx.fillStyle = '#33301f'; ctx.font = 'bold 7px "Courier New", monospace';
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    majors.forEach((m, k) => {
-      const a = at(k / (majors.length - 1));
-      ctx.fillText(m, px + Math.cos(a) * 42, py + Math.sin(a) * 42);
-    });
-    if (sub) { ctx.fillStyle = '#4a4430'; ctx.fillText(sub, px, py - 22); }
-    ctx.restore();
-  }
+  _deviceGauge(parent, opts) { return Inst.deviceGauge(parent, opts); }
 
   /** Left side HUD: the WAVE field device. Same stats as ever — wave number,
    *  zone, CLEARED x/y toward the quota, respite countdown — now read out on
@@ -653,12 +579,7 @@ export class HUD {
    * instruments were built to avoid. The one figure that was NOT on its
    * instrument — the wave's cleared-of-quota — moved onto the tube bank.
    */
-  _bay(parent, area, label) {
-    const el = this._el('div', null, parent, 'bay bay-' + area);
-    this._el('div', null, el, 'bay-label').textContent = label;
-    const body = this._el('div', null, el, 'bay-body');
-    return { el, body };
-  }
+  _bay(parent, area, label) { return Inst.bay(parent, area, label); }
 
   /** HEALTH — a vertical fluid cell: graduated scale, danger band, odometer. */
   _bayVitals(parent) {
@@ -703,13 +624,7 @@ export class HUD {
   _bayAim(parent) {
     const b = this._bay(parent, 'aim', 'MARKSMANSHIP');
     const g = this._deviceGauge(b.body, {
-      sub: '% HIT',
-      majors: ['0', '25', '50', '75', '100'],
-      bands: [
-        { from: 0, to: 0.3, color: '#a83428' },
-        { from: 0.3, to: 0.65, color: '#c1922f' },
-        { from: 0.65, to: 1, color: '#4f8f3a' },
-      ],
+      sub: '% HIT', majors: ['0', '25', '50', '75', '100'], bands: Inst.HIT_BANDS,
     });
     return { el: b.el, gauge: g };
   }
@@ -717,14 +632,9 @@ export class HUD {
   /** KILLS — punched paper tape running toward 250,000. */
   _bayProgress(parent) {
     const b = this._bay(parent, 'progress', 'PROGRESS');
-    const odo = this._el('div', null, b.body, 'odometer pause-odo wide');
-    const tape = this._el('div', null, b.body, 'tape');
-    this._el('div', null, tape, 'tape-sprockets');
-    const run = this._el('div', null, tape, 'tape-run');
-    const punch = this._el('div', null, tape, 'tape-punch');
-    const pct = this._el('div', null, tape, 'tape-pct');
-    this._el('div', null, tape, 'tape-head');
-    return { el: b.el, odo, run, punch, pct };
+    const odo = Inst.odometer(b.body, 'pause-odo wide');
+    const t = Inst.tape(b.body);
+    return { el: b.el, odo, run: t.run, punch: t.punch, pct: t.pct };
   }
 
   /** SECRETS — one lamp per secret; found ones are lit. */
@@ -745,14 +655,7 @@ export class HUD {
   /** TIME — a split-flap board, seconds flipping as it lands. */
   _bayClock(parent) {
     const b = this._bay(parent, 'clock', 'MISSION CLOCK');
-    const board = this._el('div', null, b.body, 'flapboard');
-    const flaps = [];
-    for (let i = 0; i < 3; i++) {
-      if (i) this._el('div', null, board, 'flap-colon').textContent = ':';
-      const pair = this._el('div', null, board, 'flap-pair');
-      flaps.push(this._el('div', null, pair, 'flap'), this._el('div', null, pair, 'flap'));
-    }
-    return { el: b.el, flaps };
+    return { el: b.el, flaps: Inst.flapboard(b.body, 3).flaps };
   }
 
   _screen(id, html) {
@@ -1199,17 +1102,7 @@ export class HUD {
 
   /** Fixed-width mechanical counter digits (HP/ammo meters, the kill tally).
    *  Wheels that actually rolled get a settle-tick animation (.digit.tick). */
-  _odoDigits(el, value, digits) {
-    const max = Math.pow(10, digits) - 1;
-    const s = String(Math.max(0, Math.min(max, value | 0))).padStart(digits, '0');
-    if (el._last === s) return;
-    const prev = el._last;
-    el._last = s;
-    el.innerHTML = [...s].map((d) => `<span class="digit">${d}</span>`).join('');
-    if (prev && prev.length === s.length) {
-      for (let i = 0; i < s.length; i++) if (prev[i] !== s[i]) el.children[i].classList.add('tick');
-    }
-  }
+  _odoDigits(el, value, digits) { Inst.odoDigits(el, value, digits); }
 
   /** Three fixed digits for the mechanical HP/ammo odometers. */
   _odometer(el, value, infinite = false) {
@@ -1286,23 +1179,14 @@ export class HUD {
     p.progress.pct.textContent = (frac * 100).toFixed(3) + '%';
 
     // --- SECRETS: one lamp each, lit in sequence once armed
-    if (p.secrets.lamps.length !== extra.total) {
-      p.secrets.row.innerHTML = '';
-      p.secrets.lamps = [];
-      for (let i = 0; i < extra.total; i++) {
-        const l = this._el('div', null, p.secrets.row, 'sec-lamp');
-        l.style.setProperty('--i', String(i));
-        p.secrets.lamps.push(l);
-      }
-    }
+    p.secrets.lamps = Inst.lampRow(p.secrets.row, p.secrets.lamps, extra.total);
     for (const l of p.secrets.lamps) l.classList.remove('lit');
     p.secrets.count.innerHTML = `<b>${extra.found}</b> / ${extra.total}`;
 
     // --- SCORE + CLOCK: both roll up from nothing
     p.score.odo._last = null;
     this._odoDigits(p.score.odo, 0, 6);
-    const t = stats.timePlayed;
-    const hh = Math.floor(t / 3600), mm = Math.floor((t % 3600) / 60), ss = Math.floor(t % 60);
+    const [hh, mm, ss] = Inst.hms(stats.timePlayed);
     for (const f of p.clock.flaps) { f.textContent = '0'; f.classList.remove('flip'); }
 
     // Arm across two frames, so the rest pose has been through a full style,
@@ -1330,31 +1214,10 @@ export class HUD {
   }
 
   /** Spin an odometer up to its value over ~0.7 s, the way a counter settles. */
-  _rollOdometer(el, value, digits) {
-    clearInterval(el._roll);
-    const target = Math.max(0, value | 0);
-    const t0 = performance.now();
-    el._roll = setInterval(() => {
-      const k = Math.min(1, (performance.now() - t0) / 700);
-      // ease out hard: most of the count happens early, then it creeps home
-      this._odoDigits(el, Math.round(target * (1 - Math.pow(1 - k, 3))), digits);
-      if (k >= 1) clearInterval(el._roll);
-    }, 40);
-  }
+  _rollOdometer(el, value, digits) { Inst.rollOdometer(el, value, digits); }
 
   /** Land the split-flap clock: each card flips to its digit on a stagger. */
-  _runFlaps(flaps, parts) {
-    const digits = parts.flatMap((n) => String(Math.min(99, n)).padStart(2, '0').split(''));
-    flaps.forEach((f, i) => {
-      clearTimeout(f._flip);
-      f._flip = setTimeout(() => {
-        f.textContent = digits[i] ?? '0';
-        f.classList.remove('flip');
-        void f.offsetWidth;
-        f.classList.add('flip');
-      }, 120 + i * 70);
-    });
-  }
+  _runFlaps(flaps, parts) { Inst.runFlaps(flaps, parts); }
 
   fillDeadStats(stats) {
     this._fillStats(document.getElementById('dead-stats'), stats);

@@ -7,10 +7,11 @@ aesthetic. There is exactly one way to win: **kill 250,000 zombies.**
 Boot runs through an animated loading screen (a Hilbert-curve "texture
 memory map" walked in step with real asset progress) into a CS-1.6-style
 title menu rendered over a live cinematic orbit **held on the player** — it
-circles wherever you actually are, not the middle of the map — with NEW GAME /
-RESUME LAST SESSION / SETTINGS and a LAST SESSION stats card. The pause menu
-carries the run's readouts as a full instrument panel, plus a working SAVE RUN
-button.
+circles wherever you actually are, not the middle of the map. The title itself
+is a bolted, animated steel sign with the last word in gas tube, and the LAST
+SESSION panel beside NEW GAME / RESUME LAST SESSION / SETTINGS is the same
+instrument bench the pause screen is. The pause menu carries the run's readouts
+on that bench, plus a working SAVE RUN button.
 
 Built on a vendored Three.js (no build step, no network dependencies): all
 surface textures are generated pixel art, all audio is synthesized with
@@ -488,6 +489,27 @@ There is deliberately no command that touches the kill counter — the
   actions has its own mechanism — RESUME wipes green across, SAVE RUN runs
   punched tape over its face, SETTINGS turns a driver slot, QUIT lifts hazard
   stripes — and the row can be walked with the arrow keys.
+- **The title screen is the same machine, and the title is an object.** The
+  logo used to be three lines of styled text with a flicker on them. It is now
+  a **sign hanging in the town**: a bolted steel plate with hazard strips
+  crawling along its edges, four screws, a service stencil in the corner, two
+  lines of **embossed stamped lettering** over one word in **amber gas tube**.
+  It is built glyph by glyph so it can power up as a physical thing — the plate
+  drops in, the stamps land letter by letter as the sign energises, the tube
+  strikes after them the way a cold neon really does (catch, drop out, catch,
+  hold), **one tube in the word never quite holds** because a dead town's sign
+  has a bad tube in it, a specular sweep crosses the metal every few seconds
+  and the whole plate hangs with a slow sway. The sequence re-arms every time
+  you come back to the menu.
+  And the LAST SESSION panel beside it is **the pause bench**, not a card of
+  label/value rows: the same machined case, the same bays, the same
+  instruments driven from the shared kit in `src/rendering/Instruments.js` —
+  the previous run's kills roll up an odometer over the tape running toward
+  250,000, its accuracy sweeps the ivory needle, its clock lands on the
+  split-flap board, its secrets light their lamps, and the whole bench powers
+  on bay by bay exactly as the pause panel does. A kill count is an odometer
+  wherever you meet it; the first screen of the game and every screen after it
+  now agree about what this machine looks like.
 - **The NOTICE readout:** messages the world sends you — a district opening,
   a secret giving something up, a thing you touched answering back — arrive on
   their own instrument in the **top-right corner**, deliberately out of the
@@ -1182,7 +1204,12 @@ src/entities/       player, zombies, exploder, spitter, NPC, savable citizen,
                     health, keys, coins)
 src/weapons/        weapon configs + firing/ammo/hit resolution
 src/rendering/      renderer, texture pipeline, billboards, HUD (console bar +
-                    Portrait CRT + HudTextures), 3D weapon view + PBR weapon
+                    Portrait CRT + HudTextures), the shared instrument kit the
+                    pause bench and the title screen's LAST SESSION panel are
+                    both built from (Instruments.js — odometers, the needle
+                    gauge, punched tape, lamp rows, split-flap boards), the
+                    title screen and its animated sign (TitleMenu.js),
+                    3D weapon view + PBR weapon
                     materials, effects, the arcade cabinets and the four
                     machines in them (Arcade.js), the vendor rig + its
                     animation state machine (VendorModel.js), the shop

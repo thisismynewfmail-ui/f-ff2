@@ -1105,15 +1105,21 @@ const pauseData = await page.evaluate(async () => {
   for (const id of ['a', 'b', 'c', 'd', 'e', 'f', 'g']) g.world.secrets.found.add(id);
   g.hud.showScreen(null);
   g.pause();
-  const q = (s) => document.querySelector(s);
+  // Scope EVERY readout query to the pause case. The title screen is built
+  // from the same instrument kit (rendering/Instruments.js) and so carries the
+  // same .bay/.tape/.odometer/.flap class names — a bare document.querySelector
+  // finds the title's bench, which is built first.
+  const C = document.getElementById('pause-case');
+  const q = (s) => C.querySelector(s);
+  const qa = (s) => [...C.querySelectorAll(s)];
   const out = {
-    shown: getComputedStyle(q('#screen-pause')).display,
+    shown: getComputedStyle(document.getElementById('screen-pause')).display,
     dockHidden: getComputedStyle(document.getElementById('hud-dock')).display === 'none',
-    bays: [...document.querySelectorAll('.bay')].map((b) => b.className.split(' ')[1]),
+    bays: qa('.bay').map((b) => b.className.split(' ')[1]),
     // Every bay must carry its own KIND of instrument. Two counters may both
     // use odometer wheels — a count is a count — so the signature is the whole
     // set of parts in the bay, which is what makes each readout its own thing.
-    instruments: [...document.querySelectorAll('.bay')].map((b) =>
+    instruments: qa('.bay').map((b) =>
       [...b.querySelectorAll('.bay-body > *')].map((e) => e.className.split(' ')[0]).join('+')),
     secretsWanted: window.__game.world.secrets.found.size,
     // the rest pose, before arming: every driven instrument sits at zero
@@ -1126,7 +1132,7 @@ const pauseData = await page.evaluate(async () => {
   // panel that animates and one that merely ends up correct.
   await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(r))));
   const running = (sel) => (q(sel)?.getAnimations() ?? []).map((a) => a.animationName || 'transition');
-  out.armed = q('#pause-case').classList.contains('armed');
+  out.armed = C.classList.contains('armed');
   out.setCell = parseFloat(q('.cell-fill').style.height);
   out.setTape = parseFloat(q('.tape-run').style.width);
   out.moving = {
@@ -1138,9 +1144,9 @@ const pauseData = await page.evaluate(async () => {
     punch: running('.tape-punch'),
     button: running('#btn-resume'),
   };
-  out.tubesLit = document.querySelectorAll('.vtube.lit').length;
-  out.lampsLit = document.querySelectorAll('.sec-lamp.lit').length;
-  out.secretsTotal = document.querySelectorAll('.sec-lamp').length;
+  out.tubesLit = qa('.vtube.lit').length;
+  out.lampsLit = qa('.sec-lamp.lit').length;
+  out.secretsTotal = qa('.sec-lamp').length;
   // and the readouts, once everything has landed
   await new Promise((r) => setTimeout(r, 1100));
   out.health = q('.bay-vitals .odometer').textContent;
@@ -1151,7 +1157,7 @@ const pauseData = await page.evaluate(async () => {
   out.waveCount = q('.tube-count').textContent;
   out.kills = q('.bay-progress .odometer').textContent;
   out.aim = q('.bay-aim .dev-gauge-cap').textContent.replace(/\s+/g, ' ').trim();
-  out.clock = [...document.querySelectorAll('.flap')].map((f) => f.textContent).join('');
+  out.clock = qa('.flap').map((f) => f.textContent).join('');
   out.score = q('.bay-score .odometer').textContent;
   return out;
 });
@@ -1191,7 +1197,7 @@ check('the odometer rolls up to the score', pauseData.score === '014820', pauseD
 // must not twitch under a cursor that is on its way to a button — and the
 // panel must say each thing ONCE, on its instrument, with no caption row
 // underneath restating it and no stencilled titles top and bottom.
-const bayRest = await page.evaluate(() => [...document.querySelectorAll('.bay')].map((b) => {
+const bayRest = await page.evaluate(() => [...document.querySelectorAll('#pause-case .bay')].map((b) => {
   const r = b.getBoundingClientRect();
   return { key: r.top.toFixed(1) + '|' + getComputedStyle(b).transform, cx: r.x + r.width / 2, cy: r.y + r.height / 2 };
 }));
@@ -1199,7 +1205,7 @@ const bayMoved = [];
 for (const b of bayRest) {
   await page.mouse.move(b.cx, b.cy);
   await page.waitForTimeout(260);
-  const now = await page.evaluate(() => [...document.querySelectorAll('.bay')].map((e) => {
+  const now = await page.evaluate(() => [...document.querySelectorAll('#pause-case .bay')].map((e) => {
     const r = e.getBoundingClientRect();
     return r.top.toFixed(1) + '|' + getComputedStyle(e).transform;
   }));
@@ -1208,7 +1214,7 @@ for (const b of bayRest) {
 const pauseChrome = await page.evaluate(() => ({
   extra: ['.bay-detail', '.pause-title', '.pause-stamp', '.pause-foot']
     .filter((s) => document.querySelector(s)),
-  count: document.querySelector('.tube-count')?.textContent.trim() || '',
+  count: document.querySelector('#pause-case .tube-count')?.textContent.trim() || '',
 }));
 await page.mouse.move(4, 4);
 check('the pause readouts do not move under the pointer',
@@ -1264,6 +1270,73 @@ check('and each one reacts in its own way',
 check('the action row can be walked from the keyboard',
   pauseBtns.focused === 'btn-pause-settings', `focus landed on ${pauseBtns.focused}`);
 await page.evaluate(() => { window.__game.hud.showScreen(null); window.__game.state.state = 'playing'; });
+
+/* THE TITLE SCREEN — the sign is an object, and the bench is the same bench   */
+// Two claims. The title is not styled text: it is built glyph by glyph and it
+// POWERS UP, which means every character carries a running animation and the
+// sign is dark before it does. And the LAST SESSION panel is not a different
+// design language from the pause bench — it is the same instruments, driven by
+// the same values, with a kill count on an odometer over tape rather than as a
+// coloured number.
+const title = await page.evaluate(async () => {
+  const g = window.__game;
+  const keep = { save: g.saves.data, ok: g.saves.serverOk };
+  // a saved session to read out, so the bench has something to drive
+  g.saves.data = {
+    savedAt: new Date().toISOString(), kills: 1487, points: 4310, accuracy: 0.599,
+    wave: 12, timePlayed: 4612, secretsFound: 6, secretsTotal: 15,
+    shotsFired: 2210, shotsHit: 1324,
+  };
+  g.saves.serverOk = true;
+  g.hud.showScreen('menu');
+  const sign = document.querySelector('.title-sign');
+  const chars = [...sign.querySelectorAll('.ch')];
+  const out = {
+    chars: chars.length,
+    // before anything has run, the sign is unlit
+    dark: chars.filter((c) => +getComputedStyle(c).opacity < 0.5).length,
+    animating: chars.filter((c) => c.getAnimations().length > 0).length,
+    // ...and the plate, the specular sweep and the tube's bloom are alive too
+    parts: ['.sign-plate', '.sign-sweep', '.sign-bloom', '.sign-hazard']
+      .map((s) => sign.querySelector(s)?.getAnimations().length || 0),
+  };
+  // the bench, once it has been driven
+  await new Promise((r) => setTimeout(r, 1200));
+  const C = document.getElementById('last-session-card');
+  const q = (s) => C.querySelector(s);
+  out.bays = [...C.querySelectorAll('.bay')].map((b) => b.className.split(' ')[1]);
+  out.kills = q('.bay-progress .odometer').textContent;
+  out.score = q('.bay-score .odometer').textContent;
+  out.wave = q('.tube-num').textContent;
+  out.clock = [...C.querySelectorAll('.flap')].map((f) => f.textContent).join('');
+  out.lamps = C.querySelectorAll('.sec-lamp').length;
+  out.lit = C.querySelectorAll('.sec-lamp.lit').length;
+  out.aim = q('.dev-gauge-cap').textContent.replace(/\s+/g, ' ').trim();
+  out.needle = getComputedStyle(q('.dev-needle')).transform !== 'none';
+  out.tape = parseFloat(q('.tape-run').style.width);
+  // and it is the SAME kit: these classes only exist because the pause bench
+  // defines them
+  out.shared = ['.odometer', '.tape', '.dev-gauge', '.flapboard', '.sec-lamp']
+    .filter((s) => C.querySelector(s) && document.querySelector('#pause-case ' + s));
+  // and put the screen back down behind us
+  g.saves.data = keep.save; g.saves.serverOk = keep.ok;
+  g.hud.showScreen(null);
+  return out;
+});
+check('the title is a sign that powers up, not a line of text',
+  title.chars > 40 && title.dark === title.chars && title.animating === title.chars
+  && title.parts.every((n) => n > 0),
+  `${title.chars} glyphs, ${title.dark} dark at t0, ${title.animating} animating,`
+  + ` plate/sweep/bloom/hazard ${title.parts.join('/')}`);
+check('and the last session reads out on the pause panel\'s own instruments',
+  title.bays.length === 6 && title.kills === '001487' && title.score === '004310'
+  && title.wave === '12' && title.clock === '011652' && title.lamps === 15 && title.lit === 6
+  && /1,324 \/ 2,210 ROUNDS/.test(title.aim) && title.needle && title.tape > 0
+  && title.shared.length === 5,
+  `${title.bays.join(' ')} | kills ${title.kills} score ${title.score} wave ${title.wave}`
+  + ` clock ${title.clock} secrets ${title.lit}/${title.lamps} aim "${title.aim}"`
+  + ` tape ${title.tape}% shared ${title.shared.length}/5`);
+
 
 /* ------------------------------------------------------------------ */
 /* the arcade cabinets are machines you can play                        */
@@ -1716,7 +1789,7 @@ const material = await page.evaluate(async () => {
   g.inventory.toggle();
   g.pause();
   probe('pause case', '#pause-case');
-  probe('pause bay', '.bay');
+  probe('pause bay', '#pause-case .bay');
   g.hud.showScreen(null); g.state.state = 'playing';
   return out;
 });
