@@ -269,7 +269,8 @@ There is deliberately no command that touches the kill counter — the
   range of the horde. It used to be the basic sheet tinted green and scaled to
   half again everybody else's height, which read as a rendering artefact rather
   than as a different enemy; what makes it dangerous is its 220 HP and its
-  reach, not its silhouette.
+  reach, not its silhouette. It is also **rare** — it enters the spawn table
+  after wave 2 and stays at a flat ~2% of it (see the wave mix below).
   State machine: idle → wandering → alerted → chasing → attacking → dead. They
   have **global awareness of the player** (always know where you are, anywhere
   on the map) but must earn a clear line of sight to attack or beeline vs.
@@ -522,11 +523,16 @@ There is deliberately no command that touches the kill counter — the
   there is one more on the WAVE clock: **past wave 6** the horde starts pressing
   harder whether or not the kills are there — shorter interval, fatter pulses,
   higher cap — and the per-wave ramp itself steepens as it goes, reaching full
-  tilt around wave 14. Waves 1–6 are untouched. Sprinter/tank share rises with wave
+  tilt around wave 14. Waves 1–6 are untouched. Sprinter share rises with wave
   number and progress toward 250,000,
   spitters join the table once you clear 100 kills (their share stepping up
   past 120), and exploders once you clear 120 kills (their share stepping up
-  past 150). **Wave 3 is the Exploder's wave and nothing else's** — one
+  past 150). The **Tank is the exception to all of that**: it enters the table
+  after wave 2 and holds a flat **~2% of every spawn** for the rest of the run,
+  never ramping with the wave or with progress. It is a rare variant of the
+  standard enemy, not a rung of the difficulty curve — one turns up roughly
+  every fiftieth body, and it is meant to be worth noticing when it does.
+  **Wave 3 is the Exploder's wave and nothing else's** — one
   scripted round where the whole field is bombers, so you meet the type
   properly instead of first learning what one is by standing next to it. It is
   the only wave that overrides the mix; wave 4 picks the ordinary progression
