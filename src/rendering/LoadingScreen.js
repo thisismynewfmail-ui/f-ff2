@@ -120,12 +120,20 @@ export class LoadingScreen {
   _frame(now) {
     if (this._dead) return;
     this._raf = requestAnimationFrame((t) => this._frame(t));
-    const dt = Math.min(0.05, (now - this._last) / 1000);
+    // Two clocks. `dt` is clamped so a stalled tab cannot make the walk jump a
+    // thousand cells in one frame — that is a DRAWING guard. `real` is the
+    // actual elapsed time, and the HANDOFF runs on that: the frame loop is
+    // already up and rendering the world behind this screen, so on a slow
+    // machine frames arrive far apart, and timing the fade off clamped dt made
+    // the handoff take as many times longer as the renderer was slow. The
+    // player waits on a wall clock, not on our frame rate.
+    const real = (now - this._last) / 1000;
+    const dt = Math.min(0.05, real);
     this._last = now;
 
     // ease the displayed progress toward the real one (faster when finishing)
     const rate = this._finishing ? 2.6 : 1.4;
-    this.shown += (this.target - this.shown) * Math.min(1, dt * rate * 3);
+    this.shown += (this.target - this.shown) * Math.min(1, (this._finishing ? real : dt) * rate * 3);
     if (this._finishing && this.shown > 0.999) this.shown = 1;
 
     this._commitSegments();
@@ -135,7 +143,7 @@ export class LoadingScreen {
 
     if (this._finishing && this.shown >= 1 && this._burstT < 0) this._burstT = 0;
     if (this._burstT >= 0) {
-      this._burstT += dt;
+      this._burstT += real;
       if (this._burstT > 0.95 && this._finishing.resolve) {
         this._finishing.resolve();
         this._finishing.resolve = null;

@@ -43,6 +43,8 @@ export class SettingsPanel {
     this._slider(panel, 'MOUSE SENSITIVITY', 'sensitivity', 0.3, 2.5, 0.05, (v) => v.toFixed(2) + 'x');
     this._slider(panel, 'FIELD OF VIEW', 'fov', 70, 110, 1, (v) => v + '°');
     this._slider(panel, 'MASTER VOLUME', 'volume', 0, 1, 0.05, (v) => Math.round(v * 100) + '%');
+    this._slider(panel, 'SURFACE DETAIL', 'detail', 0, 1, 0.05,
+      (v) => (v <= 0 ? 'OFF' : Math.round(v * 100) + '%'));
     this._check(panel, 'INVERT MOUSE Y', 'invertY');
 
     this._el('div', 'tm-set-sub', panel).textContent = 'KEY BINDINGS';

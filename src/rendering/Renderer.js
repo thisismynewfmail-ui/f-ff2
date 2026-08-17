@@ -1,11 +1,32 @@
 import * as THREE from '../../lib/three.module.js';
+import { installSurfaceShading, setDetail } from './SurfaceShading.js';
+import { PostFX } from './PostFX.js';
 
 /**
  * WebGL scene setup tuned for the retro look:
  *  - fixed ~90° horizontal FOV (vertical FOV derived from aspect)
- *  - renders at reduced internal resolution, upscaled with nearest-neighbour
+ *  - renders at reduced internal resolution
  *  - distance fog fading into a dark dusk sky
  *  - flat, pleasant lighting (hemisphere + low warm sun), no shadow maps
+ *
+ * On top of that base it owns the two pieces of the visual pass that have to
+ * exist before anything else is built:
+ *
+ *  - the SURFACE SHADING extension (rendering/SurfaceShading.js), installed
+ *    into the Lambert shader here because it has to be in place before the
+ *    first material in the game compiles;
+ *  - the PRESENTATION chain (rendering/PostFX.js), which the frame is drawn
+ *    through instead of straight to the canvas.
+ *
+ * Those two change what the canvas IS, which is why sizing lives here.
+ * Unposted, the canvas is the old reduced-resolution buffer stretched up by
+ * the browser. Posted, the canvas is the TUBE and runs at full native
+ * resolution, with the small PS1-sized framebuffer living inside PostFX — the
+ * console's pixels have to stay chunky while the scanlines and the phosphor
+ * grille over them stay razor sharp, and one buffer cannot do both.
+ *
+ * Both halves are governed by one `detail` level, so the whole thing is one
+ * switch.
  *
  * Contains no gameplay logic; systems hand it a scene graph to draw.
  */
@@ -18,6 +39,10 @@ export class Renderer {
     this.canvas = canvas;
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(1);
+    // Before any material exists: teach MeshLambertMaterial about relief maps.
+    installSurfaceShading();
+    this.postfx = new PostFX(this.renderer);
+    this.detail = 1;
 
     this.scene = new THREE.Scene();
     // Fog and sky share one color so distant geometry melts into the haze
@@ -56,12 +81,54 @@ export class Renderer {
   }
 
   resize() {
-    const w = window.innerWidth, h = window.innerHeight;
-    this.renderer.setSize(Math.floor(w * RENDER_SCALE), Math.floor(h * RENDER_SCALE), false);
+    const w = Math.max(1, window.innerWidth), h = Math.max(1, window.innerHeight);
+    const posted = !!this.postfx?.enabled;
+    // Posted, the canvas is the tube and it is drawn at TRUE DEVICE PIXELS.
+    // That is not a quality nicety, it is the difference between a phosphor
+    // grille and a rainbow of moire: the stripes are three pixels wide, so on
+    // a HiDPI screen — or any browser zoom that lands on a fraction — a canvas
+    // measured in CSS pixels gets resampled on its way to the glass and the
+    // grille beats against the display's own grid. Capped at 2x, past which
+    // the stripes are finer than anyone can see and it is only cost.
+    // Unposted: the old reduced buffer at ratio 1, exactly as it always was.
+    const ratio = posted ? Math.min(2, window.devicePixelRatio || 1) : 1;
+    const bw = posted ? w : Math.floor(w * RENDER_SCALE);
+    const bh = posted ? h : Math.floor(h * RENDER_SCALE);
+    this.renderer.setPixelRatio(ratio);
+    this.renderer.setSize(bw, bh, false);
+    // The console framebuffer is sized from the DRAWING buffer, not the CSS
+    // box, and is capped by line count either way — so raising the ratio
+    // sharpens the tube without making the world any more expensive to draw.
+    const buf = this.renderer.getDrawingBufferSize(new THREE.Vector2());
+    this.postfx?.setSize(buf.x, buf.y);
     this.canvas.style.width = w + 'px';
     this.canvas.style.height = h + 'px';
     this.camera.aspect = w / h;
     this.applyFov();
+  }
+
+  /**
+   * Settings hook: how much of the visual pass to run, 0..1.
+   *
+   * One number drives both halves — surface relief and the post chain — so
+   * 0 gives back the plain, cheap frame the game drew before any of this
+   * existed, live, with no reload and no recompile.
+   */
+  setDetail(v) {
+    this.detail = Math.max(0, Math.min(1, Number(v) || 0));
+    setDetail(this.detail);
+    this.postfx?.setLevel(this.detail);
+    this.resize(); // the canvas means something different on either side of 0
+  }
+
+  /** Advance the live tube signal (see PostFX.Signal). */
+  updateSignal(dt, healthFrac) {
+    this.postfx?.update(dt, healthFrac);
+  }
+
+  /** Kick the tube: 'surge' | 'damage' | 'glitch'. */
+  pulse(kind, amount) {
+    this.postfx?.pulse(kind, amount);
   }
 
   /** Keep the horizontal FOV fixed regardless of aspect; zoom scales it. */
@@ -86,12 +153,19 @@ export class Renderer {
   }
 
   render() {
+    const overlay = this.overlayEnabled ? this.overlayScene : null;
+    const overlayCam = this.overlayEnabled ? this.overlayCamera : null;
+    if (this.postfx?.enabled) {
+      this.postfx.render(this.scene, this.camera, overlay, overlayCam);
+      return;
+    }
+    this.renderer.setRenderTarget(null);
     this.renderer.autoClear = true;
     this.renderer.render(this.scene, this.camera);
-    if (this.overlayScene && this.overlayCamera && this.overlayEnabled) {
+    if (overlay && overlayCam) {
       this.renderer.autoClear = false;
       this.renderer.clearDepth(); // keep color, draw the weapon on top of everything
-      this.renderer.render(this.overlayScene, this.overlayCamera);
+      this.renderer.render(overlay, overlayCam);
       this.renderer.autoClear = true;
     }
   }
