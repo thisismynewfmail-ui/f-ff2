@@ -75,6 +75,11 @@ export class Renderer {
     this.sunDirection = this.sunLight.position.clone().normalize();
     this.ambLight = new THREE.AmbientLight(0x49525f, 0.8);
     this.scene.add(this.ambLight);
+    // How much daylight there is, 0 (night) … 1 (full day). Written by the Sky
+    // each frame and read by anything that has to keep step with it — the
+    // first-person weapon rig lights and reflects itself off this rather than
+    // carrying its own private idea of what time it is (see WeaponView).
+    this.daylight = 1;
 
     window.addEventListener('resize', () => this.resize());
     this.resize();

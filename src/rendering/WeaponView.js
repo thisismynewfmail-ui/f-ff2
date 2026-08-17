@@ -31,6 +31,14 @@ import { buildSentryTwoModel, poseTwoFolded } from './SentryTwoModel.js';
  *
  * Interface mirrors the old sprite ViewModel: update(dt, player, weaponMgr).
  */
+/**
+ * How much of the sky the weapon's metals reflect: a floor that never goes out
+ * (a lens and a bright receiver both keep a little life at night) plus the part
+ * that rises and falls with the daylight.
+ */
+const ENV_BASE = 0.10;
+const ENV_DAY = 0.42;
+
 /** Where a carried deployable sits in the first-person frame at rest. */
 const HELD_REST = { pos: new THREE.Vector3(0.11, -0.15, -0.46), rot: [0.30, 0.55, 0.05] };
 
@@ -84,16 +92,96 @@ export class WeaponView {
     this._wire();
   }
 
+  /**
+   * The viewmodel's light rig.
+   *
+   * The overlay is its own scene, so it needs its own lights — but they are
+   * NOT independent of the world's. They are driven every frame from the same
+   * sun, hemisphere and ambient the town is lit by (see _syncLighting), which
+   * is the whole point: the gun in your hands is in the same place you are.
+   * Left static, it read as a studio product shot pasted over the game, lit
+   * from the same angle at midnight as at noon.
+   *
+   * What is set here is only the rig's SHAPE — which light does what, and
+   * where the ones that do not follow the sun sit. Every colour and intensity
+   * below is a placeholder overwritten on the first frame.
+   */
   _lighting() {
-    this.scene.add(new THREE.HemisphereLight(0xe0e8f5, 0x3a3428, 1.3));
+    const hemi = new THREE.HemisphereLight(0xe0e8f5, 0x3a3428, 1.3);
+    this.scene.add(hemi);
+    // The key IS the sun (or the moon): _syncLighting swings it to wherever
+    // the sky has put it, transformed into the overlay's own view space.
     const key = new THREE.DirectionalLight(0xfff2e0, 2.6);
     key.position.set(-0.5, 0.9, 0.7); this.scene.add(key);
+    // A fixed cool rim off the far shoulder, carrying the sky's colour.
     const rim = new THREE.DirectionalLight(0xa0b6d8, 1.4);
     rim.position.set(0.8, 0.3, -0.6); this.scene.add(rim);
-    // warm fill from below-right catches the brass; ambient lifts the shadows
+    // Fill from below-right: the bounce off the player's own body and the
+    // ground. This is also the allowance that keeps the weapon READABLE when
+    // the sun is behind you or it is the middle of the night — it is the one
+    // light with a floor under it, because a gun you cannot see is a HUD you
+    // cannot read, and that is worse than a lighting inconsistency.
     const fill = new THREE.PointLight(0xffd8a0, 4, 5, 2);
     fill.position.set(0.5, -0.3, 0.6); this.scene.add(fill);
-    this.scene.add(new THREE.AmbientLight(0x606a7a, 0.55));
+    const amb = new THREE.AmbientLight(0x606a7a, 0.55);
+    this.scene.add(amb);
+    this.lights = { hemi, key, rim, fill, amb };
+    this._sunDir = new THREE.Vector3();
+    this._qInv = new THREE.Quaternion();
+    this._warmFill = new THREE.Color(0xffd8a0);
+  }
+
+  /**
+   * Put the viewmodel under the world's sky.
+   *
+   * The world's sun/moon direction is in WORLD space and the overlay scene is
+   * drawn by a camera fixed at the origin, so the direction is rotated by the
+   * inverse of the world camera's orientation to land in the overlay's space.
+   * That is what makes the highlight travel across the receiver as you turn on
+   * the spot, instead of being painted on.
+   *
+   * Every intensity is a multiple of the world's own, so the rig cannot drift
+   * out of step with the town again: change the day/night curve in Sky.js and
+   * the weapon follows.
+   */
+  _syncLighting() {
+    const L = this.lights;
+    if (!L) return;
+    const r = this.renderer;
+    const sun = r.sunLight, hemi = r.hemiLight, amb = r.ambLight;
+    if (!sun || !hemi || !amb) return;
+    const day = Math.max(0, Math.min(1, r.daylight ?? 1));
+
+    // The key light, swung to wherever the sky put the sun.
+    this._qInv.copy(r.camera.quaternion).invert();
+    this._sunDir.copy(sun.position).normalize().applyQuaternion(this._qInv);
+    L.key.position.copy(this._sunDir).multiplyScalar(6);
+    L.key.color.copy(sun.color);
+    // Every multiplier below is chosen so that at FULL DAYLIGHT the rig lands
+    // back on the brightness it was originally authored at. What changes is not
+    // how bright the weapon is at noon — that was right — but that it now falls
+    // away with the sun instead of staying at noon all night. Cutting the
+    // daylight diffuse as well would only trade one wrong reading for another.
+    L.key.intensity = sun.intensity * 1.78;
+
+    L.hemi.color.copy(hemi.color);
+    L.hemi.groundColor.copy(hemi.groundColor);
+    L.hemi.intensity = hemi.intensity * 1.04;
+
+    L.rim.color.copy(hemi.color);
+    L.rim.intensity = hemi.intensity * 0.80;
+
+    L.amb.color.copy(amb.color);
+    L.amb.intensity = amb.intensity * 0.62 + 0.08;
+
+    // The readability floor, and the only light that has one.
+    L.fill.color.copy(amb.color).lerp(this._warmFill, day * 0.6);
+    L.fill.intensity = 0.45 + amb.intensity * 3.2;
+
+    // Reflections fall with the light. A polished receiver mirroring a bright
+    // sky at midnight is the single most obvious way the old rig gave itself
+    // away, and it is also most of what read as "too shiny" by day.
+    this.scene.environmentIntensity = ENV_BASE + day * ENV_DAY;
   }
 
   /** Procedural environment so the metals get real reflections. */
@@ -102,17 +190,23 @@ export class WeaponView {
       const c = document.createElement('canvas'); c.width = 128; c.height = 64;
       const ctx = c.getContext('2d');
       const grd = ctx.createLinearGradient(0, 0, 0, 64);
-      grd.addColorStop(0, '#d2dbea'); grd.addColorStop(0.45, '#8f9cb0');
-      grd.addColorStop(0.5, '#5a626e'); grd.addColorStop(1, '#22262e');
+      grd.addColorStop(0, '#bcc6d6'); grd.addColorStop(0.45, '#8b96a8');
+      grd.addColorStop(0.5, '#5f6672'); grd.addColorStop(1, '#2a2e36');
       ctx.fillStyle = grd; ctx.fillRect(0, 0, 128, 64);
-      ctx.fillStyle = 'rgba(255,244,220,0.95)'; ctx.beginPath();
-      ctx.ellipse(40, 18, 20, 11, 0, 0, Math.PI * 2); ctx.fill(); // warm sky lamp
+      // A soft warm patch overhead, not a lamp. The hard bright ellipse this
+      // replaces was a mirror-sharp highlight on every metal part of every
+      // weapon, and the brightest thing in the frame at any hour.
+      const lamp = ctx.createRadialGradient(40, 18, 2, 40, 18, 26);
+      lamp.addColorStop(0, 'rgba(255,247,230,0.55)');
+      lamp.addColorStop(1, 'rgba(255,247,230,0)');
+      ctx.fillStyle = lamp;
+      ctx.beginPath(); ctx.ellipse(40, 18, 26, 15, 0, 0, Math.PI * 2); ctx.fill();
       const eq = new THREE.CanvasTexture(c);
       eq.mapping = THREE.EquirectangularReflectionMapping;
       eq.colorSpace = THREE.SRGBColorSpace;
       const pmrem = new THREE.PMREMGenerator(this.renderer.renderer);
       this.scene.environment = pmrem.fromEquirectangular(eq).texture;
-      this.scene.environmentIntensity = 1.15;
+      this.scene.environmentIntensity = ENV_BASE + ENV_DAY;
       pmrem.dispose(); eq.dispose();
     } catch (e) {
       // software / restricted WebGL: fall back to lights alone
@@ -377,6 +471,10 @@ export class WeaponView {
 
   update(dt, player, weaponManager) {
     this.t += dt;
+    // Before anything is posed: put the rig under the world's current sky.
+    // Game.update runs Sky and applyCamera ahead of this, so both the lights
+    // and the camera orientation this reads are already this frame's.
+    this._syncLighting();
 
     // keep viewmodel aspect matched to the world camera
     if (this.camera.aspect !== this.renderer.camera.aspect) {
