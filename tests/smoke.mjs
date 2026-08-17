@@ -1124,7 +1124,12 @@ const pauseData = await page.evaluate(async () => {
   // Arm, then read what is actually RUNNING. A style that snapped to its value
   // produces no Animation object at all, which is the difference between a
   // panel that animates and one that merely ends up correct.
-  await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(r))));
+  //
+  // One frame to get the styles applied and the transitions started, then a
+  // WALL-CLOCK beat. Counting frames is the wrong clock for "a moment later":
+  // on a slow renderer three frames can outlast the 0.95s needle sweep itself,
+  // and this would report a gauge that animated perfectly as not animating.
+  await new Promise((r) => requestAnimationFrame(() => setTimeout(r, 30)));
   const running = (sel) => (q(sel)?.getAnimations() ?? []).map((a) => a.animationName || 'transition');
   out.armed = q('#pause-case').classList.contains('armed');
   out.setCell = parseFloat(q('.cell-fill').style.height);
