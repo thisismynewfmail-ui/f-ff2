@@ -1121,28 +1121,43 @@ const pauseData = await page.evaluate(async () => {
     restTape: parseFloat(q('.tape-run').style.width),
     restTapePx: q('.tape-run').getBoundingClientRect().width,
   };
-  // Arm, then read what is actually RUNNING. A style that snapped to its value
-  // produces no Animation object at all, which is the difference between a
-  // panel that animates and one that merely ends up correct.
+  // Arm, then catch each instrument WHILE it is moving. A style that snapped
+  // to its value produces no Animation object at all, which is the difference
+  // between a panel that animates and one that merely ends up correct.
   //
-  // One frame to get the styles applied and the transitions started, then a
-  // WALL-CLOCK beat. Counting frames is the wrong clock for "a moment later":
-  // on a slow renderer three frames can outlast the 0.95s needle sweep itself,
-  // and this would report a gauge that animated perfectly as not animating.
-  await new Promise((r) => requestAnimationFrame(() => setTimeout(r, 30)));
+  // Poll on a wall clock rather than counting animation frames. The panel arms
+  // across two frames by design (see HUD.fillPauseStats) and the sweeps last
+  // under a second, so a fixed frame count has no safe value: on a slow
+  // renderer two frames land before anything is armed and three land after
+  // the shortest sweep has already finished, and either way an instrument that
+  // animated perfectly gets reported as snapping. Each part is recorded the
+  // first time it is seen running, so what is asserted is exactly what the
+  // check means — every one of them moved.
+  const parts = {
+    cell: '.cell-fill',
+    needle: '.bay-aim .dev-needle',
+    tape: '.tape-head',
+    bay: '.bay-vitals',
+    lamp: '.pause-lamp',
+    punch: '.tape-punch',
+    button: '#btn-resume',
+  };
   const running = (sel) => (q(sel)?.getAnimations() ?? []).map((a) => a.animationName || 'transition');
+  out.moving = Object.fromEntries(Object.keys(parts).map((k) => [k, []]));
+  const deadline = performance.now() + 8000;
+  while (performance.now() < deadline) {
+    let all = true;
+    for (const [k, sel] of Object.entries(parts)) {
+      if (out.moving[k].length) continue;
+      const seen = running(sel);
+      if (seen.length) out.moving[k] = seen; else all = false;
+    }
+    if (all) break;
+    await new Promise((r) => setTimeout(r, 8));
+  }
   out.armed = q('#pause-case').classList.contains('armed');
   out.setCell = parseFloat(q('.cell-fill').style.height);
   out.setTape = parseFloat(q('.tape-run').style.width);
-  out.moving = {
-    cell: running('.cell-fill'),
-    needle: running('.bay-aim .dev-needle'),
-    tape: running('.tape-head'),
-    bay: running('.bay-vitals'),
-    lamp: running('.pause-lamp'),
-    punch: running('.tape-punch'),
-    button: running('#btn-resume'),
-  };
   out.tubesLit = document.querySelectorAll('.vtube.lit').length;
   out.lampsLit = document.querySelectorAll('.sec-lamp.lit').length;
   out.secretsTotal = document.querySelectorAll('.sec-lamp').length;
