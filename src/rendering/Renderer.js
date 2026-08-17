@@ -82,13 +82,25 @@ export class Renderer {
 
   resize() {
     const w = Math.max(1, window.innerWidth), h = Math.max(1, window.innerHeight);
-    // Posted: the canvas is the tube, at native resolution. Unposted: the old
-    // reduced buffer, upscaled by the browser exactly as it always was.
     const posted = !!this.postfx?.enabled;
+    // Posted, the canvas is the tube and it is drawn at TRUE DEVICE PIXELS.
+    // That is not a quality nicety, it is the difference between a phosphor
+    // grille and a rainbow of moire: the stripes are three pixels wide, so on
+    // a HiDPI screen — or any browser zoom that lands on a fraction — a canvas
+    // measured in CSS pixels gets resampled on its way to the glass and the
+    // grille beats against the display's own grid. Capped at 2x, past which
+    // the stripes are finer than anyone can see and it is only cost.
+    // Unposted: the old reduced buffer at ratio 1, exactly as it always was.
+    const ratio = posted ? Math.min(2, window.devicePixelRatio || 1) : 1;
     const bw = posted ? w : Math.floor(w * RENDER_SCALE);
     const bh = posted ? h : Math.floor(h * RENDER_SCALE);
+    this.renderer.setPixelRatio(ratio);
     this.renderer.setSize(bw, bh, false);
-    this.postfx?.setSize(bw, bh);
+    // The console framebuffer is sized from the DRAWING buffer, not the CSS
+    // box, and is capped by line count either way — so raising the ratio
+    // sharpens the tube without making the world any more expensive to draw.
+    const buf = this.renderer.getDrawingBufferSize(new THREE.Vector2());
+    this.postfx?.setSize(buf.x, buf.y);
     this.canvas.style.width = w + 'px';
     this.canvas.style.height = h + 'px';
     this.camera.aspect = w / h;
