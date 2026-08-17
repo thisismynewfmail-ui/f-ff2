@@ -448,6 +448,22 @@ export class Game {
         p.position.x + fx * 1.5, p.position.z + fz * 1.5, p.position.y);
       this.inventory.close();
     });
+
+    // --- the tube is wired to the game ------------------------------------
+    // The picture is not a filter sitting on top of play, it is a signal that
+    // play interferes with (see rendering/PostFX.js). Muzzle blast and blasts
+    // surge the beam; getting hit tears the tracking and splits the guns; a
+    // wave landing punches the vertical hold. Everything decays back to a
+    // clean picture on its own, so nothing here can leave the screen broken.
+    this.events.on('weapon:fire', ({ weapon }) => {
+      if (!weapon?.isMelee) this.renderer.pulse('surge', 0.35 + (weapon?.config?.kick ?? 1) * 0.05);
+    });
+    this.events.on('player:damage', ({ amount }) => {
+      this.renderer.pulse('damage', Math.min(1, 0.3 + amount * 0.035));
+    });
+    this.events.on('wave:start', () => this.renderer.pulse('glitch', 0.75));
+    this.events.on('zone:unlock', () => this.renderer.pulse('glitch', 0.9));
+    this.events.on('sentry:fire', () => this.renderer.pulse('surge', 0.16));
   }
 
   startPlaying() {
@@ -605,6 +621,10 @@ export class Game {
     this.player.sensitivity = s.sensitivity;
     this.player.invertY = !!s.invertY;
     this.renderer.setBaseFov(s.fov);
+    this.renderer.setDetail(s.detail ?? 1);
+    // The HUD's own CSS scanline pass stands down while the renderer is
+    // drawing real ones (see styles.css #hud.tube).
+    this.hudRoot.classList.toggle('tube', this.renderer.detail > 0);
     this.audio.setVolume(s.volume);
     this.input.setBindings(s.bindings);
   }
@@ -875,6 +895,9 @@ export class Game {
     this.sky.update(dt, cam.position);
     this.effects.update(dt, cam.position);
     this.audio.update(dt, this.player, this.spawner.nearbyCount(this.player));
+    // How hurt you are is readable off the picture itself: the signal gets
+    // noisier and the hum bar climbs as health falls.
+    this.renderer.updateSignal(dt, this.player.health / this.player.maxHealth);
 
     // camera + first-person layer
     this.player.applyCamera(cam, this.effects.shakeOffset());

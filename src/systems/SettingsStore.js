@@ -10,7 +10,10 @@ import { DEFAULT_BINDINGS, MAX_SLOTS, normalizeBindings } from '../engine/KeyBin
  * the Game routes that to the camera/audio/input so settings take effect live.
  */
 const SETTINGS_KEY = 'gbts.settings.v1';
-const DEFAULTS = { sensitivity: 1.0, fov: 90, volume: 0.5, invertY: false };
+// `detail` drives the whole visual pass — surface relief and the post chain
+// (see rendering/Renderer.setDetail). 1 is the intended look; 0 is the plain,
+// cheap frame, which is the escape hatch on weak hardware.
+const DEFAULTS = { sensitivity: 1.0, fov: 90, volume: 0.5, invertY: false, detail: 1 };
 
 export class SettingsStore {
   constructor(onApply) {

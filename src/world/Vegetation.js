@@ -1,4 +1,5 @@
 import * as THREE from '../../lib/three.module.js';
+import { applyRelief } from '../rendering/SurfaceShading.js';
 
 /**
  * Trees, bushes, hedges, flower beds, grass, weeds and wall creepers.
@@ -80,6 +81,9 @@ export class Vegetation {
     this._wind ??= { value: 0 };
     this._windVec ??= { value: WIND };
     mat.onBeforeCompile = (shader) => {
+      // Instance hook: shadows the prototype, so relief is invited in by hand
+      // (see SurfaceShading.js). Every other cutout here gets it automatically.
+      applyRelief(shader.uniforms, mat.map);
       shader.uniforms.uWindT = this._wind;
       shader.uniforms.uWind = this._windVec;
       shader.vertexShader = shader.vertexShader

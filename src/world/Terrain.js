@@ -1,4 +1,5 @@
 import * as THREE from '../../lib/three.module.js';
+import { applyRelief } from '../rendering/SurfaceShading.js';
 
 /**
  * Heightfield terrain for the whole town.
@@ -195,6 +196,12 @@ export class Terrain {
     const lush = texLib.tiled('grassLush', R, R);
     const wild = texLib.tiled('grassWild', R, R);
     mat.onBeforeCompile = (s) => {
+      // An instance hook shadows the prototype one, so the surface-relief
+      // extension has to be invited in by hand here (see SurfaceShading.js).
+      // All four grasses share the lawn's relief: they are the same blades in
+      // four states of thirst, and one fetch on the map's single largest
+      // surface is worth far more than four.
+      applyRelief(s.uniforms, 'grass');
       s.uniforms.mapDry = { value: dry };
       s.uniforms.mapLush = { value: lush };
       s.uniforms.mapWild = { value: wild };

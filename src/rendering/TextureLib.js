@@ -1,10 +1,17 @@
 import * as THREE from '../../lib/three.module.js';
 import { TEXTURES, SPRITES, TEXTURE_DIR, SPRITE_DIR } from './TextureConfig.js';
 import { assetUrl } from './assetUrl.js';
+import { registerRelief } from './Relief.js';
 
 /**
  * Loads every texture named in TextureConfig and prepares it for the retro
  * pipeline: nearest-neighbour filtering, no mipmap blur, repeat wrapping.
+ *
+ * Each world texture is also baked into a RELIEF MAP as it lands — the depth,
+ * cavity and gloss recovered from the art itself, which is what lets the sun
+ * shade within a surface instead of only across it (see Relief.js and
+ * SurfaceShading.js). The bake rides along with the load so its cost is spread
+ * under the loading bar rather than stalling the first frame.
  *
  * Sprite sheets ship as RGB on a white background, so they are keyed at load
  * time: a flood fill from the image border removes only the connected white
@@ -26,6 +33,7 @@ export class TextureLib {
       jobs.push(loadImage(TEXTURE_DIR + file).then((img) => {
         this.images.set(name, img);
         this.textures.set(name, makeTexture(img));
+        registerRelief(name, img);
         tick();
       }));
     }
