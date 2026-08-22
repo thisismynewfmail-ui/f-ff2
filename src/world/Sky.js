@@ -38,6 +38,7 @@ export class Sky {
     this.hemi = renderer.hemiLight;
     this.sun = renderer.sunLight;
     this.amb = renderer.ambLight;
+    this.renderer = renderer;   // to publish `daylight`; see update()
     this.phase = START_PHASE;
     this._el = 1;
 
@@ -154,6 +155,10 @@ export class Sky {
     }
     this.hemi.intensity = 0.4 + day * 0.85;
     this.amb.intensity = 0.32 + day * 0.55;
+    // Publish the time of day for anything that has to light itself in step
+    // with the town rather than on its own schedule — see WeaponView, whose
+    // overlay scene has no access to this one's lights except through here.
+    this.renderer.daylight = day;
 
     // Clouds are mostly seen from below (their shadowed underside), so lift a
     // day-driven emissive floor: bright and puffy by day, dim by night, with a

@@ -136,6 +136,9 @@ uniform vec4 gbSheen;
 uniform vec2 gbCarve;
 uniform float gbDetail;
 
+// The most a highlight may ever add, in linear light.
+#define GB_SPEC_CEIL 0.42
+
 // Tangent frame from screen-space derivatives — the same construction
 // three.js uses for un-tangented normal maps, inlined here because the stock
 // one is only compiled in when a material carries a real normalMap.
@@ -218,7 +221,14 @@ const SPECULAR = /* glsl */`	vec3 gbSpec = vec3( 0.0 );
 		vec3 gbV = normalize( vViewPosition );
 		float gbGloss = gbRelief.z * gbSurf.a;
 		float gbShine = gbRelief.w;
-		float gbNorm = ( gbShine + 8.0 ) / 24.0;   // keep energy roughly fixed as the lobe tightens
+		// Blinn normalisation keeps the lobe's total energy roughly fixed as it
+		// tightens, so a sharp highlight is not quieter than a broad one. The
+		// textbook divisor is 8*PI; this is a good deal gentler than that,
+		// because a physical BRDF would be taking energy OUT of the diffuse to
+		// pay for the highlight and this one cannot — the diffuse is the art.
+		// Adding a full metal lobe on top of full Lambert diffuse is what
+		// turned every metal surface into a flare.
+		float gbNorm = ( gbShine + 8.0 ) / 64.0;
 		IncidentLight gbLight;
 		#if NUM_DIR_LIGHTS > 0
 			// The sun and the moon. This is the highlight that travels across
@@ -260,6 +270,13 @@ const SPECULAR = /* glsl */`	vec3 gbSpec = vec3( 0.0 );
 			gbSpec += gbEnv * ( gbSheen.x * gbF * mix( 0.35, 1.0, gbSurf.a ) );
 		}
 		#endif
+		// A HARD CEILING on the highlight, as a soft shoulder so it rolls
+		// rather than plateauing. This is the guarantee, not the tuning: no
+		// combination of profile, light intensity and grazing angle can put a
+		// blown white hole on a metal surface, whatever anyone sets the gloss
+		// to later. Specular is a sheen on top of the art here, and half a stop
+		// is as much as a sheen ever needs.
+		gbSpec = gbSpec / ( 1.0 + gbSpec / GB_SPEC_CEIL );
 		gbSpec *= gbFade;
 	}
 	#endif

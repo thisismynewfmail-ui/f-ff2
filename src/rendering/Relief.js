@@ -49,8 +49,9 @@ import * as THREE from '../../lib/three.module.js';
  * -------------------------------------------------------------- profiles
  *
  * A bake is only ever as good as its assumptions, and the assumptions differ
- * per material — brickwork is deep and dead matt, sheet metal is shallow and
- * mirror-bright, glass is flat and glassy, grass is fine and matt. So every
+ * per material — brickwork is deep and dead matt, sheet metal is shallow with
+ * a tight glint, glass is flat and catches the sky, grass is fine and matt. So
+ * every
  * texture is assigned a PROFILE (see PROFILES / profileFor) that sets how
  * hard the art is read and how the surface answers light. That is the
  * difference between "a normal map was applied" and a wall that looks like
@@ -77,8 +78,8 @@ import * as THREE from '../../lib/three.module.js';
 
 const BASE = {
   smooth: 1, blur: 3, detail: 1, form: 0.08, strength: 3.2,
-  cavGain: 1.8, cavity: 0.52, shadow: 0.7, gloss: 0.12, glossVar: 0.35, shine: 18,
-  env: 0.14, fresnel: 0.8,
+  cavGain: 1.8, cavity: 0.52, shadow: 0.7, gloss: 0.07, glossVar: 0.35, shine: 18,
+  env: 0.08, fresnel: 0.8,
 };
 
 const P = (o) => ({ ...BASE, ...o });
@@ -87,46 +88,52 @@ const P = (o) => ({ ...BASE, ...o });
 export const PROFILES = {
   // Masonry. The deepest relief in the game: mortar courses are real gaps and
   // a brick wall raked by a low sun should read as a grid of little shadows.
-  masonry: P({ blur: 3, strength: 5.6, cavGain: 3.0, cavity: 0.85, shadow: 1.0, gloss: 0.10, shine: 13, env: 0.14 }),
+  masonry: P({ blur: 3, strength: 5.6, cavGain: 3.0, cavity: 0.85, shadow: 1.0, gloss: 0.06, shine: 13, env: 0.08 }),
   // Cut stone and plinths: same depth, calmer face, a faint polished sheen.
-  stone: P({ blur: 4, strength: 4.8, cavGain: 2.6, cavity: 0.74, shadow: 0.9, gloss: 0.18, shine: 24, env: 0.24 }),
+  stone: P({ blur: 4, strength: 4.8, cavGain: 2.6, cavity: 0.74, shadow: 0.9, gloss: 0.10, shine: 24, env: 0.11 }),
   // Lapped timber. Each board stands off the one below it, so the step at the
   // lap is the feature — crisp, and shallower across the board face.
-  plank: P({ smooth: 1, blur: 2, strength: 4.6, cavGain: 2.4, cavity: 0.72, shadow: 1.0, gloss: 0.22, glossVar: 0.5, shine: 30, env: 0.20 }),
+  plank: P({ smooth: 1, blur: 2, strength: 4.6, cavGain: 2.4, cavity: 0.72, shadow: 1.0, gloss: 0.12, glossVar: 0.5, shine: 30, env: 0.10 }),
   // Render, plaster, poured concrete: a fine tooth, almost no gloss.
-  render: P({ blur: 2, strength: 3.2, cavGain: 1.8, cavity: 0.52, shadow: 0.6, gloss: 0.08, shine: 16, env: 0.12 }),
+  render: P({ blur: 2, strength: 3.2, cavGain: 1.8, cavity: 0.52, shadow: 0.6, gloss: 0.05, shine: 16, env: 0.07 }),
   // Sheet metal. Shallow, but it is the one surface that really GLINTS: a
   // tight highlight that slides along the flutes as you walk past it.
-  metal: P({ smooth: 1, blur: 3, strength: 3.6, cavGain: 1.8, cavity: 0.46, shadow: 0.7, gloss: 0.95, glossVar: 0.55, shine: 58, env: 0.75, fresnel: 0.6 }),
+  metal: P({ smooth: 1, blur: 3, strength: 3.6, cavGain: 1.8, cavity: 0.46, shadow: 0.7, gloss: 0.26, glossVar: 0.55, shine: 44, env: 0.22, fresnel: 0.6 }),
   // Rusted metal: the pitting is deep, the shine is mostly gone with it.
-  rust: P({ blur: 2, strength: 4.2, cavGain: 2.2, cavity: 0.66, shadow: 0.9, gloss: 0.30, glossVar: 0.7, shine: 26, env: 0.30 }),
-  // Polished metal (brass fittings, gilding): flat and hot.
-  polish: P({ blur: 3, strength: 2.4, cavGain: 1.3, cavity: 0.34, shadow: 0.4, gloss: 1.20, glossVar: 0.4, shine: 84, env: 1.05, fresnel: 0.5 }),
+  rust: P({ blur: 2, strength: 4.2, cavGain: 2.2, cavity: 0.66, shadow: 0.9, gloss: 0.13, glossVar: 0.7, shine: 26, env: 0.11 }),
+  // Polished metal (brass fittings, gilding): flat, and the tightest highlight
+  // in the set — tight, not bright. Every gloss here is a SHEEN on top of art
+  // that is already fully lit by the diffuse term, so these numbers are far
+  // below what a physical metal reflectance would be: the shader cannot take
+  // the energy back out of the diffuse to pay for the highlight, and a metal
+  // lobe at its true strength on top of a full Lambert surface is exactly what
+  // put a flare on every brass fitting and gun receiver in the game.
+  polish: P({ blur: 3, strength: 2.4, cavGain: 1.3, cavity: 0.34, shadow: 0.4, gloss: 0.32, glossVar: 0.4, shine: 62, env: 0.30, fresnel: 0.5 }),
   // Glass. Nearly flat, and almost all of its look is the sky it reflects —
   // which is why windows finally read as windows once the sheen turns on.
-  glass: P({ blur: 3, strength: 1.6, cavGain: 1.1, cavity: 0.28, shadow: 0.3, gloss: 1.10, glossVar: 0.3, shine: 96, env: 1.30, fresnel: 0.9 }),
+  glass: P({ blur: 3, strength: 1.6, cavGain: 1.1, cavity: 0.28, shadow: 0.3, gloss: 0.30, glossVar: 0.3, shine: 72, env: 0.38, fresnel: 0.9 }),
   // Fired/glazed tile, marble, slate: crisp joints, a wet-looking face.
-  tile: P({ blur: 3, strength: 3.8, cavGain: 2.2, cavity: 0.62, shadow: 0.8, gloss: 0.60, glossVar: 0.4, shine: 52, env: 0.50 }),
+  tile: P({ blur: 3, strength: 3.8, cavGain: 2.2, cavity: 0.62, shadow: 0.8, gloss: 0.18, glossVar: 0.4, shine: 42, env: 0.17 }),
   // Roofing. Seen from below and at a rake, so the course steps matter most.
-  shingle: P({ blur: 3, strength: 5.0, cavGain: 2.8, cavity: 0.80, shadow: 1.0, gloss: 0.18, shine: 22, env: 0.18 }),
+  shingle: P({ blur: 3, strength: 5.0, cavGain: 2.8, cavity: 0.80, shadow: 1.0, gloss: 0.10, shine: 22, env: 0.09 }),
   // Ground cover. Fine and matt — enough to break the flatness of a lawn
   // underfoot without turning the map into a bumpy mess at distance.
-  ground: P({ smooth: 1, blur: 2, strength: 3.0, cavGain: 1.7, cavity: 0.46, shadow: 0.5, gloss: 0.06, shine: 10, env: 0.08 }),
+  ground: P({ smooth: 1, blur: 2, strength: 3.0, cavGain: 1.7, cavity: 0.46, shadow: 0.5, gloss: 0.04, shine: 10, env: 0.05 }),
   // Made ground: asphalt and pavement keep a low damp sheen, which is what
   // stops a road reading as grey felt.
-  asphalt: P({ blur: 3, strength: 2.6, cavGain: 1.5, cavity: 0.40, shadow: 0.4, gloss: 0.32, glossVar: 0.5, shine: 34, env: 0.40, fresnel: 0.95 }),
+  asphalt: P({ blur: 3, strength: 2.6, cavGain: 1.5, cavity: 0.40, shadow: 0.4, gloss: 0.15, glossVar: 0.5, shine: 34, env: 0.17, fresnel: 0.95 }),
   // Loose aggregate: gravel and rubble are all relief and no shine.
-  aggregate: P({ smooth: 0, blur: 2, strength: 4.6, cavGain: 2.5, cavity: 0.70, shadow: 1.0, gloss: 0.10, shine: 12, env: 0.10 }),
+  aggregate: P({ smooth: 0, blur: 2, strength: 4.6, cavGain: 2.5, cavity: 0.70, shadow: 1.0, gloss: 0.06, shine: 12, env: 0.06 }),
   // Cloth: soft, deep-ish weave, no highlight to speak of.
-  fabric: P({ blur: 3, strength: 3.2, cavGain: 2.0, cavity: 0.52, shadow: 0.6, gloss: 0.08, shine: 12, env: 0.07 }),
+  fabric: P({ blur: 3, strength: 3.2, cavGain: 2.0, cavity: 0.52, shadow: 0.6, gloss: 0.05, shine: 12, env: 0.05 }),
   // Cutout planting. Gentle — the silhouette does the work, and hard normals
   // on a two-triangle leaf card look like foil.
-  foliage: P({ blur: 2, strength: 2.4, cavGain: 1.4, cavity: 0.42, shadow: 0.3, gloss: 0.18, glossVar: 0.5, shine: 24, env: 0.16 }),
-  bark: P({ smooth: 0, blur: 2, strength: 5.2, cavGain: 2.6, cavity: 0.78, shadow: 1.0, gloss: 0.07, shine: 11, env: 0.09 }),
+  foliage: P({ blur: 2, strength: 2.4, cavGain: 1.4, cavity: 0.42, shadow: 0.3, gloss: 0.10, glossVar: 0.5, shine: 24, env: 0.09 }),
+  bark: P({ smooth: 0, blur: 2, strength: 5.2, cavGain: 2.6, cavity: 0.78, shadow: 1.0, gloss: 0.04, shine: 11, env: 0.05 }),
   // Water: flat, and almost entirely the sky.
-  water: P({ blur: 3, strength: 1.8, cavGain: 0.9, cavity: 0.18, shadow: 0.2, gloss: 1.30, glossVar: 0.2, shine: 120, env: 1.40, fresnel: 0.9 }),
+  water: P({ blur: 3, strength: 1.8, cavGain: 0.9, cavity: 0.18, shadow: 0.2, gloss: 0.34, glossVar: 0.2, shine: 84, env: 0.40, fresnel: 0.9 }),
   // Printed matter: paper tooth and a hint of ink sheen, nothing more.
-  paper: P({ blur: 2, strength: 1.8, cavGain: 1.2, cavity: 0.36, shadow: 0.4, gloss: 0.14, shine: 26, env: 0.14 }),
+  paper: P({ blur: 2, strength: 1.8, cavGain: 1.2, cavity: 0.36, shadow: 0.4, gloss: 0.08, shine: 26, env: 0.08 }),
 };
 
 /**

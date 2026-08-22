@@ -32,14 +32,21 @@ import * as THREE from '../../lib/three.module.js';
  * the tube is wired to what is happening in it (see Signal, and the event
  * wiring in engine/Game.js):
  *
- *   - firing surges the beam: the whole picture flares for a frame or two and
- *     the bloom jumps, so a burst of automatic fire strobes the room
+ *   - firing surges the beam: the picture lifts for a frame or two, so a burst
+ *     of automatic fire pulses the room
  *   - taking a hit breaks the signal: horizontal tracking tears, the colour
  *     channels split apart, and static crawls over the picture
  *   - bleeding out holds that fault: the lower your health, the noisier the
- *     signal and the harder the mains hum bar rolls up the screen, so you can
- *     read your own condition off the picture without looking at the HUD
+ *     signal and the redder the rim, so you can read your own condition off
+ *     the picture without looking at the HUD
  *   - a new wave punches the vertical hold for a moment, like a channel change
+ *
+ * There is deliberately NO rolling hum bar. A bright band travelling up the
+ * screen is one of the most recognisable CRT artefacts there is, and it was the
+ * first thing to go: it sweeps across whatever you are trying to shoot on a
+ * cycle that has nothing to do with the game, and a periodic distraction you
+ * cannot act on is worse than no effect at all. The scanlines are fixed to the
+ * glass. Nothing in this pass crawls.
  *
  * The split between the two is also where the cost went. Everything expensive
  * — the occlusion, the halation, the grade, the 15-bit crush — is CONSOLE
@@ -58,16 +65,27 @@ import * as THREE from '../../lib/three.module.js';
 /** The console's framebuffer: fixed line count, PS1-ish. */
 const SIGNAL_LINES = 448;
 
-/** Bloom threshold / soft knee, in linear light. */
-const BLOOM_THRESHOLD = 0.80;
-const BLOOM_KNEE = 0.5;
+/**
+ * Bloom threshold / soft knee, in linear light.
+ *
+ * The threshold sits ABOVE white on purpose. The weapon viewmodel is lit by
+ * its own rig and carries a real environment map, so its polished metal throws
+ * specular hits that are legitimately several times over-range — and a
+ * threshold below 1.0 catches those and turns a highlight on the receiver into
+ * a white hole burnt through the middle of the frame, right where you are
+ * aiming. Only genuinely emissive things belong in the bloom: the sun and moon,
+ * lit windows, muzzle flashes, the odd hot glint. Everything else keeps its
+ * light in its own pixels.
+ */
+const BLOOM_THRESHOLD = 1.15;
+const BLOOM_KNEE = 0.65;
 
 /** Grade — see the class comment for why each is what it is. */
 const EXPOSURE = 1.14;
 const CONTRAST = 1.20;     // exponent about middle grey
 const SATURATION = 1.28;
 const SHOULDER = 0.76;     // identity below this, soft rolloff above
-const BLOOM = 0.85;
+const BLOOM = 0.26;
 const AO_STRENGTH = 0.50;
 const AO_RADIUS = 0.42;    // metres
 const SPLIT = 0.14;
@@ -492,12 +510,13 @@ void main() {
 	vec3 col = texture2D( tScene, uv ).rgb;
 
 	// Halation: light spilling sideways inside the glass. Two scales, so a
-	// flash gets both a tight core and a wide soft glow.
+	// flash gets both a tight core and a wide soft glow — but gently. This is
+	// the glass scattering a little of what passes through it, not a glow pass.
 	col += ( texture2D( tBloomNear, uv ).rgb * 0.6 + texture2D( tBloomFar, uv ).rgb * 0.4 )
-		* ( uGrade.w * ( 1.0 + surge * 1.6 ) );
+		* ( uGrade.w * ( 1.0 + surge * 0.45 ) );
 
 	col *= gbAmbientOcclusion( uv );
-	col *= uGrade.x * ( 1.0 + surge * 0.35 );
+	col *= uGrade.x * ( 1.0 + surge * 0.20 );
 
 	// ------------------------------------------------------------- the grade
 	// Contrast about middle grey, on luminance alone: the ratio between the
@@ -639,11 +658,6 @@ void main() {
 		step( 1.5, phase ) );
 
 	col *= scan * mask * uTube.y * ( 1.0 + surge * 0.25 );
-
-	// Mains hum: a soft bright bar rolling up the picture. Barely there when
-	// you are healthy, and it climbs as you bleed.
-	float hum = smoothstep( 0.86, 1.0, fract( vUv.y * 0.5 + uTime * 0.09 ) );
-	col *= 1.0 + hum * ( 0.04 + hurt * 0.16 + fault * 0.10 );
 
 	// Static. Locked to the console grid so it reads as snow rather than fizz,
 	// and zero-mean so a noisy signal is never a BRIGHTER one — noise that
