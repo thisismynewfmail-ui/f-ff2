@@ -31,6 +31,26 @@ import * as THREE from '../../lib/three.module.js';
  *   partitions: [{axis:'x'|'z', at, from, to, gapAt, gapW, tex}]
  *                                     interior walls with door gaps (local
  *                                     coordinates), colliding like real walls
+ *
+ * ARTICULATION — the difference between a building and a box. A prism with a
+ * good texture on it is still a prism; what stops one reading as a block is
+ * relief you can see the shadow of from across a square, and a silhouette
+ * that is not a single rectangle. These are opt-in per spec because a garage
+ * on a back lane genuinely IS a box and should stay one:
+ *   pilasters: true                   corner strips with a moulded capital,
+ *                                     standing proud the whole height
+ *   parapet: true|number              flat roofs only: a real cornice with a
+ *                                     dentil course, a parapet wall over it
+ *                                     and a coping on top of that
+ *   entrance: 'portico'|'hood'        the door gets emphasis — a pedimented
+ *                                     portico on columns, or a bracketed hood
+ *   bay: true|{side, at, width, top}  a canted bay window projecting from an
+ *                                     elevation (default: the door's), with
+ *                                     its own moulded base and lead roof
+ *   wing: {side, w, d, h, roof}       a LOWER attached volume, so the massing
+ *                                     is two shapes rather than one. Carries
+ *                                     its own collider and nav block, which is
+ *                                     what keeps collision honest to the model
  */
 const WALL_T = 0.32;
 export const DOOR_W = 1.5;
@@ -222,6 +242,28 @@ export class BuildingKit {
         lip.position.set(px, h + 0.4, pz);
         group.add(lip);
       }
+    }
+
+    // ---- articulation ------------------------------------------------
+    // Relief on the walls, a real head on a flat roof, emphasis at the door
+    // and a second volume in the massing. All opt-in; see the spec notes.
+    if (spec.pilasters) this._pilasters(group, spec, w, d, h);
+    if (spec.parapet && (spec.roof || 'gable') === 'flat') this._parapet(group, spec, w, d, h, wallTex);
+    if (spec.entrance && spec.door) {
+      const side = sides.find((sd) => sd.id === spec.door);
+      if (side) this._entrance(group, spec, side, (spec.doorOffset ?? 0) * side.len * 0.5, h);
+    }
+    if (spec.bay) {
+      // A bay belongs on whatever elevation the spec names; it falls back to
+      // the door's wall, which is where a front bay goes on a wide frontage
+      // and is exactly wrong on a narrow one — hence the option.
+      const want = (spec.bay === true ? null : spec.bay.side) || spec.door;
+      const side = sides.find((sd) => sd.id === want);
+      if (side) this._bayWindow(group, spec, side, h, wallTex);
+    }
+    if (spec.wing) this._wing(group, spec, rot, w, d, h, wallTex);
+    if (spec.rainwater !== false && (spec.roof || 'gable') !== 'flat') {
+      this._rainwater(group, spec, w, d, h);
     }
 
     const doorWorld = spec.door
@@ -791,6 +833,293 @@ export class BuildingKit {
       postGap: postAt,
       canopyY: spec.y + roofY,
     };
+  }
+
+  /* ================= articulation ==================================== */
+
+  /**
+   * Corner pilasters: a strip of trim standing proud of each corner for the
+   * building's full height, with a moulded base and capital.
+   *
+   * This is the cheapest thing in the kit that stops a facade reading as a
+   * slab, because it puts a hard vertical shadow on every corner — the eye
+   * reads the wall as a panel BETWEEN two piers rather than as one flat plane.
+   */
+  _pilasters(group, spec, w, d, h) {
+    // The SHAFT is masonry and only the mouldings are trim. A building's trim
+    // texture is a decorative band — a green tile course, a painted timber
+    // fillet — and it is right for a 200 mm belt course and badly wrong for a
+    // four-metre pier, which it turns into a barber's pole.
+    const tex = spec.foundationTex || spec.trimTex || 'trimStone';
+    const cap = spec.trimTex || 'trimStone';
+    const P = 0.14, WIDTH = 0.52;            // projection, and face width
+    const top = h - 0.4;
+    for (const sx of [-1, 1]) {
+      for (const sz of [-1, 1]) {
+        // two thin slabs meeting at the corner, so it turns the corner the
+        // way a real pier does instead of being a post stuck to one face
+        const a = this.box(WIDTH, top, P, tex);
+        a.position.set(sx * (w / 2 - WIDTH / 2), top / 2, sz * (d / 2 + P / 2 - 0.02));
+        const b = this.box(P, top, WIDTH, tex);
+        b.position.set(sx * (w / 2 + P / 2 - 0.02), top / 2, sz * (d / 2 - WIDTH / 2));
+        group.add(a, b);
+        for (const [y, ph, ext] of [[0.5, 0.2, 0.06], [top - 0.16, 0.3, 0.08]]) {
+          const ca = this.box(WIDTH + ext * 2, ph, P + ext, cap);
+          ca.position.set(sx * (w / 2 - WIDTH / 2), y, sz * (d / 2 + (P + ext) / 2 - 0.02));
+          const cb = this.box(P + ext, ph, WIDTH + ext * 2, cap);
+          cb.position.set(sx * (w / 2 + (P + ext) / 2 - 0.02), y, sz * (d / 2 - WIDTH / 2));
+          group.add(ca, cb);
+        }
+      }
+    }
+  }
+
+  /**
+   * A flat roof's head: a bracketed cornice with a dentil course under it, a
+   * parapet wall standing on that, and a coping capping the parapet.
+   *
+   * A flat-roofed building's whole silhouette is its top edge. The default
+   * slab-and-lip gives that edge one step; this gives it four, which is the
+   * difference between a commercial block and a shoebox with a lid on.
+   */
+  _parapet(group, spec, w, d, h, wallTex) {
+    const tex = spec.trimTex || 'trimStone';
+    const ph = typeof spec.parapet === 'number' ? spec.parapet : 0.95;
+    // dentils: a run of small blocks under the cornice, all the way round
+    for (const [len, along, cz, cx] of [[w, 'x', d / 2, 0], [w, 'x', -d / 2, 0],
+      [d, 'z', 0, w / 2], [d, 'z', 0, -w / 2]]) {
+      const n = Math.max(3, Math.round(len / 0.42));
+      for (let i = 0; i < n; i++) {
+        const at = (-len / 2) + (i + 0.5) * (len / n);
+        const blk = along === 'x' ? this.box(0.2, 0.16, 0.22, tex) : this.box(0.22, 0.16, 0.2, tex);
+        blk.position.set(along === 'x' ? at : cx + Math.sign(cx) * 0.1,
+          h - 0.02, along === 'x' ? cz + Math.sign(cz) * 0.1 : at);
+        group.add(blk);
+      }
+    }
+    this._trimBand(group, spec, w, d, h + 0.16, 0.24, 0.30);   // the cornice itself
+    for (const [pw, pd, px, pz] of [
+      [w + 0.5, 0.3, 0, d / 2 + 0.1], [w + 0.5, 0.3, 0, -d / 2 - 0.1],
+      [0.3, d + 0.5, w / 2 + 0.1, 0], [0.3, d + 0.5, -w / 2 - 0.1, 0],
+    ]) {
+      const wall = this.box(pw, ph, pd, wallTex);
+      wall.position.set(px, h + 0.3 + ph / 2, pz);
+      group.add(wall);
+      const cope = this.box(pw + 0.18, 0.14, pd + 0.18, tex);
+      cope.position.set(px, h + 0.3 + ph + 0.07, pz);
+      group.add(cope);
+    }
+    // and the roof deck itself, sunk inside the parapet where it belongs
+    const deck = this.box(w - 0.2, 0.2, d - 0.2, spec.roofTex || 'roofTar');
+    deck.position.y = h + 0.2;
+    group.add(deck);
+  }
+
+  /**
+   * Emphasis at the door.
+   *
+   * 'portico' — two columns on plinths carrying an entablature and a pediment,
+   * with a flight of steps up to it. 'hood' — a smaller bracketed canopy for a
+   * shop or a house that would look ridiculous with a temple front on it.
+   */
+  _entrance(group, spec, side, doorOff, h) {
+    // Same rule as the pilasters: masonry for anything structural, and the
+    // building's decorative trim only on the thin mouldings.
+    const stone = spec.foundationTex || 'trimStone';
+    const trim = spec.trimTex || 'trimStone';
+    const alongX = side.axis === 'x';
+    const out = Math.sign(side.cx + side.cz);
+    const near = alongX ? Math.abs(side.cz) : Math.abs(side.cx);
+    const put = (mesh, along, outward, y) => {
+      mesh.position.set(alongX ? along : out * outward, y, alongX ? out * outward : along);
+      group.add(mesh);
+      return mesh;
+    };
+    const box2 = (a, thk, hgt, tex) => (alongX ? this.box(a, hgt, thk, tex) : this.box(thk, hgt, a, tex));
+
+    if (spec.entrance === 'hood') {
+      const wdt = Math.min(3.0, side.len - 1.2);
+      put(box2(wdt, 0.9, 0.16, trim), doorOff, near + 0.45, DOOR_H + 0.56);
+      for (const sgn of [-1, 1]) {                       // the two brackets
+        const br = alongX ? this.box(0.14, 0.5, 0.55, stone) : this.box(0.55, 0.5, 0.14, stone);
+        put(br, doorOff + sgn * (wdt / 2 - 0.2), near + 0.28, DOOR_H + 0.16);
+      }
+      put(box2(wdt + 0.26, 0.24, 0.14, trim), doorOff, near + 0.5, DOOR_H + 0.70);
+      return;
+    }
+
+    const wdt = Math.min(3.4, side.len - 1.4);
+    const depth = 1.25;
+    const capY = DOOR_H + 0.80;
+    // The approach, in the same stone the footing is in: a landing at the
+    // threshold and two shallow risers stepping down off it.
+    //
+    // Both dimensions here are load-bearing and neither is styling. The
+    // landing starts at the OUTER WALL FACE, never behind it, because a slab
+    // that reaches back past the face emerges through the floor plate as a
+    // kerb around the inside of the room. And nothing in the flight rises
+    // above 0.2 m, because the doorway's own threshold is at grade — a stair
+    // climbing to a door you then step down through is a stair to nowhere.
+    const face = near + WALL_T / 2;
+    const flight = [[wdt + 0.6, depth + 0.5, 0.18], [wdt + 0.9, 0.36, 0.12], [wdt + 1.2, 0.36, 0.06]];
+    let reach = face;
+    for (const [sw, sd, sh] of flight) {
+      put(box2(sw, sd, sh, stone), doorOff, reach + sd / 2, sh / 2);
+      reach += sd;
+    }
+    // two square piers rather than turned columns: a cylinder wraps its whole
+    // texture once round its circumference, so at this scale it reads as a
+    // smear rather than as stone. A pier tiles honestly.
+    for (const sgn of [-1, 1]) {
+      const at = doorOff + sgn * (wdt / 2 - 0.26);
+      const stand = near + depth - 0.34;
+      put(alongX ? this.box(0.54, 0.22, 0.54, trim) : this.box(0.54, 0.22, 0.54, trim), at, stand, 0.5);
+      put(alongX ? this.box(0.38, capY - 0.75, 0.38, stone) : this.box(0.38, capY - 0.75, 0.38, stone),
+        at, stand, 0.61 + (capY - 0.75) / 2);
+      put(alongX ? this.box(0.5, 0.18, 0.5, trim) : this.box(0.5, 0.18, 0.5, trim), at, stand, capY - 0.08);
+    }
+    // entablature: architrave, frieze, and the cornice that throws the shadow
+    put(box2(wdt + 0.44, depth + 0.24, 0.16, stone), doorOff, near + depth / 2 - 0.1, capY + 0.09);
+    put(box2(wdt + 0.36, depth + 0.16, 0.22, trim), doorOff, near + depth / 2 - 0.1, capY + 0.28);
+    put(box2(wdt + 0.62, depth + 0.38, 0.14, stone), doorOff, near + depth / 2 - 0.1, capY + 0.46);
+    // ...and a real triangular pediment on top of it, not a stack of bands
+    const pw = wdt + 0.62, ph = pw * 0.24, pd = depth + 0.38;
+    const tri = new THREE.Shape([
+      new THREE.Vector2(-pw / 2, 0), new THREE.Vector2(pw / 2, 0), new THREE.Vector2(0, ph)]);
+    const geo = new THREE.ExtrudeGeometry(tri, { depth: pd, bevelEnabled: false });
+    geo.translate(0, 0, -pd / 2);
+    if (!alongX) geo.rotateY(Math.PI / 2);
+    const ped = new THREE.Mesh(geo, this.mat(stone));
+    put(ped, doorOff, near + depth / 2 - 0.1, capY + 0.53);
+  }
+
+  /**
+   * A canted bay window projecting from the door facade — a splayed box with
+   * glass on all three faces, a moulded base and a lead roof. One of these
+   * does more for a flat elevation than any amount of texture, because it is
+   * the only part of the building that casts a shadow ONTO itself.
+   */
+  _bayWindow(group, spec, side, h, wallTex) {
+    const o = spec.bay === true ? {} : spec.bay;
+    const alongX = side.axis === 'x';
+    const out = Math.sign(side.cx + side.cz);
+    const near = alongX ? Math.abs(side.cz) : Math.abs(side.cx);
+    // On the door's own wall it stands off to one side; on any other wall it
+    // is centred, because there is nothing to stand clear OF.
+    const onDoorWall = spec.door === side.id;
+    const doorOff = onDoorWall ? (spec.doorOffset ?? 0) * side.len * 0.5 : 0;
+    const at = o.at ?? (onDoorWall ? (doorOff > 0 ? -side.len * 0.26 : side.len * 0.26) : 0);
+    const wdt = Math.min(o.width ?? 2.4, side.len * 0.42);
+    const proj = 0.62;
+    const top = Math.min(o.top ?? (h - 0.7), h - 0.6);
+    const put = (mesh, along, outward, y, ry = 0) => {
+      mesh.position.set(alongX ? along : out * outward, y, alongX ? out * outward : along);
+      mesh.rotation.y = ry;
+      group.add(mesh);
+      return mesh;
+    };
+    const tex = spec.trimTex || 'trimStone';
+    // the box: a front face and two splayed cheeks
+    const front = alongX ? this.box(wdt, top - 0.5, 0.16, wallTex) : this.box(0.16, top - 0.5, wdt, wallTex);
+    put(front, at, near + proj, 0.5 + (top - 0.5) / 2);
+    for (const sgn of [-1, 1]) {
+      const cheek = alongX ? this.box(0.9, top - 0.5, 0.16, wallTex) : this.box(0.16, top - 0.5, 0.9, wallTex);
+      cheek.position.set(
+        alongX ? at + sgn * (wdt / 2 + 0.24) : out * (near + proj / 2),
+        0.5 + (top - 0.5) / 2,
+        alongX ? out * (near + proj / 2) : at + sgn * (wdt / 2 + 0.24));
+      cheek.rotation.y = (alongX ? -1 : 1) * sgn * out * 0.85;
+      group.add(cheek);
+    }
+    // glazing on the front face, and the base and roof that make it a bay
+    const glass = alongX
+      ? new THREE.Mesh(new THREE.PlaneGeometry(wdt - 0.3, top - 1.5), this.mat(spec.windowTex || 'window'))
+      : new THREE.Mesh(new THREE.PlaneGeometry(wdt - 0.3, top - 1.5), this.mat(spec.windowTex || 'window'));
+    put(glass, at, near + proj + 0.09, 0.95 + (top - 1.5) / 2, alongX ? (out > 0 ? 0 : Math.PI) : out * Math.PI / 2);
+    // Base and roof are sized to the BAY, a hand's width proud of it either
+    // side. They were two metres wider than it, which reached right across the
+    // doorway next to them and put a footing course where the threshold is.
+    const foundTex = spec.foundationTex || 'foundStone';
+    const bw2 = wdt + 1.6;                 // the splay of the cheeks, plus a lip
+    const base = alongX ? this.box(bw2, 0.5, proj + 0.3, foundTex)
+      : this.box(proj + 0.3, 0.5, bw2, foundTex);
+    put(base, at, near + proj / 2 + 0.1, 0.28);
+    const roof = alongX ? this.box(bw2 + 0.1, 0.18, proj + 0.42, tex)
+      : this.box(proj + 0.42, 0.18, bw2 + 0.1, tex);
+    put(roof, at, near + proj / 2 + 0.14, top - 0.06);
+    const cope = alongX ? this.box(bw2 + 0.3, 0.12, proj + 0.56, tex)
+      : this.box(proj + 0.56, 0.12, bw2 + 0.3, tex);
+    put(cope, at, near + proj / 2 + 0.16, top + 0.08);
+  }
+
+  /**
+   * A lower attached wing.
+   *
+   * The single most effective thing that can be done about "it looks like a
+   * block" is to stop it being ONE block. A wing is a second volume butted
+   * against a chosen wall at a lower height, with its own roof — and, because
+   * a player can walk into it, its own collider and nav block, sized to the
+   * geometry rather than guessed. `side` is a local wall id (N/S/E/W).
+   */
+  _wing(group, spec, rot, w, d, h, wallTex) {
+    const o = spec.wing;
+    const tex = o.wall || wallTex;
+    const ww = o.w ?? Math.min(w * 0.55, 5.0);
+    const wd = o.d ?? 3.2;
+    const wh = o.h ?? Math.max(2.6, h * 0.62);
+    const at = o.at ?? 0;
+    // centre of the wing in the building's local frame, butted to the wall
+    const n = { S: [0, 1], N: [0, -1], E: [1, 0], W: [-1, 0] }[o.side] || [0, 1];
+    const half = n[0] ? w / 2 : d / 2;
+    const alongX = !n[0];
+    const outDepth = alongX ? wd : ww;
+    const lx = n[0] * (half + outDepth / 2 - 0.1) + (n[0] ? 0 : at);
+    const lz = n[1] * (half + outDepth / 2 - 0.1) + (n[1] ? 0 : at);
+    const bw = alongX ? ww : wd, bd = alongX ? wd : ww;
+    const body = this.box(bw, wh, bd, tex);
+    body.position.set(lx, wh / 2, lz);
+    group.add(body);
+    // its own footing, cornice and roof, so it is a building and not a lump
+    const found = this.box(bw + 0.18, 0.5, bd + 0.18, spec.foundationTex || 'foundStone');
+    found.position.set(lx, 0.16, lz);
+    const band = this.box(bw + 0.26, 0.2, bd + 0.26, spec.trimTex || 'trimStone');
+    band.position.set(lx, wh - 0.14, lz);
+    group.add(found, band);
+    if (o.roof === 'flat') {
+      const slab = this.box(bw + 0.3, 0.2, bd + 0.3, spec.roofTex || 'roofTar');
+      slab.position.set(lx, wh + 0.1, lz);
+      group.add(slab);
+    } else {
+      // a lean-to falling away from the main block
+      const rise = Math.min(1.0, outDepth * 0.34);
+      const slope = this.box(bw + 0.4, 0.16, Math.hypot(outDepth + 0.4, rise), spec.roofTex || 'roofShingle');
+      slope.position.set(lx - n[0] * 0.05, wh + rise / 2 + 0.06, lz - n[1] * 0.05);
+      slope.rotation[alongX ? 'x' : 'z'] = (alongX ? -n[1] : n[0]) * Math.atan2(rise, outDepth);
+      group.add(slope);
+      const gableA = this.box(alongX ? bw + 0.2 : 0.2, rise, alongX ? 0.2 : bd + 0.2, tex);
+      gableA.position.set(lx + n[0] * (outDepth / 2 - 0.1), wh + rise / 2, lz + n[1] * (outDepth / 2 - 0.1));
+      group.add(gableA);
+    }
+    this._collideLocalBox(spec, rot, lx, lz, bw / 2, wh, bd / 2);
+  }
+
+  /** Gutter along the eaves and a downpipe at one corner. Small, and the
+   *  first thing you miss when it is not there. */
+  _rainwater(group, spec, w, d, h) {
+    const tex = spec.trimTex || 'trimMetal';
+    const ridge = spec.ridge ?? (w > d ? 'x' : 'z');
+    const alongX = ridge === 'x';
+    for (const sgn of [-1, 1]) {
+      const g2 = alongX ? this.box(w + 0.3, 0.14, 0.16, tex) : this.box(0.16, 0.14, d + 0.3, tex);
+      g2.position.set(alongX ? 0 : sgn * (w / 2 + 0.14), h + 0.04, alongX ? sgn * (d / 2 + 0.14) : 0);
+      group.add(g2);
+    }
+    const pipe = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, h - 0.2, 6), this.mat(tex));
+    pipe.position.set(w / 2 + 0.09, (h - 0.2) / 2, -(d / 2 + 0.09));
+    group.add(pipe);
+    const shoe = this.box(0.14, 0.2, 0.22, tex);
+    shoe.position.set(w / 2 + 0.09, 0.16, -(d / 2 + 0.16));
+    group.add(shoe);
   }
 
   _collideLocalBox(spec, rot, lx, lz, hx, height, hz) {

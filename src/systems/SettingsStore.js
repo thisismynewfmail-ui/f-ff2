@@ -1,7 +1,7 @@
 import { DEFAULT_BINDINGS, MAX_SLOTS, normalizeBindings } from '../engine/KeyBindings.js';
 
 /**
- * The single source of truth for player settings — mouse/FOV/volume sliders,
+ * The single source of truth for player settings — mouse/FOV/audio sliders,
  * invert-Y, and the re-bindable key map — persisted to localStorage and shared
  * by BOTH the title-screen Settings and the in-game (pause) Settings, so a
  * change made in one is immediately reflected in the other and in play.
@@ -13,7 +13,14 @@ const SETTINGS_KEY = 'gbts.settings.v1';
 // `detail` drives the whole visual pass — surface relief and the post chain
 // (see rendering/Renderer.setDetail). 1 is the intended look; 0 is the plain,
 // cheap frame, which is the escape hatch on weak hardware.
-const DEFAULTS = { sensitivity: 1.0, fov: 90, volume: 0.5, invertY: false, detail: 1 };
+const DEFAULTS = {
+  sensitivity: 1.0, fov: 90, invertY: false, detail: 1,
+  // TWO levels, not one. The dynamic soundtrack and the effects bus are
+  // separate all the way to the speakers (see audio/AudioManager.js), so they
+  // get a slider each — a player who wants the score down and the guns loud
+  // used to have to choose.
+  musicVolume: 0.45, sfxVolume: 0.6,
+};
 
 export class SettingsStore {
   constructor(onApply) {
@@ -29,6 +36,14 @@ export class SettingsStore {
       if (raw) {
         const j = JSON.parse(raw);
         const { bindings, ...vals } = j;
+        // Settings saved before the split carried ONE `volume`. Honour it as
+        // the level the player chose for both buses rather than silently
+        // resetting them to the defaults on first launch after the update.
+        if (vals.volume != null && vals.sfxVolume == null && vals.musicVolume == null) {
+          vals.sfxVolume = vals.volume;
+          vals.musicVolume = vals.volume;
+        }
+        delete vals.volume;
         this.values = { ...DEFAULTS, ...vals };
         this.bindings = normalizeBindings(bindings);
       }

@@ -27,7 +27,7 @@ const NOTICE_CPS = 46;
  *     the panel's left edge (the old left vacuum-tube bank is gone; the
  *     right bank carries the console's remaining glass)
  *   - the COUNTER BANK: one housed steel instrument carrying every mechanical
- *     odometer, HP and TOKENS paired on its top line, LOADED and RESERVE on a
+ *     odometer, HP and COINS paired on its top line, LOADED and RESERVE on a
  *     scored line beneath, all of them ticking their wheels as they roll
  *   - the centre PLAYER PORTRAIT in a green CRT monitor (see Portrait.js —
  *     health-driven head with a well-spaced look-around idle above 50% HP)
@@ -57,7 +57,7 @@ const NOTICE_CPS = 46;
  *
  * The title menu itself lives in TitleMenu.js (the CS-style rail over the
  * live 3D town); the pause screen carries the run's stat rings — health,
- * wave clearance, accuracy, progress, secrets, score, time — plus RESUME,
+ * wave clearance, accuracy, progress, score, time — plus RESUME,
  * a working SAVE RUN button (persists through Game.saveSession to the dev
  * server / localStorage) and QUIT TO TITLE.
  */
@@ -423,7 +423,7 @@ export class HUD {
     logWrap.style.backgroundImage = `url(${this._tex.inset})`;
     this.logEl = this._el('div', 'cons-log', logWrap);
 
-    /* --- the counter bank: HP, AMMO and TOKENS, in ONE housing.
+    /* --- the counter bank: HP, AMMO and COINS, in ONE housing.
      *
      * They used to be three bare odometers standing on the console's own
      * camouflage with nothing around them, which is what made them read as
@@ -450,11 +450,11 @@ export class HUD {
      * Side by side and not stacked, and this is the whole of the fix: the
      * chassis is a fixed 132px tall and three stacked label-and-wheels blocks
      * need about 184 of it, so the bank was hanging out of the panel top and
-     * bottom with its digits sitting on the camouflage. HP and TOKENS are both
+     * bottom with its digits sitting on the camouflage. HP and COINS are both
      * one short number with a word over it, so they pair naturally onto one
      * line and the bank comes back inside the case.
      *
-     * TOKENS belongs in this bank at all because it is the same KIND of number
+     * COINS belongs in this bank at all because it is the same KIND of number
      * as the ammunition: a consumable you are carrying, that goes down when you
      * spend it. On the KILLS device it would be filed under "score", which is
      * exactly what it is not.
@@ -463,7 +463,7 @@ export class HUD {
     const hpCell = cell(top, null, 'HP');
     this.hpOdo = this._el('div', null, hpCell, 'odometer');
     this.hpOdo.style.backgroundImage = `url(${this._tex.inset})`;
-    const tokCell = cell(top, 'cons-tokens', 'TOKENS');
+    const tokCell = cell(top, 'cons-tokens', 'COINS');
     this.tokenOdo = this._el('div', null, tokCell, 'odometer');
     this.tokenOdo.style.backgroundImage = `url(${this._tex.inset})`;
     this._odoDigits(this.tokenOdo, 0, 4);
@@ -589,10 +589,9 @@ export class HUD {
    * each is the one its quantity would actually be built as:
    *
    *   VITALS      a vertical fluid cell with a graduated scale and a danger band
-   *   ENGAGEMENT  a bank of vacuum tubes lighting as the wave is cleared
+   *   PURGE       a bank of vacuum tubes lighting as the wave is cleared
    *   MARKSMANSHIP an analogue needle gauge (the same one the dock carries)
    *   PROGRESS    punched paper tape running toward the count
-   *   SECRETS     one lamp per secret, lit as you find them
    *   SCORE       a mechanical odometer that rolls up to the number
    *   CLOCK       a split-flap board
    *
@@ -622,7 +621,6 @@ export class HUD {
       wave: this._bayWave(bays),
       aim: this._bayAim(bays),
       progress: this._bayProgress(bays),
-      secrets: this._baySecrets(bays),
       score: this._bayScore(bays),
       clock: this._bayClock(bays),
     };
@@ -678,7 +676,7 @@ export class HUD {
 
   /** WAVE — a bank of vacuum tubes that light as the quota is cleared. */
   _bayWave(parent) {
-    const b = this._bay(parent, 'wave', 'ENGAGEMENT');
+    const b = this._bay(parent, 'wave', 'PURGE');
     const row = this._el('div', null, b.body, 'tube-row');
     const num = this._el('div', null, row, 'tube-num');
     const bank = this._el('div', null, row, 'tube-bank');
@@ -725,14 +723,6 @@ export class HUD {
     const pct = this._el('div', null, tape, 'tape-pct');
     this._el('div', null, tape, 'tape-head');
     return { el: b.el, odo, run, punch, pct };
-  }
-
-  /** SECRETS — one lamp per secret; found ones are lit. */
-  _baySecrets(parent) {
-    const b = this._bay(parent, 'secrets', 'SECRETS');
-    const row = this._el('div', null, b.body, 'sec-row');
-    const count = this._el('div', null, b.body, 'sec-count');
-    return { el: b.el, row, count, lamps: [] };
   }
 
   /** SCORE — a mechanical odometer that rolls up to the number. */
@@ -894,7 +884,7 @@ export class HUD {
     });
     on('tokens:refused', ({ needed }) => {
       this._tokenFlash = -1;
-      this.logMsg(`Short by ${Math.max(0, needed - (this._tokens ?? 0))} tokens.`, 'warn');
+      this.logMsg(`Short by ${Math.max(0, needed - (this._tokens ?? 0))} coins.`, 'warn');
     });
     on('secret:found', ({ label, count, total }) => {
       this.logMsg(`SECRET (${count}/${total}) — ${label}.`, 'gold');
@@ -1155,10 +1145,14 @@ export class HUD {
     el.style.backgroundImage = `url(${this._tex.device})`;
     for (const c of ['tl', 'tr', 'bl', 'br']) this._el('div', null, el, 'screw ' + c);
 
+    // A lamp, and nothing else. The header used to carry the word
+    // TRANSMISSION and a run of carrier dashes, and the panel a bar draining
+    // toward the moment the message would vanish — three separate ways of
+    // telling the player about the readout instead of telling them the thing
+    // the readout is for. The lamp already says a message has arrived and the
+    // message itself says the rest.
     const head = this._el('div', null, el, 'notice-head');
     this._el('span', null, head, 'notice-lamp');
-    this._el('span', null, head, 'notice-title').textContent = 'TRANSMISSION';
-    this._el('span', null, head, 'notice-carrier').textContent = '▬▬▬';
 
     const crt = this._el('div', null, el, 'notice-crt');
     crt.style.backgroundImage = `url(${this._tex.inset})`;
@@ -1167,25 +1161,22 @@ export class HUD {
     this.noticeBody = this._el('span', null, line, 'notice-body');
     this._el('span', null, line, 'notice-cursor').textContent = '█';
 
-    this.noticeBar = this._el('i', null, this._el('div', null, el, 'notice-timer'));
     this.noticeEl = el;
   }
 
   /**
    * Post a message. It holds for NOTICE_TIME seconds, and it does not simply
-   * appear: the tube strikes, the text teletypes in under a blinking block
-   * cursor, the carrier dots run, and the depletion bar drains for as long as
-   * the message has left. A second message replaces the first and restrikes —
-   * this is one readout, not a stack.
+   * appear: the tube strikes and the text teletypes in under a blinking block
+   * cursor. A second message replaces the first and restrikes — this is one
+   * readout, not a stack.
    */
   notify(text) {
     this._noticeText = text;
     this._noticeTimer = NOTICE_TIME;
     this._noticeTyped = 0;
     this.noticeBody.textContent = '';
-    this.noticeBar.style.width = '100%';
     const el = this.noticeEl;
-    el.classList.remove('on', 'off', 'typed', 'expiring');
+    el.classList.remove('on', 'off', 'typed');
     void el.offsetWidth;                 // restart the strike animation
     el.classList.add('on');
   }
@@ -1235,7 +1226,7 @@ export class HUD {
    * Drive the pause instruments from a live snapshot, then run them in.
    *
    * `extra` carries the readouts the score stats don't know about:
-   * { found, total (secrets), health, maxHealth, wave: {n, quota, cleared, state} }.
+   * { health, maxHealth, wave: {n, quota, cleared, state} }.
    *
    * Nothing here rebuilds DOM — the panel is built once in _buildPause and
    * this only moves needles, so the CSS transitions and keyframes survive
@@ -1265,9 +1256,9 @@ export class HUD {
     p.vitals.tube.classList.toggle('crit', hp < 0.25);
     p.vitals.tube.classList.toggle('low', hp >= 0.25 && hp < 0.5);
 
-    // --- ENGAGEMENT: one tube per tenth of the quota, and the wave in stencil
+    // --- PURGE: one tube per tenth of the quota, and the wave in stencil
     p.wave.num.textContent = w.n ? String(w.n).padStart(2, '0') : '--';
-    p.wave.mode.textContent = w.state === 'active' ? 'ENGAGED' : 'RESPITE';
+    p.wave.mode.textContent = w.state === 'active' ? 'PURGED' : 'RESPITE';
     p.wave.count.textContent = w.state === 'active' ? `${w.cleared}/${w.quota}` : 'CLEAR';
     p.wave.state.className = 'tube-state ' + (w.state === 'active' ? 'hot' : 'cool');
     p.wave.el.classList.toggle('respite', w.state !== 'active');
@@ -1284,19 +1275,6 @@ export class HUD {
     p.progress.odo._last = null;
     this._odoDigits(p.progress.odo, 0, 6);
     p.progress.pct.textContent = (frac * 100).toFixed(3) + '%';
-
-    // --- SECRETS: one lamp each, lit in sequence once armed
-    if (p.secrets.lamps.length !== extra.total) {
-      p.secrets.row.innerHTML = '';
-      p.secrets.lamps = [];
-      for (let i = 0; i < extra.total; i++) {
-        const l = this._el('div', null, p.secrets.row, 'sec-lamp');
-        l.style.setProperty('--i', String(i));
-        p.secrets.lamps.push(l);
-      }
-    }
-    for (const l of p.secrets.lamps) l.classList.remove('lit');
-    p.secrets.count.innerHTML = `<b>${extra.found}</b> / ${extra.total}`;
 
     // --- SCORE + CLOCK: both roll up from nothing
     p.score.odo._last = null;
@@ -1322,7 +1300,6 @@ export class HUD {
       p.progress.run.style.width = Math.max(frac * 100, frac > 0 ? 3.5 : 0).toFixed(2) + '%';
       const lit = Math.round(waveFrac * p.wave.tubes.length);
       p.wave.tubes.forEach((tb, i) => tb.classList.toggle('lit', i < lit));
-      p.secrets.lamps.forEach((l, i) => l.classList.toggle('lit', i < extra.found));
       this._rollOdometer(p.score.odo, stats.points, 6);
       this._rollOdometer(p.progress.odo, stats.kills, 6);
       this._runFlaps(p.clock.flaps, [hh % 100, mm, ss]);
@@ -1388,7 +1365,7 @@ export class HUD {
       this.resOdo.classList.toggle('empty', cur.reserve === 0 && cur.mag === 0);
     }
 
-    // --- console: TOKENS. Four digits, because the purse is a purse and not a
+    // --- console: COINS. Four digits, because the purse is a purse and not a
     // kill count; the coin beside it lights on the way in and on a refusal.
     const tokens = Math.max(0, d.tokens ?? this._tokens ?? 0);
     this._odoDigits(this.tokenOdo, Math.min(9999, tokens), 4);
@@ -1557,7 +1534,7 @@ export class HUD {
       this.promptEl.style.display = 'none';
     }
 
-    // --- notice: teletype in, drain, sign off ---
+    // --- notice: teletype in, hold, sign off ---
     if (this._noticeTimer > 0) {
       this._noticeTimer -= dt;
       const full = this._noticeText;
@@ -1566,8 +1543,6 @@ export class HUD {
         this.noticeBody.textContent = full.slice(0, Math.floor(this._noticeTyped));
         if (this._noticeTyped >= full.length) this.noticeEl.classList.add('typed');
       }
-      this.noticeBar.style.width = `${Math.max(0, this._noticeTimer / NOTICE_TIME) * 100}%`;
-      this.noticeEl.classList.toggle('expiring', this._noticeTimer < NOTICE_TIME * 0.25);
       if (this._noticeTimer <= 0) {      // the tube collapses to a line and dies
         this.noticeEl.classList.remove('on');
         this.noticeEl.classList.add('off');

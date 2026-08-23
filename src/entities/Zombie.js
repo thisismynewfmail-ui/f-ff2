@@ -74,6 +74,13 @@ export class Zombie extends Entity {
     // Per-zombie gait so movement weaves instead of tracking a straight line.
     this.gaitPhase = Math.random() * Math.PI * 2;
     this.gaitFreq = 1.4 + Math.random() * 1.3;
+    // ...and a per-zombie VOICE, fixed for its whole life. It picks this
+    // individual's fundamental inside its archetype's band and which of that
+    // archetype's lines he uses for each state (see audio/EnemyVoices.js), so
+    // one fighter always sounds like himself and eight of them do not sound
+    // like the same man shouted eight times.
+    this.voice = Math.random();
+    this._idleTalk = 4 + Math.random() * 9;
     this.addTag('zombie');
     this.addTag('hostile');
     this.state = 'idle';
@@ -172,6 +179,7 @@ export class Zombie extends Entity {
       type: this.config,
       pos: this.position.clone(),
       points: this.config.points,
+      voice: this.voice,
     });
   }
 
@@ -192,7 +200,16 @@ export class Zombie extends Entity {
     if (this.state === s) return;
     this.state = s;
     this.stateTime = 0;
-    if (s === 'chasing') this.events.emit('zombie:aggro', { pos: this.position.clone() });
+    if (s === 'chasing') {
+      this.events.emit('zombie:aggro', {
+        pos: this.position.clone(), type: this.config, voice: this.voice,
+      });
+    } else if (s === 'alerted') {
+      // Heard something, has not found it yet: the position call.
+      this.events.emit('zombie:spot', {
+        pos: this.position.clone(), type: this.config, voice: this.voice,
+      });
+    }
   }
 
   /**
@@ -212,6 +229,19 @@ export class Zombie extends Entity {
 
     // Dormant when far away: no AI, no rendering.
     if (pdist > ACTIVE_RANGE) { this.mesh.visible = false; return false; }
+
+    // Idle chatter, but only from somebody who has not seen you and only from
+    // close enough for a mutter to carry. The audio layer throttles this hard
+    // on top (see AudioManager.enemyLine) — this only decides WHO speaks.
+    this._idleTalk -= dt;
+    if (this._idleTalk <= 0) {
+      this._idleTalk = 7 + Math.random() * 12;
+      if (pdist < 26 && (this.state === 'idle' || this.state === 'wandering')) {
+        this.events.emit('zombie:idle', {
+          pos: this.position.clone(), type: this.config, voice: this.voice,
+        });
+      }
+    }
     this.mesh.visible = true;
 
     this.senses.update(dt, this);
@@ -306,7 +336,15 @@ export class Zombie extends Entity {
       if (this.state === 'attacking') {
         this.yaw = Math.atan2(vdx, vdz);
         if (this.windup > 0) {
+          const before = this.windup;
           this.windup -= dt;
+          // The shout goes with the START of the wind-up, not the landing: it
+          // is the half-second of warning the player gets to step back.
+          if (before >= this.config.attackWindup - 1e-6) {
+            this.events.emit('zombie:attack', {
+              pos: this.position.clone(), type: this.config, voice: this.voice,
+            });
+          }
           if (this.windup <= 0) {
             if (victim.alive && vdist < this.config.reach + 0.4 && Math.abs(vpos.y - this.position.y) < 1.8) {
               victim.takeDamage(this.config.damage, this.position);

@@ -265,7 +265,18 @@ export class Game {
     // consumer (player, renderer, audio, input) exists.
     this.settings.apply();
     this.state.to('menu');
+    this.audio.setTrack('menu');
     this.hud.showScreen('menu');
+    // Browsers will not start an AudioContext without a gesture, so the title
+    // screen is silent until the player touches something — any something.
+    // Waiting for NEW GAME meant the menu's own theme was never heard by
+    // anyone who did not first quit back to it mid-run.
+    if (!this.testMode) {
+      const wake = () => this.audio.unlock();
+      for (const ev of ['pointerdown', 'keydown']) {
+        window.addEventListener(ev, wake, { once: true, capture: true });
+      }
+    }
     return this;
   }
 
@@ -438,7 +449,7 @@ export class Game {
     // WORLD, and you cannot aim it through an open inventory panel.
     this.events.on('sentry:hold', ({ on }) => { if (on) this.inventory.close(); });
 
-    // Clicking the Companion Cube in the satchel sets it back down on the
+    // Clicking the Friend Box in the satchel sets it back down on the
     // ground just ahead of the player (see CompanionCube.dropAt).
     this.events.on('inventory:drop', ({ type }) => {
       if (type !== 'companionCube') return;
@@ -498,7 +509,14 @@ export class Game {
     this.world.zones.syncTo(0);
     this.waves.restartAtWave(1);
     // Refill the guns to the starting loadout and bank it as the new checkpoint.
+    // The pristine loadout is a PISTOL loadout: anything found out in the town
+    // — the coachgun in the blue house, the blaster at the crash site — goes
+    // back where it was found, so a new run really is a new run.
+    this.weapons.resetUnlocked();
     this.weapons.restoreAmmo(this._pristineAmmo);
+    this.world.resetGunCache();
+    // ...and the sighting has not happened yet either.
+    this.world.flyby?.reset();
     // An empty purse, no hardware in the field, and the vendor's shelves full
     // again — a new run starts where the first one did.
     this.tokens.restore({ tokens: 0, earned: 0, spent: 0 });
@@ -538,6 +556,13 @@ export class Game {
       // already paid out, so a resumed session cannot farm the coin tray by
       // clearing BRICKFALL a second time.
       this.arcade.restore(s.arcade);
+      // ...and the weapons the run had FOUND. A saved session that came back
+      // without the coachgun the player walked into Eastgate to get would be
+      // taking it off them for the crime of saving.
+      this.weapons.restoreUnlocked(s.weaponsFound);
+      // ...and the case it came out of stays empty, so a resumed run does not
+      // find a second one lying in the blue house.
+      if (s.weaponsFound?.includes('shotgun')) this.world.emptyGunCache();
       this.sentries.restore(s.sentries);
       this.companions.restore(s.companion);
       this._arcadePaid = new Set((s.arcade?.paid || []).filter((id) => MACHINE_IDS.includes(id)));
@@ -576,6 +601,8 @@ export class Game {
       sentries: this.sentries.snapshot(),
       companion: this.companions.snapshot(),
       wave,
+      // Which weapons this run has found (the coachgun, the blaster).
+      weaponsFound: this.weapons.snapshotUnlocked(),
       secretsFound: this.world.secrets.found.size,
       secretsTotal: this.world.secrets.total,
       health: Math.round(this.player.health),
@@ -603,6 +630,7 @@ export class Game {
    *  RESUME — always reflect where the player left off. */
   quitToTitle() {
     if (!this.state.to('menu')) return;
+    this.audio.setTrack('menu');
     this.saveSession();
     this.input.releasePointerLock();
     this.hud.showScreen('menu');
@@ -625,7 +653,9 @@ export class Game {
     // The HUD's own CSS scanline pass stands down while the renderer is
     // drawing real ones (see styles.css #hud.tube).
     this.hudRoot.classList.toggle('tube', this.renderer.detail > 0);
-    this.audio.setVolume(s.volume);
+    // Two independent levels: the score and everything else (see AudioManager).
+    this.audio.setMusicVolume(s.musicVolume);
+    this.audio.setSfxVolume(s.sfxVolume);
     this.input.setBindings(s.bindings);
   }
 
@@ -659,8 +689,6 @@ export class Game {
     // and every needle, cell and tape snaps straight to its value instead.
     this.hud.showScreen('pause');
     this.hud.fillPauseStats(this.score.stats(), {
-      found: this.world.secrets.found.size,
-      total: this.world.secrets.total,
       health: this.player.health,
       maxHealth: this.player.maxHealth,
       wave: {
@@ -894,7 +922,14 @@ export class Game {
     this.world.update(dt, this.time, cam.position);
     this.sky.update(dt, cam.position);
     this.effects.update(dt, cam.position);
-    this.audio.update(dt, this.player, this.spawner.nearbyCount(this.player));
+    // The soundtrack reads the two things that change continuously: where the
+    // player is standing (which district's track plays) and how close to dead
+    // they are (which arrangement of it plays). See audio/Music.js.
+    this.audio.update(dt, this.player, this.spawner.nearbyCount(this.player), {
+      zoneId: this.world.zones.zoneAt(this.player.position.x, this.player.position.z).id,
+      healthFrac: this.player.health / this.player.maxHealth,
+      waveActive: this.waves.state === 'active',
+    });
     // How hurt you are is readable off the picture itself: the signal gets
     // noisier and the hum bar climbs as health falls.
     this.renderer.updateSignal(dt, this.player.health / this.player.maxHealth);

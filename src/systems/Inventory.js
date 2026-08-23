@@ -10,7 +10,7 @@
  * uses, so nothing here reaches into other systems. DROPPABLE items can be
  * clicked in their slot to take them out of the satchel: the item leaves the
  * grid and an 'inventory:drop' event tells the owning system what to do with
- * it — the Companion Cube goes back on the ground, the sentry comes up into
+ * it — the Friend Box goes back on the ground, the sentry comes up into
  * the player's hands to be placed (see systems/SentrySystem.js). ACTION_LABEL
  * is what the slot calls that, because "DROP" is a lie on a thing you deploy.
  *
@@ -99,7 +99,6 @@ export class Inventory {
       <div class="inv-panel">
         <div class="inv-title">SATCHEL <span class="inv-hint">TAB OR CLICK OUTSIDE TO CLOSE</span></div>
         <div class="inv-grid"></div>
-        <div class="inv-foot">What you carry is kept here. Click a sentry to take it in hand, or the Companion Cube to set it down.</div>
       </div>`;
     root.appendChild(this.el);
     this.gridEl = this.el.querySelector('.inv-grid');

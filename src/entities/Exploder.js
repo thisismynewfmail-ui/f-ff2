@@ -25,6 +25,9 @@ import { contextSteer, norm } from '../ai/Steering.js';
  */
 const BOOM_LINGER = 0.35;   // corpse hangs a beat after the blast, then is culled
 const ABORT_FACTOR = 1.6;   // target this far past triggerRange aborts the fuse
+// How far out he shouts. Ten metres is about a second and a half of closing at
+// his speed, which is the length of the call — so it lands as he arrives.
+const CALL_RANGE = 10.5;
 // The CS:GO sheet draws the bomber's feet flush to the very bottom edge of each
 // cell — no ground margin like the other sheets carry — so the billboard's foot
 // pivot sits a touch into the ground. Lift the sprite by this fraction of its
@@ -43,6 +46,7 @@ export class Exploder extends Zombie {
     // left/right on the boundary.
     this.flankSign = Math.random() < 0.5 ? -1 : 1;
     this._fuse = -1;            // >= 0 while a fuse is burning (the NPC is paused)
+    this._called = false;       // has he shouted on this run in yet
     this._retryCd = 0;         // lockout after a fuse the target got out of
     this._exploded = false;    // guards against a second detonation
     this.killedByPlayer = false;
@@ -148,11 +152,27 @@ export class Exploder extends Zombie {
       const vLos = this._victimLos;
       if (this.state === 'idle' || this.state === 'wandering' || this.state === 'alerted') this._setState('chasing');
 
+      // THE CALL. Once, when he commits: inside CALL_RANGE with a clear line.
+      // This is the warning, and the whole reason it is here and not on the
+      // fuse is that a player needs the second it takes to say — see the note
+      // in audio/EnemyVoices.js.
+      if (!this._called && vdist <= CALL_RANGE && vLos) {
+        this._called = true;
+        this.events.emit('exploder:prime', {
+          pos: this.position.clone(), type: this.config, voice: this.voice,
+        });
+      }
+
       // Close enough, seen, off cooldown, on the same level → light the fuse.
       if (vdist <= this.config.triggerRange && vLos && this._retryCd <= 0 &&
           Math.abs(victim.position.y - this.position.y) < 1.8) {
         this._setState('fuse');
         this._fuse = this.config.fuseTime;
+        // What is left of the call at contact (the full one went off on the
+        // run in — see CALL_RANGE below).
+        this.events.emit('exploder:fuse', {
+          pos: this.position.clone(), type: this.config, voice: this.voice,
+        });
         this.yaw = Math.atan2(vdx, vdz);
         this._present(dt, ctx, false);
         this._primeLook();
@@ -242,6 +262,7 @@ export class Exploder extends Zombie {
     if (lost) {
       this._setState('chasing');
       this._fuse = -1;
+      this._called = false;      // a second run in gets its own call
       this._retryCd = cfg.retryCooldown;
       this._resetPrimeLook();
       return 'abort';

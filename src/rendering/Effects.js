@@ -278,6 +278,34 @@ export class Effects {
       const d = Math.hypot(pos.x - this.player.position.x, pos.z - this.player.position.z);
       this.addShake(Math.max(0, 0.14 * (1 - d / 16)));
     });
+    /* --- the wave-five sighting (see world/Flyby.js) ------------------- *
+     * A trail, not a fireball: smoke off the gash the whole way across the
+     * sky, sparks once it has properly begun to come apart, and — at the far
+     * end, two hundred metres off in the haze — a flash and a column that the
+     * player mostly hears rather than sees.                               */
+    events.on('ufo:trail', ({ pos, k }) => {
+      // The PLUME pool, not the boot-dust one: this trail has to read from a
+      // hundred metres below and across a district, which is the job that pool
+      // was sized for. Dust rides on top of it as the wisps coming off it.
+      this.plume.spawn({ x: pos.x, y: pos.y - 0.4, z: pos.z }, 2, 1.4, 0.4, 3.2 + k * 2.2);
+      this.dust.spawn({ x: pos.x, y: pos.y - 0.2, z: pos.z }, 3, 2.2, 0.5, 2.4 + k * 1.2);
+      if (k > 0.3) this.fire.spawn(pos, 2, 2.4, 0.4, 0.6 + k * 0.5);
+      if (k > 0.5) this.spark.spawn(pos, 3, 5.0, 0.3, 0.7);
+    });
+    events.on('ufo:impact', ({ pos }) => {
+      const core = { x: pos.x, y: pos.y + 2, z: pos.z };
+      this.flash.spawn(core, 9, 0.7);
+      this.fire.spawn(core, 60, 14, 1.6, 1.3);
+      this.plume.spawn({ x: pos.x, y: pos.y + 1, z: pos.z }, 40, 6, 1.5, 5.5);
+      this.dust.spawn({ x: pos.x, y: pos.y + 0.6, z: pos.z }, 40, 8, 1.0, 2.6);
+      this.rubble.spawn({ x: pos.x, y: pos.y + 1, z: pos.z }, 30, 12, 1.2, 2.2);
+      this.collapseLight.position.set(pos.x, pos.y + 4, pos.z);
+      this.collapseLight.intensity = 60;
+      // Shake it only for somebody standing near enough for the ground to
+      // carry it. From the plaza this is a light on the horizon and a noise.
+      const d = Math.hypot(pos.x - this.player.position.x, pos.z - this.player.position.z);
+      this.addShake(Math.max(0, 0.11 * (1 - d / 120)));
+    });
     events.on('barrier:explode', (b) => this._barrierBlow(b));
     events.on('spitter:fire', ({ pos }) => {
       // A quick additive muzzle pop + a brief glow at the Spitter's guns.

@@ -1,4 +1,5 @@
 import * as THREE from '../../lib/three.module.js';
+import { buildWeaponModel } from '../weapons/WeaponModels.js';
 import { local2world, mergeStatic, mulberry32 } from './Buildings.js';
 import { MACHINES, MACHINE_IDS, marqueeArt, screenSheet, sideArt, cabinetSkin }
   from '../rendering/Arcade.js';
@@ -27,6 +28,10 @@ const DOOR_LANE = 2.6;
 /** How much two pieces may share before it reads as one growing out of the
  *  other. Loose enough that a chair tucked under a table is still fine. */
 const FURNITURE_GAP = 0.12;
+
+/** Which house the shotgun is in: the blue clapboard one on the north side of
+ *  Main St East, first lot inside the Eastgate gate. */
+const GUN_HOUSE = 'house01';
 
 /** Canonical-frame transform for a door side. cw/cd are the canonical
  *  width (door wall) and depth; m maps canonical -> building-local coords. */
@@ -114,6 +119,9 @@ export class InteriorKit {
     this._bucket = new THREE.Group();
     this._room = [];          // footprints already down in THIS building
     fn.call(this, built);
+    // The one thing in the town that is placed by NAME rather than by use: the
+    // coachgun is in a particular house, on purpose (see gunCache).
+    if (built.spec.name === GUN_HOUSE) this._placeGunCache(built);
     mergeStatic(this._bucket);
     this.w.group.add(this._bucket);
     this.populated.push(built.spec.name);
@@ -1678,6 +1686,101 @@ export class InteriorKit {
     if (v === 2) this._put(b, this.shelf(1.3, false), bw, bz);
     this._papers(b, tx + 0.8, tz + 1.0, 3);
     if ((s.derelict ?? 0) > 0.45) this._stain(b, m * 0.4, -hd + 2.2, 1.4);
+  }
+
+  /**
+   * THE GUN CASE.
+   *
+   * The coachgun is not in the player's hands at the start of a run any more;
+   * it is here, in its owner's house, in the case they kept it in. That is the
+   * whole point of moving it: the first fifty kills are a pistol run, and the
+   * reward for opening Eastgate is a real weapon lying where a real weapon
+   * would be lying.
+   *
+   * It is built from the SAME 3D model the first-person view uses, so what you
+   * pick up off the floor is what appears in your hands a second later — not a
+   * sprite of a gun and then a different gun. The case is open, lined, and set
+   * flat on the floorboards against a wall, so nothing about it can clip into
+   * geometry: the model lies INSIDE a box whose footprint is its own collider.
+   *
+   * `live` keeps it out of the room's merge, because it has to be able to
+   * disappear when it is taken (and come back when a run restarts).
+   */
+  gunCache() {
+    const g = new THREE.Group();
+    const wood = this._mat('gunCaseWood', () => new THREE.MeshLambertMaterial({ color: 0x4a3524 }));
+    const baize = this._mat('gunCaseBaize', () => new THREE.MeshLambertMaterial({ color: 0x2b4433 }));
+    const brass = this._mat('gunCaseBrass', () => new THREE.MeshLambertMaterial({ color: 0xa98b3c }));
+    const card = this._mat('shellBox', () => new THREE.MeshLambertMaterial({ color: 0x8c3a2c }));
+    const box = (w, h, d, m) => new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m);
+    const CW = 1.28, CD = 0.42, CH = 0.16;   // the case: long, shallow, flat
+
+    // the case shell, its lining, and the lid folded back flat behind it
+    const base = box(CW, CH, CD, wood);
+    base.position.y = CH / 2;
+    const lining = box(CW - 0.08, 0.02, CD - 0.08, baize);
+    lining.position.y = CH - 0.01;
+    g.add(base, lining);
+    const lid = box(CW, 0.05, CD, wood);
+    lid.position.set(0, 0.025, -CD - 0.02);
+    const lidFelt = box(CW - 0.08, 0.02, CD - 0.08, baize);
+    lidFelt.position.set(0, 0.055, -CD - 0.02);
+    g.add(lid, lidFelt);
+    for (const sx of [-CW / 2 + 0.16, CW / 2 - 0.16]) {   // hinges and a catch
+      const h = box(0.1, 0.03, 0.06, brass);
+      h.position.set(sx, CH - 0.02, -CD / 2 - 0.01);
+      g.add(h);
+    }
+    const catchPlate = box(0.12, 0.05, 0.04, brass);
+    catchPlate.position.set(0, CH * 0.55, CD / 2 + 0.01);
+    g.add(catchPlate);
+
+    // ...and the gun in it, lying on its side in the lining
+    const model = buildWeaponModel('shotgun');
+    const gun = model.group;
+    gun.rotation.set(0, Math.PI / 2, Math.PI / 2);   // barrel along the case, laid flat
+    gun.position.set(0.06, CH + 0.05, 0);
+    gun.scale.setScalar(1.0);
+    g.add(gun);
+
+    // the shells that were left with it, in their torn box
+    const shellBox = box(0.19, 0.1, 0.13, card);
+    shellBox.position.set(-CW / 2 - 0.16, 0.05, 0.02);
+    shellBox.rotation.y = 0.3;
+    g.add(shellBox);
+    for (let i = 0; i < 4; i++) {
+      const sh = new THREE.Mesh(new THREE.CylinderGeometry(0.011, 0.011, 0.065, 7), card);
+      sh.rotation.set(Math.PI / 2, 0, i * 0.7);
+      sh.position.set(-CW / 2 - 0.34 + i * 0.05, 0.012, -0.1 + i * 0.06);
+      g.add(sh);
+    }
+    return { group: g, collide: [CW / 2 + 0.24, 0.16, CD + 0.12], live: true, gun };
+  }
+
+  /**
+   * Put the case down somewhere it actually fits.
+   *
+   * Candidates are tried in order and _put refuses any that would land in the
+   * entry lane or inside a piece already in the room, so the case cannot end
+   * up inside the sofa however the house's plan came out (the plan is mirrored
+   * and re-anchored per building — see _house). The last resort is the middle
+   * of the floor, which is ugly and always legal.
+   */
+  _placeGunCache(built) {
+    const c = this._canon(built.spec);
+    const hw = c.cw / 2, hd = c.cd / 2;
+    const spots = [
+      [-hw + 1.1, -0.6], [hw - 1.1, -0.6], [-hw + 1.1, 1.4], [hw - 1.1, 1.4],
+      [0, -hd + 3.7], [-1.6, -0.2], [1.6, -0.2], [0, 0],
+    ];
+    for (const [lx, lz] of spots) {
+      const maker = this.gunCache();
+      const g = this._put(built, maker, lx, lz, { yaw: lx < 0 ? Math.PI / 2 : -Math.PI / 2 });
+      if (!g) continue;
+      this.w.registerGunCache(g, maker, built.spec);
+      return true;
+    }
+    return false;
   }
 
   _tavern(b) {

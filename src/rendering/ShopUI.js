@@ -8,7 +8,7 @@ import { buildVendorModel, VendorAnimator, HEIGHT as VENDOR_H } from './VendorMo
  * MACHINE on the left, live and turning on its own little stage, and the GOODS
  * on the right in bubbled bays — a big one for the hardware, one for the
  * ammunition, and a dead one at the bottom for the thing that is not for sale
- * yet. Between them, the till: what you are carrying, in tokens.
+ * yet. Between them, the till: what you are carrying, in coins.
  *
  * The left panel is a real 3D render, not a picture of one. It gets its own
  * scene, camera and WebGL context on its own canvas, and it runs the SAME rig
@@ -111,7 +111,7 @@ export class ShopUI {
           <div class="shop-bays"></div>
         </div>
         <div class="shop-foot">
-          <span class="shop-till">TOKENS <b>0</b></span>
+          <span class="shop-till">COINS <b>0</b></span>
           <span class="shop-hint">CLICK TO BUY</span>
           <button type="button" class="shop-close">STEP BACK &nbsp;[E]</button>
         </div>
@@ -481,7 +481,7 @@ export class ShopUI {
     if (entry.locked) { this._say('THAT BAY IS NOT STOCKED', 'bad'); return; }
     if (this.remaining(entry) <= 0) { this._say('THAT WAS THE LAST ONE', 'bad'); return; }
     const ok = this.cb.onBuy?.(entry);
-    if (!ok) { this._say('NOT ENOUGH TOKENS', 'bad'); this._syncAfford(); return; }
+    if (!ok) { this._say('NOT ENOUGH COINS', 'bad'); this._syncAfford(); return; }
     this._say(entry.id === 'sentry' ? 'SENTRY STOWED — IT COMES FOLDED' : 'LOADED AND COUNTED', 'good');
     this._renderStock();
   }

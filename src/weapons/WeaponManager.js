@@ -53,6 +53,36 @@ export class WeaponManager {
 
   get current() { return this.weapons[this.index]; }
 
+  /** Which weapons the run has found. Rides with a save (see Game). */
+  snapshotUnlocked() { return [...this.unlocked]; }
+
+  /**
+   * Put the found-weapons set back exactly as it was.
+   *
+   * Deliberately NOT a burst of 'weapon:unlock' events: each of those switches
+   * the player onto the weapon and pokes the arms bay, which is right when you
+   * pick something up off the floor and absurd when a saved run is being
+   * rebuilt behind a loading screen. The magazines come from the ammo snapshot
+   * that is restored alongside this.
+   */
+  restoreUnlocked(ids) {
+    if (!Array.isArray(ids) || !ids.length) return;
+    const valid = new Set(WEAPON_CONFIGS.map((c) => c.id));
+    this.unlocked = new Set(ids.filter((id) => valid.has(id)));
+    for (const c of WEAPON_CONFIGS) if (!c.locked) this.unlocked.add(c.id);
+    if (!this.has(this.index)) {
+      const first = this.weapons.findIndex((_, i) => this.has(i));
+      if (first >= 0) { this.index = first; this.events.emit('weapon:switch', { weapon: this.current }); }
+    }
+  }
+
+  /** Back to the pristine loadout — everything found this run is lost again. */
+  resetUnlocked() {
+    this.unlocked = new Set(WEAPON_CONFIGS.filter((c) => !c.locked).map((c) => c.id));
+    this.index = 0;
+    this.events.emit('weapon:switch', { weapon: this.current });
+  }
+
   has(i) {
     const w = this.weapons[i];
     return !!w && this.unlocked.has(w.config.id);

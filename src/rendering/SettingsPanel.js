@@ -1,7 +1,8 @@
 import { BINDING_ROWS, MAX_SLOTS, codeLabel } from '../engine/KeyBindings.js';
 
 /**
- * The reusable Settings form — sliders (sensitivity / FOV / volume), invert-Y,
+ * The reusable Settings form — sliders (sensitivity / FOV / the two audio
+ * levels / surface detail), invert-Y,
  * and a KEY BINDINGS list — mounted into a host element. One instance backs the
  * title-screen Settings and another backs the in-game (pause) Settings; both
  * read and write the same shared SettingsStore.
@@ -42,7 +43,10 @@ export class SettingsPanel {
 
     this._slider(panel, 'MOUSE SENSITIVITY', 'sensitivity', 0.3, 2.5, 0.05, (v) => v.toFixed(2) + 'x');
     this._slider(panel, 'FIELD OF VIEW', 'fov', 70, 110, 1, (v) => v + '°');
-    this._slider(panel, 'MASTER VOLUME', 'volume', 0, 1, 0.05, (v) => Math.round(v * 100) + '%');
+    this._slider(panel, 'SOUNDTRACK', 'musicVolume', 0, 1, 0.05,
+      (v) => (v <= 0 ? 'OFF' : Math.round(v * 100) + '%'));
+    this._slider(panel, 'SOUND EFFECTS', 'sfxVolume', 0, 1, 0.05,
+      (v) => (v <= 0 ? 'OFF' : Math.round(v * 100) + '%'));
     this._slider(panel, 'SURFACE DETAIL', 'detail', 0, 1, 0.05,
       (v) => (v <= 0 ? 'OFF' : Math.round(v * 100) + '%'));
     this._check(panel, 'INVERT MOUSE Y', 'invertY');

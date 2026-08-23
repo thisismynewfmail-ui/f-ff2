@@ -1090,7 +1090,7 @@ check('a genuine hard flick is not eaten as a spike', look.flick === look.flickW
 check('one frame cannot turn the view without limit', look.clamped <= 1430, `${look.clamped}px`);
 
 /* ------------------------------------------------------------------ */
-/* the pause screen: seven instruments, all of them live                */
+/* the pause screen: six instruments, all of them live                  */
 /* ------------------------------------------------------------------ */
 // Staged against known values so every readout can be checked against the
 // number it is supposed to be showing — a panel that animates beautifully and
@@ -1115,7 +1115,6 @@ const pauseData = await page.evaluate(async () => {
     // set of parts in the bay, which is what makes each readout its own thing.
     instruments: [...document.querySelectorAll('.bay')].map((b) =>
       [...b.querySelectorAll('.bay-body > *')].map((e) => e.className.split(' ')[0]).join('+')),
-    secretsWanted: window.__game.world.secrets.found.size,
     // the rest pose, before arming: every driven instrument sits at zero
     restCell: parseFloat(q('.cell-fill').style.height),
     restTape: parseFloat(q('.tape-run').style.width),
@@ -1159,8 +1158,6 @@ const pauseData = await page.evaluate(async () => {
   out.setCell = parseFloat(q('.cell-fill').style.height);
   out.setTape = parseFloat(q('.tape-run').style.width);
   out.tubesLit = document.querySelectorAll('.vtube.lit').length;
-  out.lampsLit = document.querySelectorAll('.sec-lamp.lit').length;
-  out.secretsTotal = document.querySelectorAll('.sec-lamp').length;
   // and the readouts, once everything has landed
   await new Promise((r) => setTimeout(r, 1100));
   out.health = q('.bay-vitals .odometer').textContent;
@@ -1177,20 +1174,19 @@ const pauseData = await page.evaluate(async () => {
 });
 check('pause opens the instrument case', pauseData.shown === 'flex' && pauseData.dockHidden,
   `display ${pauseData.shown}, dock hidden ${pauseData.dockHidden}`);
-check('all seven readouts are present', pauseData.bays.length === 7,
+check('all six readouts are present', pauseData.bays.length === 6,
   pauseData.bays.join(' '));
 check('and every one of them is a different instrument',
   new Set(pauseData.instruments).size === pauseData.instruments.length,
   pauseData.instruments.join(' '));
 check('the readouts show the run that is actually being played',
-  pauseData.health === '041' && pauseData.wave === '12' && pauseData.waveState === 'ENGAGED'
+  pauseData.health === '041' && pauseData.wave === '12' && pauseData.waveState === 'PURGED'
   && pauseData.kills === '001180' && /389 \/ 612/.test(pauseData.aim)
-  && pauseData.tubesLit === 7 && pauseData.lampsLit === pauseData.secretsWanted
+  && pauseData.tubesLit === 7
   && pauseData.clock === '010222' && pauseData.waveCount === '17/26',
   `hp ${pauseData.health} wave ${pauseData.wave}/${pauseData.waveState} ${pauseData.waveCount}`
   + ` kills ${pauseData.kills}`
   + ` aim "${pauseData.aim}" tubes ${pauseData.tubesLit}`
-  + ` secrets ${pauseData.lampsLit}/${pauseData.secretsTotal} (want ${pauseData.secretsWanted})`
   + ` clock ${pauseData.clock}`);
 check('the instruments start at rest and are driven to their values',
   pauseData.restCell === 0 && pauseData.restTape === 0

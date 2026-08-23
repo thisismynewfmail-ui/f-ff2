@@ -6,6 +6,151 @@ import { mergeStatic, scaleBoxUVs } from './Buildings.js';
  * Each factory returns a THREE.Group positioned by the caller via place();
  * solid props register AABB colliders + nav blocks.
  */
+/**
+ * THE COACHWORK.
+ *
+ * One entry per body, stated in metres in the car's own frame: origin on the
+ * ground at the centre of the car, +X toward the nose, +Z to the left. Every
+ * number here is a landmark on a real car, so the shapes can be read off the
+ * table without running the game:
+ *
+ *   hull        the side silhouette from the front bumper round to the tail,
+ *               nose first. The underside (sills + wheel arches) is generated
+ *               from the axles — see PropKit._hullOutline.
+ *   cabin       the greenhouse, lofted narrower than the hull; the difference
+ *               is the tumblehome.
+ *   screen /
+ *   backlight   the two ends of the windscreen and the rear window, as points
+ *               on the cabin outline, so the glass always lies in its aperture.
+ *   dlo         daylight openings — the side windows, one polygon each, which
+ *               is what puts a B-pillar between them.
+ *   shuts       door shut lines [x, centreY, height]; handles [x, y].
+ *   lamp        [y, height, width, |z|] for the head/tail lamps.
+ *   grille      [centreY, height, width as a fraction of W].
+ *
+ * The wheels are the fixed point of the whole design (axleF/axleR/wheelR), and
+ * the bodies are drawn around them rather than the other way round.
+ */
+const VEHICLE_SPECS = {
+  // A three-box saloon. Long bonnet, short boot, four side windows.
+  sedan: {
+    L: 4.46, W: 1.84, bevel: 0.055, tumble: 0.15, sill: 0.30,
+    axleF: 1.36, axleR: -1.26, arch: 0.50, archSquash: 0.92, wheelR: 0.33,
+    tyreW: 0.24, track: 0.16,
+    hull: [
+      [2.20, 0.42], [2.23, 0.66], [2.19, 0.88], [2.02, 0.97],
+      [1.40, 1.05], [0.66, 1.12], [-0.90, 1.13], [-1.62, 1.08],
+      [-2.04, 1.00], [-2.20, 0.86], [-2.23, 0.62], [-2.20, 0.40],
+    ],
+    cabin: [[0.66, 1.08], [-0.02, 1.50], [-0.96, 1.52], [-1.50, 1.08]],
+    screen: [[0.66, 1.08], [-0.02, 1.50]],
+    backlight: [[-0.96, 1.52], [-1.50, 1.08]],
+    dlo: [
+      [[0.42, 1.15], [-0.06, 1.42], [-0.44, 1.43], [-0.44, 1.15]],
+      [[-0.56, 1.43], [-0.92, 1.44], [-1.28, 1.15], [-0.56, 1.15]],
+    ],
+    shuts: [[0.44, 0.74, 0.66], [-0.52, 0.74, 0.66]],
+    handles: [[-0.02, 1.00], [-0.92, 1.00]],
+    strip: [0.05, 0.88, 2.12], bumperY: 0.56, bumperH: 0.26,
+    lamp: [0.90, 0.20, 0.30, 0.62], grille: [0.80, 0.24, 0.52],
+    mirror: [0.58, 1.00], rails: [-0.5, 1.53, 1.0],
+  },
+  // The same shell with a squarer roof and a wider track: the town's cruiser.
+  cruiser: {
+    L: 4.62, W: 1.92, bevel: 0.05, tumble: 0.14, sill: 0.31,
+    axleF: 1.42, axleR: -1.32, arch: 0.52, archSquash: 0.9, wheelR: 0.35,
+    tyreW: 0.26, track: 0.16,
+    hull: [
+      [2.28, 0.44], [2.31, 0.68], [2.27, 0.90], [2.10, 0.99],
+      [1.46, 1.06], [0.70, 1.14], [-0.94, 1.15], [-1.70, 1.10],
+      [-2.12, 1.02], [-2.28, 0.88], [-2.31, 0.64], [-2.28, 0.42],
+    ],
+    cabin: [[0.70, 1.10], [0.06, 1.56], [-1.02, 1.58], [-1.56, 1.10]],
+    screen: [[0.70, 1.10], [0.06, 1.56]],
+    backlight: [[-1.02, 1.58], [-1.56, 1.10]],
+    dlo: [
+      [[0.46, 1.17], [0.02, 1.48], [-0.46, 1.49], [-0.46, 1.17]],
+      [[-0.58, 1.49], [-0.98, 1.50], [-1.34, 1.17], [-0.58, 1.17]],
+    ],
+    shuts: [[0.46, 0.76, 0.66], [-0.54, 0.76, 0.66]],
+    handles: [[0.00, 1.02], [-0.94, 1.02]],
+    strip: [0.05, 0.92, 2.16], bumperY: 0.58, bumperH: 0.28,
+    lamp: [0.92, 0.20, 0.30, 0.66], grille: [0.82, 0.26, 0.54],
+    mirror: [0.62, 1.02], rails: [-0.48, 1.59, 1.0],
+  },
+  // Two-box pickup: cab forward, open bed behind, and it rides higher.
+  pickup: {
+    L: 5.06, W: 1.94, bevel: 0.05, tumble: 0.12, sill: 0.40,
+    axleF: 1.62, axleR: -1.44, arch: 0.56, archSquash: 0.9, wheelR: 0.39,
+    tyreW: 0.29, track: 0.15,
+    // The top drops away behind the cab: the bed is a HOLE in the body, not a
+    // panel laid over it, so the sides below have something to stand on.
+    hull: [
+      [2.50, 0.52], [2.53, 0.78], [2.49, 1.02], [2.30, 1.12],
+      [1.72, 1.18], [1.06, 1.24], [0.30, 1.26], [-0.52, 1.26],
+      [-0.62, 1.04], [-2.38, 1.04], [-2.50, 0.96], [-2.53, 0.76], [-2.50, 0.50],
+    ],
+    cabin: [[1.06, 1.20], [0.42, 1.68], [-0.42, 1.70], [-0.52, 1.20]],
+    screen: [[1.06, 1.20], [0.42, 1.68]],
+    backlight: [[-0.42, 1.70], [-0.52, 1.20]],
+    dlo: [[[0.82, 1.27], [0.40, 1.60], [-0.36, 1.61], [-0.36, 1.27]]],
+    shuts: [[0.86, 0.90, 0.62], [-0.44, 0.90, 0.62]],
+    handles: [[0.18, 1.12]],
+    strip: [0.2, 1.02, 2.4], bumperY: 0.66, bumperH: 0.30,
+    lamp: [1.02, 0.22, 0.32, 0.66], grille: [0.92, 0.30, 0.56],
+    mirror: [0.98, 1.24], rails: null,
+    // [fromX, toX, floorY, sideHeight] — the open tray behind the cab
+    bed: [-0.62, -2.38, 1.04, 0.30],
+  },
+  // A high-cube van: near-vertical screen, slab flanks, one long side window.
+  van: {
+    L: 5.10, W: 2.00, bevel: 0.06, tumble: 0.08, sill: 0.38,
+    axleF: 1.64, axleR: -1.50, arch: 0.54, archSquash: 0.86, wheelR: 0.37,
+    tyreW: 0.27, track: 0.14,
+    hull: [
+      [2.52, 0.50], [2.55, 0.76], [2.50, 1.04], [2.30, 1.16],
+      [1.90, 1.24], [1.30, 1.28], [-2.42, 1.28], [-2.55, 1.14],
+      [-2.55, 0.74], [-2.52, 0.48],
+    ],
+    cabin: [[1.62, 1.24], [1.06, 2.06], [-2.34, 2.10], [-2.46, 1.24]],
+    screen: [[1.62, 1.24], [1.06, 2.06]],
+    backlight: null,
+    dlo: [
+      [[1.24, 1.34], [0.98, 1.94], [0.28, 1.95], [0.28, 1.34]],
+      [[0.16, 1.95], [-0.62, 1.96], [-0.62, 1.34], [0.16, 1.34]],
+    ],
+    shuts: [[1.26, 0.92, 0.60], [0.20, 0.92, 0.60], [-2.34, 1.68, 0.80]],
+    handles: [[0.42, 1.14]],
+    strip: [-0.2, 1.06, 3.0], bumperY: 0.64, bumperH: 0.30,
+    lamp: [1.02, 0.24, 0.32, 0.72], grille: [0.92, 0.26, 0.50],
+    mirror: [1.54, 1.32], rails: [-0.6, 2.11, 2.6],
+  },
+  // A city bus. One long slab on six wheels, and the only body whose glass
+  // runs the full length of the flank.
+  bus: {
+    L: 8.90, W: 2.46, bevel: 0.07, tumble: 0.06, sill: 0.62,
+    axleF: 3.10, axleR: -2.60, arch: 0.70, archSquash: 0.8, wheelR: 0.50,
+    tyreW: 0.34, track: 0.18,
+    hull: [
+      [4.42, 0.74], [4.45, 1.02], [4.42, 1.32], [4.26, 1.44],
+      [3.90, 1.50], [-4.24, 1.50], [-4.42, 1.36], [-4.45, 1.02], [-4.42, 0.72],
+    ],
+    cabin: [[4.14, 1.46], [3.86, 2.94], [-4.16, 2.98], [-4.32, 1.46]],
+    screen: [[4.14, 1.46], [3.86, 2.94]],
+    backlight: [[-4.16, 2.98], [-4.32, 1.46]],
+    dlo: [
+      [[3.60, 1.62], [3.46, 2.72], [1.10, 2.74], [1.10, 1.62]],
+      [[0.94, 2.74], [-1.60, 2.75], [-1.60, 1.62], [0.94, 1.62]],
+      [[-1.76, 2.75], [-4.02, 2.78], [-4.10, 1.62], [-1.76, 1.62]],
+    ],
+    shuts: [[3.66, 1.14, 0.56], [1.02, 2.10, 1.70], [-1.68, 1.14, 0.56]],
+    handles: [],
+    strip: [0, 1.26, 7.4], bumperY: 0.92, bumperH: 0.34,
+    lamp: [1.16, 0.26, 0.34, 0.98], grille: [1.06, 0.24, 0.40],
+    mirror: [3.96, 2.32], rails: [0, 3.00, 8.2],
+  },
+};
+
 export class PropKit {
   constructor(texLib, collision, nav, terrain) {
     this.texLib = texLib;
@@ -24,9 +169,11 @@ export class PropKit {
     return this.mats.get(key);
   }
 
-  colorMat(hex) {
-    const key = 'c' + hex;
-    if (!this.mats.has(key)) this.mats.set(key, new THREE.MeshLambertMaterial({ color: hex }));
+  colorMat(hex, opts = null) {
+    const key = 'c' + hex + (opts ? JSON.stringify(opts) : '');
+    if (!this.mats.has(key)) {
+      this.mats.set(key, new THREE.MeshLambertMaterial({ color: hex, ...(opts || {}) }));
+    }
     return this.mats.get(key);
   }
 
@@ -53,13 +200,32 @@ export class PropKit {
   }
 
   /* ---- vehicles -------------------------------------------------------
-   * Every car in town is built by one coachbuilder. `_vehicle` lays out a
-   * real body — sills, wheel arches, a bonnet and boot at different heights
-   * from the cabin, a raked screen, bumpers, grille, lamps and mirrors — and
-   * the variants differ in proportion rather than in colour, so a pickup
-   * reads as a pickup and a van reads as a van at fifty metres. Each finished
-   * body is merged down to one mesh per material, which is what makes it
-   * affordable to have this much geometry parked all over the map.       */
+   * EVERY CAR IN TOWN IS LOFTED FROM A SIDE PROFILE.
+   *
+   * The old coachwork was an assembly of boxes: a slab bonnet, a slab boot, a
+   * cabin of four square pillars with panes hung between them, and thin strips
+   * stuck on the flanks where the wheel arches should have been. Every one of
+   * those parts was in the right PLACE, which is why it read as a car in a
+   * floor plan and as a stack of crates from the pavement — a real car has
+   * almost no flat surface on it and not one square corner.
+   *
+   * So the body is now drawn the way a car is drawn: as its silhouette. A
+   * closed outline in the X/Y plane — bumper, nose, bonnet, beltline, boot,
+   * tail, and a bottom edge that ARCHES OVER EACH WHEEL — is extruded across
+   * the car's width with a bevel on it, which rounds every edge of that
+   * silhouette in one operation. The greenhouse is a second, narrower loft
+   * sitting on the beltline (that inset is the tumblehome, and it is most of
+   * why a car looks like a car from three-quarter view), and the glass is
+   * inset panels in it rather than panes floating between pillars.
+   *
+   * On top of that go the things the eye actually uses to identify a car at
+   * fifty metres and which the box version had none of: shut lines down the
+   * doors, handles, a recessed grille with lamps set into the nose, wrapped
+   * bumpers, mirrors on the A-pillar, drip rails, a plate, an exhaust.
+   *
+   * Each finished body is still merged down to one mesh per material, so all
+   * of this costs the same to draw as the crates did.
+   */
 
   /**
    * @param {object} o
@@ -69,159 +235,270 @@ export class PropKit {
    *  lit      build working headlamps and return them (car alarms)
    */
   _vehicle({ paint = 0x39465e, kind = 'sedan', wrecked = false, lit = false } = {}) {
+    const V = VEHICLE_SPECS[kind] || VEHICLE_SPECS.sedan;
     const g = new THREE.Group();
-    const P = { sedan: [4.2, 1.9], pickup: [4.8, 2.0], van: [5.0, 2.1], bus: [8.4, 2.4], cruiser: [4.4, 1.95] }[kind];
-    const [L, W] = P;
-    const hl = L / 2, hw = W / 2;
-    const body = this.colorMat(wrecked ? mixHex(paint, 0x2a2622, 0.45) : paint);
-    const dark = this.colorMat(0x1c1f23);
-    const tyre = this.colorMat(0x14161a);
-    const chrome = this.colorMat(0x9aa0a4);
-    const glass = wrecked ? this.colorMat(0x0e1114) : this.mat('window');
+    const hl = V.L / 2, hw = V.W / 2;
+    const body = this.colorMat(wrecked ? mixHex(paint, 0x2a2622, 0.5) : paint);
+    const shade = this.colorMat(mixHex(wrecked ? mixHex(paint, 0x2a2622, 0.5) : paint, 0x000000, 0.32));
+    const dark = this.colorMat(0x14161a);
+    const tyre = this.colorMat(0x101216);
+    const chrome = this.colorMat(wrecked ? 0x6d7176 : 0xa8aeb2);
+    const rim = this.colorMat(wrecked ? 0x54585c : 0x8e969c);
+    const glass = this.colorMat(wrecked ? 0x0b0e11 : 0x2b3d47, { side: THREE.DoubleSide });
+    const lampMat = this.colorMat(wrecked ? 0x2a2c2e : 0xe6e2cc);
+    const tailMat = this.colorMat(wrecked ? 0x3a1a18 : 0x9c2a20);
 
-    // --- lower body: sill, main tub, wheel arches
-    const sill = this.box(L - 0.3, 0.22, W - 0.06, dark);
-    sill.position.y = 0.42;
-    const tub = this.box(L - 0.1, 0.52, W, body);
-    tub.position.y = 0.76;
-    g.add(sill, tub);
-    const axleF = hl - (kind === 'bus' ? 2.6 : 0.95);
-    const axleR = -hl + (kind === 'bus' ? 1.9 : 0.95);
-    for (const ax of [axleF, axleR]) {
+    /* --- the two lofts ------------------------------------------------- */
+    const loft = (pts, width, mat, bevel = 0.05) => {
+      const shape = new THREE.Shape(pts.map(([x, y]) => new THREE.Vector2(x, y)));
+      const depth = Math.max(0.02, width - bevel * 2);
+      const geo = new THREE.ExtrudeGeometry(shape, {
+        depth, bevelEnabled: true, bevelSize: bevel, bevelThickness: bevel,
+        bevelSegments: 2, steps: 1, curveSegments: 4,
+      });
+      geo.translate(0, 0, -depth / 2);
+      return new THREE.Mesh(geo, mat);
+    };
+
+    g.add(loft(this._hullOutline(V), V.W, body, V.bevel));
+    const cabW = V.W - V.tumble * 2;
+    // The greenhouse and its glass live in one group, so a wreck's roof can be
+    // stoved in WITH the windows in it. Crushing the shell and leaving the
+    // panes where they were is how you get a car with its windscreen hanging
+    // in the air above the bonnet.
+    const cabG = new THREE.Group();
+    g.add(cabG);
+    if (V.cabin.length) cabG.add(loft(V.cabin, cabW, body, V.bevel * 0.8));
+
+    /* --- glass: inset panels in the greenhouse, not panes between sticks */
+    /**
+     * A pane spanning two points of the cabin outline: `len` along the a→b
+     * direction, `width` across the car, standing in the aperture and pushed
+     * `inset` metres along its own outward normal so it never z-fights the
+     * pillar it is glazed into.
+     */
+    const panel = (a, b, width, mat, inset = 0) => {
+      const dx = b[0] - a[0], dy = b[1] - a[1];
+      const len = Math.hypot(dx, dy) || 0.01;
+      const geo = new THREE.PlaneGeometry(len, width);
+      geo.rotateX(-Math.PI / 2);                 // lay it flat: length in X, width in Z
+      const q = new THREE.Mesh(geo, mat);
+      q.rotation.z = Math.atan2(dy, dx);         // ...then stand it up on the rake
+      q.position.set(
+        (a[0] + b[0]) / 2 - (dy / len) * inset,
+        (a[1] + b[1]) / 2 + (dx / len) * inset, 0);
+      return q;
+    };
+    if (V.screen) cabG.add(panel(V.screen[0], V.screen[1], cabW - 0.10, glass, -0.02));
+    if (V.backlight && !wrecked) {
+      cabG.add(panel(V.backlight[0], V.backlight[1], cabW - 0.14, glass, 0.02));
+    }
+    // Side glass: the daylight openings, cut as flat polygons and laid on each
+    // flank of the greenhouse. Both sides use the SAME polygon, unmirrored —
+    // a car's near and off side windows are the same shape seen from opposite
+    // sides, and turning one round would put the windscreen at the back.
+    for (const dlo of (wrecked ? V.dlo.slice(0, 1) : V.dlo)) {
+      const sh = new THREE.Shape(dlo.map(([x, y]) => new THREE.Vector2(x, y)));
+      const geo = new THREE.ShapeGeometry(sh);
       for (const s of [-1, 1]) {
-        const arch = this.box(1.0, 0.34, 0.16, body);
-        arch.position.set(ax, 0.72, s * (hw - 0.03));
-        g.add(arch);
+        const q = new THREE.Mesh(geo, glass);
+        q.position.z = s * (cabW / 2 + 0.01);
+        cabG.add(q);
       }
     }
 
-    // --- upper body: bonnet, cabin, boot / load bed
-    const cabLen = { sedan: 2.0, pickup: 1.7, van: 3.2, bus: 6.6, cruiser: 2.0 }[kind];
-    const cabX = { sedan: -0.15, pickup: 0.25, van: -0.4, bus: -0.2, cruiser: -0.15 }[kind];
-    const cabTop = { sedan: 1.66, pickup: 1.72, van: 2.02, bus: 2.5, cruiser: 1.7 }[kind];
-    const bonnet = this.box(hl - cabX - cabLen / 2, 0.22, W - 0.22, body);
-    bonnet.position.set((hl + cabX + cabLen / 2) / 2, 1.11, 0);
-    g.add(bonnet);
-    if (kind === 'pickup') {              // open load bed with sides
-      const bed = this.box(1.9, 0.1, W - 0.3, dark);
-      bed.position.set(-hl + 1.05, 1.06, 0);
-      g.add(bed);
+    if (wrecked && kind !== 'bus') {
+      // stoved in and pushed off square, glass and all
+      cabG.scale.set(1, 0.78, 0.97);
+      cabG.rotation.z = 0.07;
+      cabG.position.y = -0.05;
+    }
+
+    /* --- shut lines and handles: the cheapest thing that says "doors" --- */
+    for (const s of [-1, 1]) {
+      for (const [dx, y0, h] of V.shuts) {
+        const cut = new THREE.Mesh(new THREE.BoxGeometry(0.035, h, 0.02), dark);
+        cut.position.set(dx, y0, s * (hw + 0.005));
+        g.add(cut);
+      }
+      for (const [dx, y] of V.handles) {
+        const hd = new THREE.Mesh(new THREE.BoxGeometry(0.20, 0.055, 0.05), chrome);
+        hd.position.set(dx, y, s * (hw + 0.02));
+        g.add(hd);
+      }
+      // Rubbing strip down the flank. Its height and length come from the
+      // spec rather than from the car's length, because the band of flank it
+      // can live on is bounded by the wheel arches under it and the beltline
+      // over it — a strip sized off L ends up hanging in the air over a wheel.
+      const strip = new THREE.Mesh(new THREE.BoxGeometry(V.strip[2], 0.07, 0.03), shade);
+      strip.position.set(V.strip[0], V.strip[1], s * (hw + 0.012));
+      g.add(strip);
+    }
+
+    /* --- ends: bumpers, grille, lamps, plate --------------------------- */
+    const bumper = (x, sign) => {
+      const b = new THREE.Mesh(new THREE.BoxGeometry(0.20, V.bumperH, V.W - 0.06), chrome);
+      b.position.set(x, V.bumperY, 0);
+      g.add(b);
+      // the wrap round each corner, which is what stops a bumper reading as a
+      // plank held up in front of the car
       for (const s of [-1, 1]) {
-        const side = this.box(1.9, 0.45, 0.12, body);
-        side.position.set(-hl + 1.05, 1.26, s * (hw - 0.16));
-        g.add(side);
+        const wrap = new THREE.Mesh(new THREE.BoxGeometry(0.34, V.bumperH * 0.92, 0.16), chrome);
+        wrap.position.set(x - sign * 0.16, V.bumperY, s * (hw - 0.07));
+        wrap.rotation.y = -sign * s * 0.42;
+        g.add(wrap);
       }
-      const tail = this.box(0.12, 0.45, W - 0.3, body);
-      tail.position.set(-hl + 0.14, 1.26, 0);
-      g.add(tail);
-    } else if (kind === 'sedan' || kind === 'cruiser') {
-      const boot = this.box(-hl - (cabX - cabLen / 2), 0.22, W - 0.22, body);
-      boot.position.set((-hl + cabX - cabLen / 2) / 2, 1.11, 0);
-      g.add(boot);
-    }
-    // cabin shell: pillars + roof, glass filling the gaps
-    const cabH = cabTop - 1.2;
-    for (const s of [-1, 1]) {            // side glass
-      const pane = this.box(cabLen - 0.24, cabH - 0.14, 0.05, glass);
-      pane.position.set(cabX, 1.2 + cabH / 2, s * (hw - 0.12));
-      g.add(pane);
-    }
-    const screen = this.box(0.12, cabH + 0.12, W - 0.3, glass);
-    screen.position.set(cabX + cabLen / 2 - 0.06, 1.2 + cabH / 2, 0);
-    screen.rotation.z = kind === 'van' || kind === 'bus' ? 0.08 : 0.28;   // rake
-    const rear = this.box(0.12, cabH + 0.06, W - 0.34, glass);
-    rear.position.set(cabX - cabLen / 2 + 0.06, 1.2 + cabH / 2, 0);
-    rear.rotation.z = kind === 'van' || kind === 'bus' ? -0.05 : -0.3;
-    g.add(screen, rear);
-    for (const [px, pz] of [[cabLen / 2 - 0.1, hw - 0.1], [cabLen / 2 - 0.1, -hw + 0.1],
-      [-cabLen / 2 + 0.1, hw - 0.1], [-cabLen / 2 + 0.1, -hw + 0.1]]) {
-      const pillar = this.box(0.16, cabH, 0.16, body);
-      pillar.position.set(cabX + px, 1.2 + cabH / 2, pz);
-      g.add(pillar);
-    }
-    if (kind === 'bus' || kind === 'van') {  // a centre pillar between the bays
-      const mid = this.box(0.14, cabH, W - 0.1, body);
-      mid.position.set(cabX, 1.2 + cabH / 2, 0);
-      g.add(mid);
-    }
-    const roof = this.box(cabLen + 0.12, 0.14, W - 0.14, body);
-    roof.position.set(cabX, cabTop, 0);
-    if (wrecked) { roof.rotation.z = 0.09; roof.position.y -= 0.16; }   // stoved in
-    g.add(roof);
-
-    // --- ends: bumpers, grille, lamps, plate, mirrors
-    if (!wrecked || kind === 'bus') {
-      for (const s of [1, -1]) {
-        const bump = this.box(0.3, 0.3, W - 0.04, chrome);
-        bump.position.set(s * (hl - 0.02), 0.66, 0);
-        g.add(bump);
-      }
-    } else {                                  // front bumper hanging off
-      const bump = this.box(0.3, 0.3, W - 0.04, chrome);
-      bump.position.set(-hl + 0.02, 0.6, 0);
-      g.add(bump);
-      const loose = this.box(0.28, 0.26, W * 0.55, chrome);
-      loose.position.set(hl - 0.1, 0.38, 0.3);
-      loose.rotation.z = 0.4;
+    };
+    bumper(hl - 0.06, 1);
+    if (!wrecked) bumper(-hl + 0.06, -1);
+    else {                                   // hanging off at one corner
+      const loose = new THREE.Mesh(new THREE.BoxGeometry(0.2, V.bumperH, V.W * 0.6), chrome);
+      loose.position.set(-hl + 0.02, V.bumperY - 0.24, 0.28);
+      loose.rotation.set(0, 0.2, 0.46);
       g.add(loose);
     }
-    const grille = this.box(0.12, 0.3, W * 0.62, dark);
-    grille.position.set(hl + 0.02, 0.94, 0);
+    // grille, recessed into the nose rather than stuck onto it
+    const grille = new THREE.Mesh(new THREE.BoxGeometry(0.09, V.grille[1], V.W * V.grille[2]), dark);
+    grille.position.set(hl - 0.05, V.grille[0], 0);
     g.add(grille);
-    const plate = this.box(0.05, 0.16, 0.5, this.colorMat(0xc8c4b4));
-    plate.position.set(hl + 0.08, 0.62, 0);
+    for (let i = 0; i < 3; i++) {
+      const bar = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.035, V.W * V.grille[2] - 0.04), chrome);
+      bar.position.set(hl - 0.02, V.grille[0] - V.grille[1] / 2 + (i + 0.5) * (V.grille[1] / 3), 0);
+      g.add(bar);
+    }
+    const plate = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.15, 0.46), this.colorMat(0xcac6b4));
+    plate.position.set(hl - 0.01, V.bumperY + V.bumperH / 2 + 0.11, 0);
     g.add(plate);
+    const plateR = plate.clone();
+    plateR.position.set(-hl + 0.01, V.bumperY + V.bumperH / 2 + 0.11, 0);
+    g.add(plateR);
+
     const lights = [];
     for (const s of [-1, 1]) {
+      // headlamp: a dark socket with the lens set into it
+      const socket = new THREE.Mesh(new THREE.BoxGeometry(0.12, V.lamp[1] + 0.06, V.lamp[2] + 0.06), dark);
+      socket.position.set(hl - 0.07, V.lamp[0], s * V.lamp[3]);
+      g.add(socket);
       if (lit) {
-        const lamp = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.2, 0.34),
+        const lamp = new THREE.Mesh(new THREE.BoxGeometry(0.07, V.lamp[1], V.lamp[2]),
           new THREE.MeshBasicMaterial({ color: 0xffc861 }));
-        lamp.position.set(hl + 0.03, 0.98, s * (hw - 0.32));
+        lamp.position.set(hl - 0.02, V.lamp[0], s * V.lamp[3]);
         lamp.visible = false;              // dark until the alarm trips
         lights.push(lamp);                 // added after the merge
       } else {
-        const lamp = this.box(0.09, 0.2, 0.34, wrecked ? dark : this.colorMat(0xd8d4c0));
-        lamp.position.set(hl + 0.03, 0.98, s * (hw - 0.32));
+        const lamp = new THREE.Mesh(new THREE.BoxGeometry(0.07, V.lamp[1], V.lamp[2]), lampMat);
+        lamp.position.set(hl - 0.02, V.lamp[0], s * V.lamp[3]);
         g.add(lamp);
       }
-      const tail = this.box(0.08, 0.16, 0.28, this.colorMat(wrecked ? 0x3a1a18 : 0x8c2a22));
-      tail.position.set(-hl - 0.02, 0.96, s * (hw - 0.3));
-      g.add(tail);
-      const mirror = this.box(0.1, 0.12, 0.2, body);
-      mirror.position.set(cabX + cabLen / 2 + 0.08, 1.42, s * (hw + 0.06));
-      g.add(mirror);
+      const tl = new THREE.Mesh(new THREE.BoxGeometry(0.07, V.lamp[1] * 0.9, V.lamp[2] * 0.8), tailMat);
+      tl.position.set(-hl + 0.02, V.lamp[0] + 0.06, s * V.lamp[3]);
+      g.add(tl);
+      // mirror, on its stalk off the A-pillar foot where a mirror lives
+      if (V.mirror) {
+        const stalk = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.05, 0.09), shade);
+        stalk.position.set(V.mirror[0], V.mirror[1], s * (hw + 0.03));
+        const shell = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.11, 0.06), body);
+        shell.position.set(V.mirror[0] - 0.02, V.mirror[1] + 0.02, s * (hw + 0.10));
+        g.add(stalk, shell);
+      }
+    }
+    // wipers parked at the base of the screen, and the drip rails on the roof
+    if (V.screen && !wrecked) {
+      for (const s of [-1, 1]) {
+        const w = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.022, 0.022), dark);
+        w.position.set(V.screen[0][0] - 0.10, V.screen[0][1] + 0.02, s * cabW * 0.22);
+        w.rotation.z = 0.14;
+        g.add(w);
+      }
+    }
+    if (V.rails) {
+      for (const s of [-1, 1]) {
+        const rail = new THREE.Mesh(new THREE.BoxGeometry(V.rails[2], 0.035, 0.045), shade);
+        rail.position.set(V.rails[0], V.rails[1], s * (cabW / 2 - 0.02));
+        g.add(rail);
+      }
+    }
+    // exhaust, low at one corner
+    const pipe = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.05, 0.22, 6), chrome);
+    pipe.rotation.z = Math.PI / 2;
+    pipe.position.set(-hl + 0.08, V.bumperY - V.bumperH * 0.5 - 0.03, -hw * 0.55);
+    g.add(pipe);
+
+    /* --- the load bed, for the one body that has one ------------------- */
+    if (V.bed) {
+      // The tray: a ribbed floor sunk into the hull, walled by two side panels
+      // and closed by a tailgate and the back of the cab. You can see into it,
+      // which is the entire point of a pickup.
+      const [x0, x1, by, bh] = V.bed;
+      const bx = (x0 + x1) / 2, blen = Math.abs(x0 - x1);
+      const floor = new THREE.Mesh(new THREE.BoxGeometry(blen, 0.05, V.W - 0.16), dark);
+      floor.position.set(bx, by + 0.03, 0);
+      g.add(floor);
+      for (let i = 0; i < 5; i++) {
+        const rib = new THREE.Mesh(new THREE.BoxGeometry(blen - 0.1, 0.03, 0.05), shade);
+        rib.position.set(bx, by + 0.06, (i - 2) * ((V.W - 0.3) / 4.6));
+        g.add(rib);
+      }
+      for (const sz of [-1, 1]) {
+        const side = new THREE.Mesh(new THREE.BoxGeometry(blen, bh, 0.10), body);
+        side.position.set(bx, by + bh / 2, sz * (hw - 0.05));
+        g.add(side);
+        const cap = new THREE.Mesh(new THREE.BoxGeometry(blen, 0.05, 0.16), shade);
+        cap.position.set(bx, by + bh, sz * (hw - 0.05));
+        g.add(cap);
+      }
+      const gate = new THREE.Mesh(new THREE.BoxGeometry(0.09, bh, V.W - 0.1), body);
+      gate.position.set(x1 - 0.05, by + bh / 2, 0);
+      g.add(gate);
+      const head = new THREE.Mesh(new THREE.BoxGeometry(0.09, bh + 0.12, V.W - 0.14), body);
+      head.position.set(x0 + 0.04, by + (bh + 0.12) / 2, 0);
+      g.add(head);
     }
 
-    // --- wheels. A wreck has lost one and sits on the drum.
+    /* --- wheels: tyre, rim, hub, and a wreck sitting on one drum ------- */
     let drop = wrecked ? 1 : -1;
-    for (const ax of [axleF, axleR]) {
+    for (const ax of [V.axleF, V.axleR]) {
       for (const s of [-1, 1]) {
-        const missing = wrecked && ax === axleF && s === 1;
-        const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.13, 0.3, 8), chrome);
+        const missing = wrecked && ax === V.axleF && s === 1;
+        const zz = s * (hw - V.track);
+        if (missing) {
+          const drum = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.14, 0.16, 8), rim);
+          drum.rotation.x = Math.PI / 2;
+          drum.position.set(ax, 0.18, zz);
+          g.add(drum);
+          drop = 1;
+          continue;
+        }
+        const t = new THREE.Mesh(new THREE.CylinderGeometry(V.wheelR, V.wheelR, V.tyreW, 14), tyre);
+        t.rotation.x = Math.PI / 2;
+        t.position.set(ax, V.wheelR, zz);
+        g.add(t);
+        const r = new THREE.Mesh(
+          new THREE.CylinderGeometry(V.wheelR * 0.62, V.wheelR * 0.62, V.tyreW + 0.02, 10), rim);
+        r.rotation.x = Math.PI / 2;
+        r.position.set(ax, V.wheelR, zz);
+        g.add(r);
+        const hub = new THREE.Mesh(
+          new THREE.CylinderGeometry(V.wheelR * 0.24, V.wheelR * 0.24, V.tyreW + 0.05, 8), chrome);
         hub.rotation.x = Math.PI / 2;
-        hub.position.set(ax, missing ? 0.2 : 0.36, s * (hw - 0.13));
+        hub.position.set(ax, V.wheelR, zz);
         g.add(hub);
-        if (missing) { drop = 1; continue; }
-        const wheel = new THREE.Mesh(new THREE.CylinderGeometry(0.36, 0.36, 0.28, 10), tyre);
-        wheel.rotation.x = Math.PI / 2;
-        wheel.position.set(ax, 0.36, s * (hw - 0.13));
-        g.add(wheel);
       }
     }
     if (wrecked) g.rotation.z = 0.03 * drop;   // settled onto the flat corner
 
     if (kind === 'cruiser') {                  // light bar and door flashes
-      const bar = this.box(1.1, 0.16, 0.9, dark);
-      bar.position.set(cabX + 0.1, cabTop + 0.14, 0);
+      const bar = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.09, cabW * 0.86), dark);
+      bar.position.set(V.rails[0], V.rails[1] + 0.14, 0);
       g.add(bar);
-      for (const [ox, c] of [[-0.32, 0xb03028], [0.32, 0x2a58b0]]) {
-        const dome = this.box(0.4, 0.12, 0.34, this.colorMat(c));
-        dome.position.set(cabX + 0.1 + ox, cabTop + 0.2, 0);
+      for (const [ox, c] of [[-0.26, 0xb03028], [0.26, 0x2a58b0]]) {
+        const dome = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.11, cabW * 0.42), this.colorMat(c));
+        dome.position.set(V.rails[0] + ox, V.rails[1] + 0.23, 0);
         g.add(dome);
       }
       for (const s of [-1, 1]) {
-        const flash = this.box(1.5, 0.36, 0.04, this.colorMat(0xdcdcd4));
-        flash.position.set(cabX, 0.82, s * (hw + 0.02));
+        const flash = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.34, 0.02), this.colorMat(0xdcdcd4));
+        flash.position.set(-0.1, V.strip[1] + 0.08, s * (hw + 0.03));
         g.add(flash);
       }
     }
@@ -229,6 +506,37 @@ export class PropKit {
     mergeStatic(g);
     for (const l of lights) g.add(l);        // animated, so kept out of the merge
     return { group: g, collide: [hl, 1.0, hw], lights, kind };
+  }
+
+  /**
+   * The lower body's silhouette, with the wheel arches cut into its underside.
+   *
+   * The arches are the whole reason this is generated rather than written out:
+   * each one is a real semicircle struck about its own axle, so the body sits
+   * OVER the wheels instead of beside them, and moving an axle moves the arch
+   * that covers it.
+   */
+  _hullOutline(V) {
+    const pts = [...V.hull];                 // nose, beltline and tail, front to rear
+    const sill = V.sill;
+    const arch = (cx, r) => {
+      const out = [];
+      for (let i = 0; i <= 8; i++) {         // 180° -> 0°, i.e. rear lip over the top
+        const a = Math.PI * (1 - i / 8);
+        out.push([cx + Math.cos(a) * r, sill + Math.sin(a) * r * V.archSquash]);
+      }
+      return out;
+    };
+    // Underside, running from the rear bumper forward. Each arch already
+    // BEGINS and ENDS on the sill line, so it is butted straight onto the
+    // straight sections either side of it — a two-centimetre lead-in point
+    // there is shorter than the bevel that gets applied to this outline, and
+    // an edge shorter than its own bevel is where an extrusion goes to NaN.
+    pts.push([-V.L / 2 + 0.12, sill]);
+    pts.push(...arch(V.axleR, V.arch));
+    pts.push(...arch(V.axleF, V.arch));
+    pts.push([V.L / 2 - 0.12, sill]);
+    return pts;
   }
 
   wreckedCar(paint = 0x5a3b34, kind = 'sedan') {
@@ -560,27 +868,143 @@ export class PropKit {
     return { group: g };
   }
 
+  /**
+   * A bus shelter, built as a bus shelter.
+   *
+   * What was here before was a grey slab on two sticks with a second slab for
+   * a bench — the shape of a bus stop described from memory. A real shelter is
+   * a GLAZED BOX with one side open to the kerb: a welded tube frame with
+   * glass in it, a cantilevered roof with a drip edge and a fall on it, a
+   * perch seat rather than a plank (nobody is meant to be comfortable), a
+   * back-lit poster panel at the closed end, a timetable case at reading
+   * height, and the flag on its own pole out at the kerb — which is the part
+   * that actually says "bus" from down the street, and the part that was
+   * missing entirely.
+   *
+   * The open side is +Z, so the caller points that at the road.
+   */
   busStop() {
     const g = new THREE.Group();
-    const roofM = this.mat('roofMetal');
-    for (const s of [-1.4, 1.4]) {
-      const post = this.box(0.12, 2.4, 0.12, this.colorMat(0x2c3036));
-      post.position.set(s, 1.2, 0.5);
-      g.add(post);
+    const HW = 1.75, HD = 0.72, H = 2.42;      // half-width, half-depth, eaves
+    const frame = this.colorMat(0x39414a);     // the powder-coated tube
+    const trim = this.colorMat(0x6f7780);
+    const glassM = this.mat('window', { transparent: true, opacity: 0.42, side: THREE.DoubleSide });
+    const kerb = this.mat('sidewalk');
+
+    // --- the pad it stands on, and the kerb face at the road edge
+    const pad = this.box(HW * 2 + 0.5, 0.09, HD * 2 + 0.45, kerb);
+    pad.position.set(0, 0.045, -0.05);
+    g.add(pad);
+
+    // --- frame: four uprights, a header all the way round, and a foot rail
+    for (const sx of [-1, 1]) {
+      for (const sz of [-1, 1]) {
+        const post = new THREE.Mesh(new THREE.BoxGeometry(0.09, H, 0.09), frame);
+        post.position.set(sx * HW, H / 2, sz * HD);
+        g.add(post);
+        const foot = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.05, 0.2), trim);
+        foot.position.set(sx * HW, 0.11, sz * HD);
+        g.add(foot);
+      }
     }
-    const back = this.box(3.2, 1.6, 0.08, this.colorMat(0x3a4148));
-    back.position.set(0, 1.2, -0.55);
-    const roof = new THREE.Mesh(new THREE.BoxGeometry(3.4, 0.1, 1.6), roofM);
-    roof.position.set(0, 2.45, 0);
-    const seat = this.box(2.8, 0.08, 0.45, 'wallWood');
-    seat.position.set(0, 0.55, -0.3);
-    // route information panel on the end post
-    const panel = this.box(0.55, 0.75, 0.05, this.colorMat(0x2d4a66));
-    panel.position.set(1.4, 1.75, 0.5);
-    const routes = this.box(0.4, 0.5, 0.03, this.colorMat(0xd8d2c0));
-    routes.position.set(1.4, 1.78, 0.54);
-    g.add(back, roof, seat, panel, routes);
-    return { group: g, collide: [1.7, 1.2, 0.4] };
+    const rail = (w, d, y, x = 0, z = 0) => {
+      const r = new THREE.Mesh(new THREE.BoxGeometry(w, 0.08, d), frame);
+      r.position.set(x, y, z);
+      g.add(r);
+      return r;
+    };
+    rail(HW * 2 + 0.09, 0.09, H - 0.05, 0, -HD);     // header, back
+    rail(HW * 2 + 0.09, 0.09, H - 0.05, 0, HD);      // header, kerb side
+    for (const sx of [-1, 1]) rail(0.09, HD * 2, H - 0.05, sx * HW);
+    rail(HW * 2 + 0.09, 0.09, 0.22, 0, -HD);         // kick rail along the back
+
+    // --- glazing: the back wall in two panes, and one pane in each end. The
+    //     kerb side is deliberately empty — that is the way in.
+    const glass = (w, h, x, y, z, ry = 0) => {
+      const q = new THREE.Mesh(new THREE.PlaneGeometry(w, h), glassM);
+      q.position.set(x, y, z);
+      q.rotation.y = ry;
+      q.renderOrder = 1;
+      g.add(q);
+      // The gasket the pane is held in — FOUR EDGE STRIPS, not a backing slab.
+      // A slab behind a 42%-opaque pane is what you actually see, so the glass
+      // read as a painted panel: the frame has to be a frame.
+      for (const [gw, gh, gx, gy] of [
+        [w + 0.08, 0.05, 0, h / 2], [w + 0.08, 0.05, 0, -h / 2],
+        [0.05, h + 0.08, w / 2, 0], [0.05, h + 0.08, -w / 2, 0],
+      ]) {
+        const gk = new THREE.Mesh(new THREE.BoxGeometry(gw, gh, 0.05), trim);
+        gk.position.set(x + Math.cos(ry) * gx, y + gy, z - Math.sin(ry) * gx);
+        gk.rotation.y = ry;
+        g.add(gk);
+      }
+    };
+    for (const sx of [-1, 1]) {
+      glass(HW - 0.22, H - 0.5, sx * (HW / 2 + 0.05), H / 2 + 0.08, -HD + 0.05);
+      glass(HD * 2 - 0.24, H - 0.5, sx * (HW - 0.05), H / 2 + 0.08, 0, Math.PI / 2);
+    }
+
+    // --- roof: a shallow single fall to the back, with a drip edge and the
+    //     gutter stub the water actually leaves by
+    const roof = new THREE.Mesh(new THREE.BoxGeometry(HW * 2 + 0.42, 0.09, HD * 2 + 0.5), this.mat('roofMetal'));
+    roof.position.set(0, H + 0.13, 0.02);
+    roof.rotation.x = -0.05;
+    g.add(roof);
+    const lip = new THREE.Mesh(new THREE.BoxGeometry(HW * 2 + 0.42, 0.11, 0.06), trim);
+    lip.position.set(0, H + 0.11, HD + 0.25);
+    g.add(lip);
+    const spout = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.5, 6), trim);
+    spout.position.set(-HW - 0.1, H - 0.14, -HD - 0.14);
+    g.add(spout);
+
+    // --- the perch: a slatted bench on two cantilever brackets
+    for (let i = 0; i < 3; i++) {
+      const slat = this.box(HW * 1.75, 0.05, 0.11, 'wallWood');
+      slat.position.set(0, 0.6, -HD + 0.18 + i * 0.15);
+      g.add(slat);
+    }
+    for (const sx of [-1, 1]) {
+      const brk = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.5, 0.42), frame);
+      brk.position.set(sx * HW * 0.72, 0.37, -HD + 0.3);
+      g.add(brk);
+    }
+
+    // --- the closed end's poster panel, and the timetable case beside the way in
+    const posterBox = new THREE.Mesh(new THREE.BoxGeometry(0.1, 1.5, HD * 1.5), this.colorMat(0x232a30));
+    posterBox.position.set(-HW + 0.02, 1.28, 0);
+    g.add(posterBox);
+    const poster = new THREE.Mesh(new THREE.PlaneGeometry(HD * 1.32, 1.32), this.mat('posterNotice'));
+    poster.position.set(-HW + 0.08, 1.28, 0);
+    poster.rotation.y = -Math.PI / 2;
+    g.add(poster);
+    const caseBox = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.66, 0.07), this.colorMat(0x1d3346));
+    caseBox.position.set(HW - 0.42, 1.62, -HD + 0.1);
+    g.add(caseBox);
+    const times = new THREE.Mesh(new THREE.PlaneGeometry(0.4, 0.54), this.colorMat(0xd8d2c0));
+    times.position.set(HW - 0.42, 1.62, -HD + 0.145);
+    g.add(times);
+
+    // --- the flag: a pole out at the kerb with the route disc on it. This is
+    //     what identifies the thing from fifty metres, so it stands clear of
+    //     the shelter rather than being bolted to it.
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.055, 3.1, 8), this.colorMat(0x2c3036));
+    pole.position.set(HW + 0.55, 1.55, HD + 0.05);
+    g.add(pole);
+    const flagPlate = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.62, 0.5), this.colorMat(0xd8d2c0));
+    flagPlate.position.set(HW + 0.58, 2.72, HD + 0.05);
+    g.add(flagPlate);
+    const band = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.16, 0.5), this.colorMat(0x2d4a66));
+    band.position.set(HW + 0.6, 2.9, HD + 0.05);
+    g.add(band);
+    const disc = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.17, 0.05, 12), this.colorMat(0xb8321f));
+    disc.rotation.z = Math.PI / 2;
+    disc.position.set(HW + 0.62, 2.62, HD + 0.05);
+    g.add(disc);
+
+    mergeStatic(g);
+    // Collider on the SHELTER only: the pad is a step you walk over, and the
+    // flag pole is a stick you walk past.
+    return { group: g, collide: [HW + 0.05, 1.2, HD + 0.05] };
   }
 
   signPost(color = 0x6b7280) {
@@ -613,24 +1037,76 @@ export class PropKit {
     return { group: g };
   }
 
+  /**
+   * The well, and the water in it.
+   *
+   * A disc of water texture sitting perfectly still at the bottom of a shaft
+   * reads as a painted lid — the one surface in the town where nothing moving
+   * is most obviously wrong, because a well is a hole with water in it and
+   * water in a hole is never flat. So it moves three ways at once, none of
+   * them expensive: the sheet crawls (registered by World as a uvDrift), the
+   * sheet itself rises and falls a few millimetres on a slow swell, and the
+   * drips off the bucket rope land in it — expanding rings that fade as they
+   * spread, on their own beats so no two ever leave together.
+   *
+   * Returns its moving parts so World can register them.
+   */
   well() {
     const g = new THREE.Group();
     const ring = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 1.2, 0.9, 10, 1, true), this.mat('brickGray', { side: THREE.DoubleSide }));
     ring.position.y = 0.45;
-    const waterM = this.mat('water');
-    const water = new THREE.Mesh(new THREE.CircleGeometry(1.05, 10), waterM);
+    // The well's own water material, NOT the pond's: this one crawls at its
+    // own rate, and a shared material would drag every pond in the map with it.
+    this._wellWaterMat ??= new THREE.MeshLambertMaterial({
+      map: this.texLib.tiled ? this.texLib.tiled('water', 1.6, 1.6) : this.texLib.get('water'),
+    });
+    const water = new THREE.Mesh(new THREE.CircleGeometry(1.05, 20), this._wellWaterMat);
     water.rotation.x = -Math.PI / 2;
     water.position.y = 0.5;
+    // The drip rings. Flat annuli lying on the water, additive-free and
+    // depth-write-free so they never fight the sheet they float on.
+    const rings = [];
+    const ripples = new THREE.Group();
+    ripples.position.y = 0.505;
+    ripples.rotation.x = -Math.PI / 2;
+    for (let i = 0; i < 3; i++) {
+      const mat = new THREE.MeshBasicMaterial({
+        color: 0xcfe4ee, transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide,
+      });
+      const r = new THREE.Mesh(new THREE.RingGeometry(0.78, 0.95, 18), mat);
+      r.renderOrder = 2;
+      r.position.set((i - 1) * 0.22, (i % 2 ? 1 : -1) * 0.18, 0);
+      ripples.add(r);
+      rings.push({ mesh: r, mat, phase: i * 1.37 });
+    }
     for (const s of [-1, 1]) {
       const post = this.box(0.12, 1.7, 0.12, 'wallWood');
       post.position.set(s * 0.95, 1.2, 0);
       g.add(post);
     }
+    // the windlass and the bucket on its rope — what puts the drips in
+    const axle = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 1.75, 8), this.mat('bark'));
+    axle.rotation.z = Math.PI / 2;
+    axle.position.y = 1.66;
+    const crank = this.box(0.06, 0.34, 0.06, this.colorMat(0x2c3036));
+    crank.position.set(1.05, 1.5, 0);
+    const rope = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 0.62, 5), this.colorMat(0x6b5a3c));
+    rope.position.set(0, 1.32, 0);
+    const bucket = new THREE.Mesh(new THREE.CylinderGeometry(0.19, 0.15, 0.26, 9), this.mat('wallWood'));
+    bucket.position.set(0, 0.9, 0);
+    const hoop = new THREE.Mesh(new THREE.TorusGeometry(0.19, 0.02, 4, 10), this.colorMat(0x5b5148));
+    hoop.rotation.x = Math.PI / 2;
+    hoop.position.set(0, 0.99, 0);
+    const bucketNode = new THREE.Group();
+    bucketNode.add(rope, bucket, hoop);
     const roofBox = new THREE.Mesh(new THREE.ConeGeometry(1.5, 0.8, 4), this.mat('roofShingle'));
     roofBox.position.y = 2.4;
     roofBox.rotation.y = Math.PI / 4;
-    g.add(ring, water, roofBox);
-    return { group: g, collide: [1.2, 0.8, 1.2] };
+    g.add(ring, water, ripples, axle, crank, bucketNode, roofBox);
+    return {
+      group: g, collide: [1.2, 0.8, 1.2],
+      water: { sheet: water, mat: this._wellWaterMat, rings, bucket: bucketNode, baseY: 0.5 },
+    };
   }
 
   tent(color = 0x4a4f3a) {
@@ -710,31 +1186,335 @@ export class PropKit {
     return line;
   }
 
-  /** Full gas-station forecourt: canopy on pillars + two dead pumps.
-   *  Placed axis-aligned at (x, z); registers all colliders itself. */
+  /**
+   * A FILLING STATION, built as a filling station.
+   *
+   * What stood here was a slab on four posts with two red boxes under it. The
+   * boxes were the pumps. Nothing about either said petrol, and the slab said
+   * nothing at all — a canopy is not a lid, it is a deck with a lit fascia and
+   * a soffit full of downlights, which is exactly the part you see first
+   * because it is the part at eye level from the road.
+   *
+   * So: a poured forecourt with lane arrows on it, a canopy with a branded
+   * fascia band and six lamps in its soffit, two kerbed islands each carrying
+   * a real double-sided pump — hose, nozzle in its boot, a lit price head, a
+   * keypad, a topper — a price totem out at the kerb, an air line on its reel,
+   * and a paved walk out to the shop the site was planned with.
+   *
+   * Placed axis-aligned at (x, z); registers all its own colliders. Returns
+   * the moving and lit parts so World can put them on the clock:
+   *   `tubes`   materials for the canopy soffit and the pump heads (strike,
+   *             hold and drop out — the forecourt's power is not good)
+   *   `reel`    the air-line reel, which turns
+   *   `pumps`   world positions, so one of them can be made interactive
+   */
   gasStation(x, z, parent) {
     const y = this.terrain.heightAt(x, z);
     const g = new THREE.Group();
-    for (const [px, pz] of [[-5, -2.5], [5, -2.5], [-5, 2.5], [5, 2.5]]) {
-      const pillar = this.box(0.4, 4.5, 0.4, 'wallConcrete');
-      pillar.position.set(px, 2.25, pz);
-      g.add(pillar);
-      this.collision.addBoxCentered(x + px, y + 2.25, z + pz, 0.3, 2.25, 0.3, 'prop');
+    const out = { group: g, tubes: [], pumps: [], reel: null };
+    const brand = this.colorMat(0xb8452a);        // the company's red
+    const cream = this.colorMat(0xd9d3c0);
+    const steel = this.colorMat(0x8e9298);
+    const dark = this.colorMat(0x1e2226);
+    const rubber = this.colorMat(0x15171b);
+
+    /* --- the forecourt slab, and the lanes painted on it ---------------- */
+    const apron = this.box(15.6, 0.12, 9.6, 'concrete');
+    apron.position.y = 0.06;
+    g.add(apron);
+    for (const lz of [-2.4, 2.4]) {                // lane guide lines
+      const line = this.box(13.0, 0.02, 0.14, cream);
+      line.position.set(0, 0.13, lz);
+      g.add(line);
     }
-    const slab = this.box(14, 0.4, 8, 'roofMetal');
-    slab.position.y = 4.7;
-    g.add(slab);
+
+    /* --- the canopy: deck, branded fascia, soffit, downlights ----------- */
+    const COL = [[-5.6, -3.0], [5.6, -3.0], [-5.6, 3.0], [5.6, 3.0]];
+    for (const [px, pz] of COL) {
+      const shaft = this.box(0.44, 4.7, 0.44, 'wallConcrete');
+      shaft.position.set(px, 2.35, pz);
+      const collar = this.box(0.66, 0.5, 0.66, cream);
+      collar.position.set(px, 0.35, pz);
+      const cap = this.box(0.58, 0.16, 0.58, steel);
+      cap.position.set(px, 4.62, pz);
+      g.add(shaft, collar, cap);
+      this.collision.addBoxCentered(x + px, y + 2.35, z + pz, 0.33, 2.35, 0.33, 'prop');
+    }
+    const CW = 14.4, CD = 8.2, CY = 4.98;
+    const deck = this.box(CW, 0.34, CD, 'roofMetal');
+    deck.position.y = CY;
+    g.add(deck);
+    // the fascia band — the lit hoop that reads as "petrol station" from a
+    // street away, in brand red over a cream stripe
+    for (const [w, d, px, pz] of [[CW + 0.24, 0.16, 0, -CD / 2], [CW + 0.24, 0.16, 0, CD / 2],
+      [0.16, CD + 0.24, -CW / 2, 0], [0.16, CD + 0.24, CW / 2, 0]]) {
+      const band = this.box(w, 0.62, d, brand);
+      band.position.set(px, CY + 0.14, pz);
+      g.add(band);
+      const stripe = this.box(w + 0.02, 0.14, d + 0.02, cream);
+      stripe.position.set(px, CY - 0.06, pz);
+      g.add(stripe);
+    }
+    const soffit = this.box(CW - 0.4, 0.06, CD - 0.4, cream);
+    soffit.position.y = CY - 0.19;
+    g.add(soffit);
+    // six downlights in the soffit, on a supply that is not what it was
+    const lampMat = new THREE.MeshBasicMaterial({ color: 0xfff0c8 });
+    out.tubes.push({ mat: lampMat, r: 1, g: 0.94, b: 0.78, hi: 0.95, lo: 0.14, duty: 0.9, rate: 0.7 });
+    for (const lx of [-4.6, 0, 4.6]) {
+      for (const lz of [-2.0, 2.0]) {
+        const lamp = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.05, 0.5), lampMat);
+        lamp.position.set(lx, CY - 0.23, lz);
+        g.add(lamp);
+      }
+    }
+
+    /* --- the pumps, on kerbed islands ---------------------------------- */
+    const headMat = new THREE.MeshBasicMaterial({ color: 0xffb43c });
+    out.tubes.push({ mat: headMat, r: 1, g: 0.70, b: 0.24, hi: 0.9, lo: 0.2, duty: 0.84, rate: 1.1 });
+    for (const px of [-3.2, 3.2]) {
+      const island = this.box(3.2, 0.2, 1.5, 'concrete');
+      island.position.set(px, 0.22, -0.4);
+      const kerb = this.box(3.3, 0.1, 1.6, cream);
+      kerb.position.set(px, 0.32, -0.4);
+      g.add(island, kerb);
+      g.add(this._gasPump(px, 0.32, -0.4, brand, cream, dark, steel, rubber, headMat));
+      // the bollards that stop somebody reversing into it
+      for (const bx of [-1.4, 1.4]) {
+        const bol = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.11, 0.9, 8), this.colorMat(0xc8a22a));
+        bol.position.set(px + bx, 0.75, -0.4);
+        g.add(bol);
+      }
+      this.collision.addBoxCentered(x + px, y + 0.9, z - 0.4, 0.7, 0.9, 0.45, 'prop');
+      out.pumps.push({ x: x + px, z: z - 0.4, y });
+    }
+
+    /* --- the air line, on a reel that still turns ---------------------- */
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.08, 1.5, 8), steel);
+    post.position.set(-6.6, 0.75, 3.4);
+    g.add(post);
+    const reel = new THREE.Group();
+    reel.position.set(-6.6, 1.5, 3.4);
+    const drum = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 0.2, 12), brand);
+    drum.rotation.z = Math.PI / 2;
+    reel.add(drum);
+    for (const s of [-1, 1]) {
+      const cheek = new THREE.Mesh(new THREE.CylinderGeometry(0.36, 0.36, 0.03, 12), steel);
+      cheek.rotation.z = Math.PI / 2;
+      cheek.position.x = s * 0.11;
+      reel.add(cheek);
+      const spoke = this.box(0.03, 0.62, 0.03, steel);
+      spoke.position.x = s * 0.13;
+      reel.add(spoke);
+    }
+    g.add(reel);
+    out.reel = reel;
+
+    /* --- the price totem out at the kerb ------------------------------- */
+    const totem = new THREE.Group();
+    totem.position.set(-6.9, 0, -4.2);
+    for (const s of [-1, 1]) {
+      const leg = this.box(0.16, 3.4, 0.16, steel);
+      leg.position.set(s * 0.42, 1.7, 0);
+      totem.add(leg);
+    }
+    const boardBack = this.box(1.5, 1.9, 0.18, brand);
+    boardBack.position.y = 4.1;
+    totem.add(boardBack);
+    const boardFace = this.box(1.24, 1.0, 0.22, dark);
+    boardFace.position.y = 3.86;
+    totem.add(boardFace);
+    const digitsMat = new THREE.MeshBasicMaterial({ color: 0xffd24a });
+    out.tubes.push({ mat: digitsMat, r: 1, g: 0.82, b: 0.29, hi: 0.92, lo: 0.1, duty: 0.72, rate: 1.6 });
+    for (let i = 0; i < 4; i++) {                  // the price, still displayed
+      const d = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.44, 0.26), digitsMat);
+      d.position.set(-0.48 + i * 0.32, 3.86, 0);
+      totem.add(d);
+    }
+    const crown = this.box(1.6, 0.5, 0.24, cream);
+    crown.position.y = 4.86;
+    totem.add(crown);
+    g.add(totem);
+    this.collision.addBoxCentered(x - 6.9, y + 1.6, z - 4.2, 0.5, 1.6, 0.2, 'prop');
+
+    /* --- the pay window, on the wall of the shop the site already has ---
+     * There is a kiosk here: it is the `gasShop` building the district was
+     * planned with (gasEast, gasShop — see World._planBuildings), and it is
+     * enterable. What the forecourt was missing was the LINK to it, so the
+     * apron runs a paved walk out to the shop side of the site instead of
+     * stopping at the canopy drip line, and the night hatch and its bell are
+     * on the end of that walk where somebody would actually queue.
+     */
+    const walk = this.box(2.4, 0.1, 5.2, 'sidewalk');
+    walk.position.set(6.4, 0.11, 3.4);
+    g.add(walk);
+    const stand = new THREE.Group();
+    stand.position.set(6.4, 0, 5.4);
+    const boardPost = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.07, 1.4, 8), steel);
+    boardPost.position.y = 0.7;
+    const boardFace2 = this.box(0.9, 0.66, 0.08, cream);
+    boardFace2.position.y = 1.5;
+    const boardEdge = this.box(0.98, 0.1, 0.12, brand);
+    boardEdge.position.y = 1.85;
+    stand.add(boardPost, boardFace2, boardEdge);
+    g.add(stand);
+
     this.place(g, x, z);
     parent.add(g);
-    for (const px of [-3, 3]) {
-      const pump = this.box(0.8, 1.6, 0.5, this.colorMat(0x7a2a24));
-      const pg = new THREE.Group();
-      pg.add(pump);
-      pump.position.y = 0.8;
-      this.place(pg, x + px, z - 1, { collide: [0.5, 0.9, 0.4] });
-      parent.add(pg);
+    return out;
+  }
+
+  /**
+   * One double-sided pump: plinth, body, lit head with its price and volume
+   * windows, a keypad, a nozzle in its boot on each side with the hose looping
+   * back into the body, and the brand topper. Sized off a real one — 1.9 m to
+   * the top of the topper, which is what puts the head at eye level.
+   */
+  _gasPump(px, py, pz, brand, cream, dark, steel, rubber, headMat) {
+    const p = new THREE.Group();
+    p.position.set(px, py, pz);
+    const plinth = this.box(0.78, 0.14, 0.56, dark);
+    plinth.position.y = 0.07;
+    const body = this.box(0.66, 1.16, 0.44, cream);
+    body.position.y = 0.72;
+    const skirt = this.box(0.68, 0.30, 0.46, brand);
+    skirt.position.y = 0.29;
+    const head = this.box(0.74, 0.46, 0.50, brand);
+    head.position.y = 1.53;
+    const brow = this.box(0.78, 0.08, 0.54, cream);
+    brow.position.y = 1.78;
+    p.add(plinth, body, skirt, head, brow);
+    for (const s of [-1, 1]) {
+      // the lit face: a recessed window with the litres and the money in it
+      const bezel = this.box(0.60, 0.34, 0.04, dark);
+      bezel.position.set(0, 1.53, s * 0.26);
+      p.add(bezel);
+      const readout = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.12, 0.03), headMat);
+      readout.position.set(0, 1.60, s * 0.285);
+      p.add(readout);
+      const price = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.08, 0.03), headMat);
+      price.position.set(-0.1, 1.45, s * 0.285);
+      p.add(price);
+      // keypad and card slot, on the body under the window
+      const pad = this.box(0.26, 0.20, 0.03, dark);
+      pad.position.set(0.16, 1.16, s * 0.235);
+      p.add(pad);
+      const slot = this.box(0.18, 0.03, 0.03, steel);
+      slot.position.set(-0.16, 1.18, s * 0.235);
+      p.add(slot);
+      // the nozzle, hung in its boot, and the hose looping back to the body
+      const boot = this.box(0.14, 0.30, 0.12, dark);
+      boot.position.set(-0.38, 1.02, s * 0.16);
+      p.add(boot);
+      const grip = this.box(0.10, 0.26, 0.09, brand);
+      grip.position.set(-0.40, 1.06, s * 0.16);
+      const spout = new THREE.Mesh(new THREE.CylinderGeometry(0.028, 0.028, 0.22, 6), steel);
+      spout.position.set(-0.40, 0.88, s * 0.16);
+      p.add(grip, spout);
+      const hose = new THREE.Mesh(new THREE.TubeGeometry(
+        new THREE.CatmullRomCurve3([
+          new THREE.Vector3(-0.40, 1.16, s * 0.16),
+          new THREE.Vector3(-0.52, 1.02, s * 0.22),
+          new THREE.Vector3(-0.50, 0.72, s * 0.24),
+          new THREE.Vector3(-0.30, 0.58, s * 0.22),
+          new THREE.Vector3(-0.02, 0.62, s * 0.21),
+        ]), 12, 0.026, 5, false), rubber);
+      p.add(hose);
     }
-    return g;
+    // the topper: the one lit thing above head height on the island
+    const topper = this.box(0.9, 0.26, 0.22, cream);
+    topper.position.y = 1.95;
+    const topBand = this.box(0.92, 0.09, 0.24, brand);
+    topper.add(topBand);
+    topBand.position.y = -0.02;
+    p.add(topper);
+    return p;
+  }
+
+  /* ---- natural clutter -------------------------------------------------
+   * The small things that make open ground read as GROUND rather than as a
+   * green plane with trees standing on it: rocks that have worked their way
+   * up through the turf, a trunk somebody felled and never took away, the
+   * stump it came off, and the deadwood that piles up in the lee of a hedge.
+   * Each one is merged to a single mesh per material — there are a lot of
+   * them, and they are scenery.                                          */
+
+  /** A boulder: a lumpy mass of two or three overlapping blocks, never a cube. */
+  boulder(scale = 1, seed = 1) {
+    const g = new THREE.Group();
+    const rng = seeded(seed * 31 + 7);
+    const n = 2 + Math.floor(rng() * 2);
+    for (let i = 0; i < n; i++) {
+      const w = (0.7 + rng() * 0.6) * scale;
+      const h = (0.42 + rng() * 0.4) * scale;
+      const d = (0.6 + rng() * 0.6) * scale;
+      const blk = this.box(w, h, d, 'rock');
+      blk.position.set((rng() - 0.5) * 0.5 * scale, h * 0.42 - 0.12 * scale, (rng() - 0.5) * 0.5 * scale);
+      blk.rotation.set((rng() - 0.5) * 0.28, rng() * Math.PI, (rng() - 0.5) * 0.28);
+      g.add(blk);
+    }
+    mergeStatic(g);
+    return { group: g, collide: [0.55 * scale, 0.32 * scale, 0.5 * scale] };
+  }
+
+  /** A felled trunk lying in the grass, with a couple of broken limbs on it. */
+  fallenLog(len = 3.2, seed = 1) {
+    const g = new THREE.Group();
+    const rng = seeded(seed * 17 + 3);
+    const r = 0.22 + rng() * 0.1;
+    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.8, r, len, 7), this.mat('bark'));
+    trunk.rotation.z = Math.PI / 2;
+    trunk.rotation.y = (rng() - 0.5) * 0.2;
+    trunk.position.y = r * 0.85;
+    g.add(trunk);
+    for (let i = 0; i < 3; i++) {
+      const bl = 0.5 + rng() * 0.7;
+      const limb = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.08, bl, 5), this.mat('bark'));
+      limb.position.set((rng() - 0.5) * len * 0.8, r * 0.9, (rng() - 0.5) * 0.9);
+      limb.rotation.set(Math.PI / 2 - 0.3 + rng() * 0.6, rng() * Math.PI, (rng() - 0.5) * 0.8);
+      g.add(limb);
+    }
+    mergeStatic(g);
+    return { group: g, collide: [len / 2, r, r * 1.4] };
+  }
+
+  /** The stump it came off — sawn flat, with the roots showing. */
+  stump(scale = 1, seed = 1) {
+    const g = new THREE.Group();
+    const rng = seeded(seed * 13 + 11);
+    const h = (0.34 + rng() * 0.22) * scale;
+    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.30 * scale, 0.42 * scale, h, 8), this.mat('bark'));
+    body.position.y = h / 2;
+    g.add(body);
+    const cut = new THREE.Mesh(new THREE.CylinderGeometry(0.30 * scale, 0.30 * scale, 0.05, 8),
+      this.colorMat(0x8a6f4a));
+    cut.position.y = h + 0.01;
+    g.add(cut);
+    for (let i = 0; i < 4; i++) {
+      const a = (i / 4) * Math.PI * 2 + rng();
+      const root = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.13, 0.6 * scale, 5), this.mat('bark'));
+      root.position.set(Math.sin(a) * 0.34 * scale, 0.09, Math.cos(a) * 0.34 * scale);
+      root.rotation.set(Math.PI / 2 - 0.45, -a, 0);
+      g.add(root);
+    }
+    mergeStatic(g);
+    return { group: g, collide: [0.42 * scale, h / 2, 0.42 * scale] };
+  }
+
+  /** A pile of storm deadwood — branches heaped where the wind left them. */
+  deadwood(seed = 1) {
+    const g = new THREE.Group();
+    const rng = seeded(seed * 29 + 5);
+    for (let i = 0; i < 6; i++) {
+      const bl = 0.9 + rng() * 1.3;
+      const br = 0.04 + rng() * 0.05;
+      const b = new THREE.Mesh(new THREE.CylinderGeometry(br * 0.7, br, bl, 5), this.mat('bark'));
+      b.position.set((rng() - 0.5) * 1.1, 0.08 + rng() * 0.22, (rng() - 0.5) * 1.1);
+      b.rotation.set(Math.PI / 2 - 0.25 + rng() * 0.5, rng() * Math.PI, (rng() - 0.5) * 0.5);
+      g.add(b);
+    }
+    mergeStatic(g);
+    return { group: g };
   }
 
   /** Rusting water tower on four legs — a navigation landmark. */
