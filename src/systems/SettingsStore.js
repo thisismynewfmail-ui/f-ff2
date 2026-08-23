@@ -19,7 +19,10 @@ const DEFAULTS = {
   // separate all the way to the speakers (see audio/AudioManager.js), so they
   // get a slider each — a player who wants the score down and the guns loud
   // used to have to choose.
-  musicVolume: 0.45, sfxVolume: 0.6,
+  // The score sits UNDER the game by default. It is scenery that reacts, not
+  // the thing you are listening to, and it is easier to find the slider and
+  // turn it up than to be told by a soundtrack you did not ask for.
+  musicVolume: 0.32, sfxVolume: 0.6,
 };
 
 export class SettingsStore {

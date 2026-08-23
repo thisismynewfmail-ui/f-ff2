@@ -41,6 +41,12 @@ import { aiFlag } from '../ai/Flags.js';
  * - friendlyRangeMul / noWander / deaf: detection reach, idle behaviour, and
  *   whether noises are heard at all.
  */
+// Chatter: how far a voice carries, and how long a fighter goes between
+// offering one. Long on purpose — the throttle downstream is what decides how
+// many are heard, but a short timer here would have every one of them queued.
+const CHATTER_RANGE = 30;
+const CHATTER_GAP = 11;
+const CHATTER_SPREAD = 15;
 const ACTIVE_RANGE = 115;
 const DEATH_TIME = 1.3;
 const FRIENDLY_FOV = 3.66;   // ~210° detection cone for non-player targets
@@ -80,7 +86,9 @@ export class Zombie extends Entity {
     // one fighter always sounds like himself and eight of them do not sound
     // like the same man shouted eight times.
     this.voice = Math.random();
-    this._idleTalk = 4 + Math.random() * 9;
+    // Spread wide, so a wave landing does not have twenty men all reaching for
+    // a line inside the same second.
+    this._idleTalk = 3 + Math.random() * 14;
     this.addTag('zombie');
     this.addTag('hostile');
     this.state = 'idle';
@@ -230,15 +238,30 @@ export class Zombie extends Entity {
     // Dormant when far away: no AI, no rendering.
     if (pdist > ACTIVE_RANGE) { this.mesh.visible = false; return false; }
 
-    // Idle chatter, but only from somebody who has not seen you and only from
-    // close enough for a mutter to carry. The audio layer throttles this hard
-    // on top (see AudioManager.enemyLine) — this only decides WHO speaks.
+    /**
+     * CHATTER.
+     *
+     * Every fighter close enough to be heard offers a line every eleven to
+     * twenty-six seconds, whatever he is doing — muttering an invocation when
+     * nobody has found anybody, calling position once he is coming for you.
+     *
+     * It used to be gated on `idle`/`wandering`, which in a wave-survival game
+     * is a state the horde is in for about a second: they spawn, they sense the
+     * player, and they are hunting for the rest of their lives. So the horde
+     * only ever spoke on the two events that fire regardless — being shot and
+     * dying — and a street with fifteen men crossing it was silent.
+     *
+     * This only decides WHO offers a line. How many of those actually reach the
+     * player is the audio layer's problem, and it throttles hard: roughly one
+     * voice out of the whole town every five seconds (AudioManager.enemyLine).
+     */
     this._idleTalk -= dt;
     if (this._idleTalk <= 0) {
-      this._idleTalk = 7 + Math.random() * 12;
-      if (pdist < 26 && (this.state === 'idle' || this.state === 'wandering')) {
-        this.events.emit('zombie:idle', {
+      this._idleTalk = CHATTER_GAP + Math.random() * CHATTER_SPREAD;
+      if (pdist < CHATTER_RANGE && this.state !== 'dead') {
+        this.events.emit('zombie:chatter', {
           pos: this.position.clone(), type: this.config, voice: this.voice,
+          hunting: this.state !== 'idle' && this.state !== 'wandering',
         });
       }
     }

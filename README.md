@@ -217,25 +217,33 @@ has a **calm** arrangement and a **danger** arrangement built on the same root,
 the same tempo and the same bar grid, which is what lets the director cross-fade
 between them mid-phrase without a smear, a pitch bend or a dropped beat:
 
-- **Where you are picks the piece.** Old Town Square is a string chorale over a
-  walking sub with a music box in it; Eastgate is warmer and quieter than
-  anything else in the game; Downtown is phrygian and has a pulse; Hollow Park
+- **Where you are picks the piece.** Old Town Square is a march — a driving
+  sixteenth-note bass under a four-on-the-floor kick, a hammered minor
+  ostinato and a horn answering it every other bar. It is the track heard
+  first, longest and on every restart, and what it is about is a horde coming
+  up four roads at once, not a town somebody has already lost. Eastgate is
+  warmer and quieter than anything else in the game; Downtown is phrygian and
+  has a pulse; Hollow Park
   is a choir and a whistle and almost no rhythm at all; Southside is struck
   scrap over a pumping bass; Chapel Ridge is an organ, a choir and a bell with
   no drums anywhere in the calm mix. Changing district is a real cross-fade —
   both pieces keep playing and keep being scheduled for the length of it.
-- **How close to dead you are picks the version.** Below 25% health the mix
+- **How close to dead you are picks the version.** Below 45% health the mix
   slides to the danger arrangement of whatever you were already listening to:
   tremolo strings, a driving bass, a **heartbeat** that beats faster and harder
   the lower you go, and a progression that leans on the flat second. Patch
-  yourself back past 32% and it slides back. The hysteresis is the point — a
-  score that flickers between two arrangements while you sit on exactly a
-  quarter health is worse than either of them.
+  yourself back past 53% and it slides back. Pitched high on purpose: a
+  quarter health is a player who is already dead in most fights, and a score
+  that only warns them then is a score that never warns them. The gap between
+  the two thresholds is the point — one that flickers between arrangements
+  while you sit on the line is worse than either of them.
 - **It stays out of the way.** The score runs about 14 dB under the effects
   bus, everything above 3.2 kHz is rolled off so it never competes with a
   rifle's crack, and each shot ducks it by a hair. **SETTINGS carries two
   sliders — SOUNDTRACK and SOUND EFFECTS —** because a player who wants the
-  music down and the guns loud should not have to choose.
+  music down and the guns loud should not have to choose. The score's default
+  is deliberately low: it is scenery that reacts, and turning a slider up is
+  easier than being played at.
 - **The loops are clean because they are not loops.** Nothing is rendered and
   butted against itself: `src/audio/Music.js` schedules 16th-note steps against
   the AudioContext clock a fraction of a second ahead, and the step counter
@@ -250,11 +258,21 @@ instead of moans — synthesised the way arcade voices actually were, on a
 through three tuned resonators, pitch-quantised the way a speech chip's register
 was, band-limited to the speaker and pushed through an overdriven amplifier.
 Every archetype has its own pitch band, delivery speed and lines for every state
-it can be in — muttering, spotting you, closing, swinging, hit, dying
-(`src/audio/EnemyVoices.js`) — and every individual carries a voice value fixed
-when it spawned that picks its fundamental inside that band and which of the
-lines it uses, so one fighter always sounds like himself and eight of them do
-not sound like one man shouting eight times. The bomber's takbir goes off when
+it can be in (`src/audio/EnemyVoices.js`), and every individual carries a voice
+value fixed when it spawned that picks its fundamental inside that band and
+where in the pool his lines come from, so one fighter always sounds like himself
+and eight of them do not sound like one man shouting eight times.
+
+**They chatter.** Every fighter within thirty metres offers a line every eleven
+to twenty-six seconds whatever he is doing — invocations and muttering when
+nobody has found anybody, position calls once he is coming for you — out of a
+shared pool of stock phrases that every archetype has in its mouth (the takbir
+among them) plus its own. What keeps that from becoming a nuisance is the
+throttle rather than the writing: the town lets roughly one chatter line through
+every five seconds and one attack grunt every one and a half, so what a player
+hears is an occasional voice out of a crowd. Before this the pool was gated on
+the `idle` state, which in a wave-survival game lasts about a second — so the
+horde only ever spoke when it was shot or killed. The bomber's takbir goes off when
 he **commits** at ten metres, not on the quarter-second fuse: hung on the fuse
 you would hear one syllable and then the blast, and it is the only reliable
 warning a bomber gives.

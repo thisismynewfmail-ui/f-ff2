@@ -87,46 +87,82 @@ export const TRACKS = {
   },
 
   /* ================= ZONE 0 — OLD TOWN SQUARE ============================
-   * Home. The one piece of ground in the game that is yours, and the score
-   * treats it as a place worth defending rather than as a threat: a slow
-   * string chorale over a walking sub, with a music box picking out a lullaby
-   * nobody is left to sing. The clock tower's bell tolls on the phrase.  */
+   * HOME, AND WHAT IS COMING FOR IT.
+   *
+   * This is the track the player hears first, hears longest, and hears every
+   * time a run restarts, and the first pass got it exactly wrong: a slow
+   * string chorale over a walking sub reads as a town somebody has already
+   * lost. Nobody is mourning this square yet — they are standing in the middle
+   * of it with a pistol, watching a horde come up four roads at once.
+   *
+   * So it is a MARCH. A driving sixteenth-note bass under a four-on-the-floor
+   * kick, a hammered minor ostinato on the lead, and a horn call that answers
+   * it every other bar — the tempo is up by half, the drums are in the CALM
+   * arrangement rather than being held back for the danger one, and the
+   * harmony sits on the tonic for four bars before it moves, which is what
+   * makes the movement feel like something arriving rather than something
+   * being remembered.
+   *
+   * What keeps it in the game's world rather than turning it into an action
+   * film: it is still the same handful of retro voices everything else here is
+   * played on, it is still in A minor, and it still gets out of the way — the
+   * ostinato sits in the mid-band under the guns and the low end is a pulse
+   * rather than a wall.                                                    */
   oldtown: {
-    name: 'HOLD THE LINE', bpm: 74, root: A1, scale: SCALES.minor, bars: 8,
-    prog: [0, 0, 5, 5, 3, 3, 4, 4],
+    name: 'HOLD THE LINE', bpm: 132, root: A1, scale: SCALES.minor, bars: 8,
+    prog: [0, 0, 0, 0, 5, 5, 6, 4],
     calm: {
+      drones: [{ semi: 0, gain: 0.030, cutoff: 150, sweep: 0.08 }],
       layers: [
-        { k: 'pad', voice: 'strings', oct: 1, gain: 0.046, every: 2, tones: [0, 2, 4] },
-        { k: 'pad', voice: 'strings', oct: 0, gain: 0.030, every: 2, tones: [0, 4],
-          opts: { bright: 0.7 } },
-        { k: 'bass', voice: 'sub', oct: 0, gain: 0.125, dur: 1.1,
-          pat: 'x.......5.......' },
-        { k: 'seq', voice: 'glass', oct: 3, gain: 0.052, notes: [
-          [0, 0, 4], [4, 2, 4], [8, 4, 6], [16, 2, 4], [20, 0, 8],
-          [32, 4, 4], [36, 5, 4], [40, 4, 6], [48, 2, 8],
-          [64, 2, 4], [68, 4, 4], [72, 5, 6], [80, 4, 8],
-          [96, 4, 4], [100, 2, 4], [104, 0, 10], [120, -3, 8],
-        ] },
-        { k: 'perc', gain: 0.055, hat: '....x.......x...', open: '................' },
-        { k: 'sparse', voice: 'bell', oct: 2, gain: 0.038, bars: [0, 4], step: 0, dur: 3.6 },
+        // the engine: sixteenths on the tonic, opening onto the chord tones
+        { k: 'bass', voice: 'reese', oct: 0, gain: 0.105, dur: 0.16,
+          pat: 'xxx.xx.xx.x.xx.5', opts: { cut: 300 } },
+        { k: 'bass', voice: 'sub', oct: 0, gain: 0.115, dur: 0.30,
+          pat: 'x...x...x...x...' },
+        // the beat, in the CALM mix. A wave-survival square is not a quiet
+        // place and the drums are not a reward for nearly dying.
+        { k: 'perc', gain: 0.100, kick: 'x...x...x...x...', snare: '....x.......x...',
+          hat: 'x.xxx.xxx.xxx.xx', open: '..............x.' },
+        { k: 'pad', voice: 'strings', oct: 1, gain: 0.040, every: 2, tones: [0, 2, 4],
+          opts: { bright: 1.25 } },
+        // the hammered ostinato — the thing you will actually remember
+        { k: 'seq', voice: 'lead', oct: 2, gain: 0.048, notes: [
+          [0, 0, 2], [2, 0, 2], [4, 2, 2], [6, 0, 2], [8, 4, 2], [10, 2, 2], [12, 0, 4],
+          [16, 0, 2], [18, 0, 2], [20, 2, 2], [22, 4, 2], [24, 5, 2], [26, 4, 2], [28, 2, 4],
+          [32, 0, 2], [34, 0, 2], [36, 2, 2], [38, 0, 2], [40, 4, 2], [42, 2, 2], [44, 0, 4],
+          [48, 0, 2], [50, 2, 2], [52, 4, 2], [54, 5, 2], [56, 6, 4], [60, 4, 4],
+          [64, 4, 2], [66, 4, 2], [68, 5, 2], [70, 4, 2], [72, 2, 4], [76, 0, 4],
+          [80, 4, 2], [82, 5, 2], [84, 6, 2], [86, 5, 2], [88, 4, 4], [92, 2, 4],
+          [96, 6, 2], [98, 5, 2], [100, 4, 2], [102, 2, 2], [104, 0, 6],
+          [112, 4, 2], [114, 2, 2], [116, 0, 2], [118, -1, 2], [120, 0, 8],
+        ], opts: { cut: 2100, wave: 'square' } },
+        // ...and the horn answering it off the back of every other bar
+        { k: 'seq', voice: 'lead', oct: 1, gain: 0.036, notes: [
+          [12, 0, 4], [28, 4, 4], [44, 0, 4], [60, 2, 4],
+          [76, 4, 4], [92, 5, 4], [108, 6, 4], [124, 4, 4],
+        ], opts: { cut: 900 } },
+        { k: 'sparse', voice: 'bell', oct: 2, gain: 0.030, bars: [0, 4], step: 0, dur: 2.4 },
       ],
     },
     danger: {
       prog: [0, 0, 1, 1, 6, 6, 4, 4],
-      drones: [{ semi: 0, gain: 0.05, cutoff: 150, sweep: 0.07 }],
+      drones: [{ semi: 0, gain: 0.052, cutoff: 170, sweep: 0.09 },
+        { semi: 1, gain: 0.024, cutoff: 240, sweep: 0.16 }],
       layers: [
         { k: 'pad', voice: 'strings', oct: 1, gain: 0.050, every: 1, tones: [0, 2, 4],
-          opts: { tremolo: 6.5, bright: 1.35 } },
-        { k: 'pad', voice: 'choir', oct: 2, gain: 0.026, every: 2, tones: [0, 1] },
-        { k: 'bass', voice: 'reese', oct: 0, gain: 0.115, dur: 0.5,
-          pat: 'x.x.x.x.x.x.x.x.' },
-        { k: 'perc', gain: 0.10, kick: 'x.......x.......', snare: '....x.......x...',
-          hat: 'x.x.x.x.x.x.x.x.' },
-        { k: 'perc', kind: 'heart', gain: 0.13, at: [0, 8], },
-        { k: 'seq', voice: 'lead', oct: 2, gain: 0.040, notes: [
-          [24, 4, 4], [28, 3, 4], [56, 4, 4], [60, 5, 6],
-          [88, 4, 4], [92, 3, 4], [120, 1, 8],
-        ], opts: { cut: 1500 } },
+          opts: { tremolo: 7.5, bright: 1.45 } },
+        { k: 'pad', voice: 'choir', oct: 2, gain: 0.026, tones: [0, 1], every: 2 },
+        { k: 'bass', voice: 'reese', oct: 0, gain: 0.120, dur: 0.16,
+          pat: 'xxxxxxxxxxxxxxxx', opts: { cut: 380 } },
+        { k: 'perc', gain: 0.108, kick: 'x..xx...x..xx...', snare: '....x.......x.x.',
+          hat: 'xxxxxxxxxxxxxxxx' },
+        { k: 'perc', kind: 'heart', gain: 0.13, at: [0, 8] },
+        { k: 'seq', voice: 'lead', oct: 2, gain: 0.046, notes: [
+          [0, 1, 2], [2, 0, 2], [4, 1, 2], [6, 0, 4], [12, 4, 4],
+          [32, 1, 2], [34, 0, 2], [36, 1, 2], [38, 0, 4], [44, 5, 4],
+          [64, 6, 2], [66, 5, 2], [68, 4, 4], [76, 1, 4],
+          [96, 4, 2], [98, 5, 2], [100, 6, 4], [108, 1, 4], [120, 0, 8],
+        ], opts: { cut: 1700 } },
       ],
     },
   },

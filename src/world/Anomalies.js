@@ -361,6 +361,25 @@ export class Anomalies {
               f.rotation.x = Math.cos(time * (1.7 + i * 0.3) + ph) * 0.09 * flick;
             });
           }
+        } else if (a.kind === 'pickupGlow') {
+          // Something worth walking over to. The disc breathes on a slow beat
+          // with a faster one riding it (so it never settles into a sine you
+          // can predict), the shaft breathes against it rather than with it,
+          // and the motes climb out of the case and fade at the top of their
+          // own run. Nothing here is fast: a pickup marker that pulses at
+          // combat speed reads as a hazard.
+          const beat = 0.62 + Math.sin(time * 1.35 + a.phase) * 0.26
+            + Math.sin(time * 3.1 + a.phase * 1.7) * 0.12;
+          a.discMat.opacity = 0.10 + beat * 0.15;
+          a.shaftMat.opacity = 0.028 + (1.24 - beat) * 0.042;
+          a.node.rotation.y += dt * 0.25;
+          if (a.lamp) a.lamp.intensity = 0.8 + beat * 1.0;
+          for (const m of a.motes) {
+            const k = ((time * 0.34 + m.phase) % 1);
+            m.mesh.position.y = m.baseY + k * 1.05;
+            m.mesh.material.opacity = Math.min(1, k * 5) * (1 - k) * 0.7;
+            m.mesh.rotation.y = -a.node.rotation.y;   // always face out of the spin
+          }
         } else if (a.kind === 'wellwater') {
           // The sheet swells on a slow beat, and the drips off the rope land
           // in it: each ring grows from nothing to the shaft wall and fades as

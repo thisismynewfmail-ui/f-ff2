@@ -1754,7 +1754,59 @@ export class InteriorKit {
       sh.position.set(-CW / 2 - 0.34 + i * 0.05, 0.012, -0.1 + i * 0.06);
       g.add(sh);
     }
-    return { group: g, collide: [CW / 2 + 0.24, 0.16, CD + 0.12], live: true, gun };
+    /**
+     * ...and the thing that says it is a pickup.
+     *
+     * An open case on a floorboard in an unlit house is a prop. What separates
+     * a prop from something the game wants you to walk up to is that it puts
+     * out LIGHT — so this one does: a warm disc lying over the case, a low
+     * shaft standing in it, four motes drifting up out of it and a small lamp
+     * that actually lands on the boards around it, which is the part that
+     * carries from the doorway. Deliberately slow and soft: this is a weapon
+     * somebody left in its case, not a rune.
+     *
+     * All of it is additive and depth-write-free so it never occludes the gun
+     * it is advertising, and it hangs off one node so taking the gun can
+     * switch the whole thing off in a line.
+     */
+    const glow = new THREE.Group();
+    glow.position.y = CH + 0.02;
+    const mat = (color, opacity) => new THREE.MeshBasicMaterial({
+      color, opacity, transparent: true, depthWrite: false,
+      blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
+    });
+    const discMat = mat(0xffb44a, 0.20);
+    const disc = new THREE.Mesh(new THREE.CircleGeometry(0.78, 20), discMat);
+    disc.rotation.x = -Math.PI / 2;
+    disc.renderOrder = 3;
+    glow.add(disc);
+    // Small and faint: additive warm over a dark interior goes a very long
+    // way, and a shaft you can see the SILHOUETTE of stops being a hint and
+    // starts being a beacon.
+    const shaftMat = mat(0xff9a2c, 0.05);
+    const shaft = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.24, 0.40, 0.8, 14, 1, true), shaftMat);
+    shaft.position.y = 0.42;
+    shaft.renderOrder = 3;
+    glow.add(shaft);
+    const moteMat = mat(0xffd88a, 0.55);
+    const motes = [];
+    for (let i = 0; i < 4; i++) {
+      const m = new THREE.Mesh(new THREE.PlaneGeometry(0.05, 0.05), moteMat.clone());
+      m.position.set((i - 1.5) * 0.22, 0.1, (i % 2 ? 0.1 : -0.1));
+      m.renderOrder = 4;
+      glow.add(m);
+      motes.push({ mesh: m, phase: i * 0.27, baseY: 0.05 });
+    }
+    const lamp = new THREE.PointLight(0xffb04a, 1.3, 4.0, 2);
+    lamp.position.y = 0.45;
+    glow.add(lamp);
+    g.add(glow);
+
+    return {
+      group: g, collide: [CW / 2 + 0.24, 0.16, CD + 0.12], live: true, gun,
+      glow: { node: glow, discMat, shaftMat, motes, lamp },
+    };
   }
 
   /**
