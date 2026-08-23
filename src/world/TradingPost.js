@@ -37,7 +37,7 @@ import { mergeStatic, scaleBoxUVs } from './Buildings.js';
  * district to look at was a head and a hat over a plank. What keeps you OUT
  * now is what keeps you out of any working site — the plant is in the way.
  * Jersey barriers and a pallet stack in the front corners, a bottle rack, a
- * cable drum, a utility cabinet, a hazard drum, cones and a folded barricade
+ * cable drum, a utility cabinet, a hazard drum, banded cones and a folded barricade
  * down the flanks: a clear lane down the middle to the machine and nowhere at
  * all to stand beside it.
  *
@@ -295,17 +295,44 @@ export class TradingPost {
       return PAD + n * 0.145;
     };
 
-    /** A traffic cone, banded. */
+    /**
+     * A traffic cone, banded.
+     *
+     * The bands used to be separate cylinders parked over a solid cone, and a
+     * cylinder is a tube: because its radius could only match the taper at one
+     * height, each band stood proud of the cone above and sank into it below —
+     * a white doughnut threaded onto an orange spike. A real cone's bands are
+     * PAINT, flush with the surface, so this one is built the way a moulded
+     * cone actually is: one continuous taper cut into five frusta, each with
+     * the exact radii the profile has at its own two heights, coloured orange
+     * or white. There is nothing to stand proud of and nothing to z-fight,
+     * because the bands ARE the cone.
+     */
     const cone = (px, py, pz, s = 1) => {
-      const c = new THREE.Mesh(new THREE.ConeGeometry(0.16 * s, 0.52 * s, 8), mat.cone);
-      c.position.set(px, py + 0.28 * s, pz);
-      g.add(c);
-      const band = new THREE.Mesh(new THREE.CylinderGeometry(0.107 * s, 0.122 * s, 0.07 * s, 8), mat.coneBand);
-      band.position.set(px, py + 0.30 * s, pz);
-      g.add(band);
+      const H = 0.52 * s, R = 0.16 * s;
+      const r = (t) => R * (1 - t * 0.96);        // profile radius at height t*H
+      // [from, to, white?] — a wide lower band and a narrower upper one, the
+      // proportions a moulded highway cone is actually striped in.
+      const BANDS = [[0, 0.34, 0], [0.34, 0.50, 1], [0.50, 0.64, 0], [0.64, 0.74, 1]];
+      let top = null;
+      for (const [a, b, white] of BANDS) {
+        const seg = new THREE.Mesh(
+          new THREE.CylinderGeometry(r(b), r(a), (b - a) * H, 8, 1, true),
+          white ? mat.coneBand : mat.cone);
+        seg.position.set(px, py + (a + b) / 2 * H, pz);
+        g.add(seg);
+        top = b;
+      }
+      // the moulded nose above the top band, closing the taper to a point
+      const tip = new THREE.Mesh(new THREE.ConeGeometry(r(top), (1 - top) * H, 8), mat.cone);
+      tip.position.set(px, py + (top + 1) / 2 * H, pz);
+      g.add(tip);
+      // the square foot it is moulded onto, with the chamfer the real ones have
       const base = put(box(0.34 * s, 0.03 * s, 0.34 * s, mat.cone), px, py + 0.015 * s, pz);
       base.rotation.y = 0.3;
-      return c;
+      put(new THREE.Mesh(new THREE.CylinderGeometry(r(0), R * 1.28, 0.05 * s, 8), mat.cone),
+        px, py + 0.055 * s, pz);
+      return tip;
     };
 
     // --- the two front corners: barriers on the road side, plant behind them

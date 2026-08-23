@@ -197,11 +197,67 @@ firing sound and a distinct right-mouse secondary action:
 | Slot | Weapon | Action | Secondary (RMB) |
 | --- | --- | --- | --- |
 | 1 | Mainspring Auto (pistol) | industrial blowback machine pistol built to reference art — exposed coil mainspring wound round the barrel visibly compresses and rebounds as the bolt cycles, the open-flanked magazine empties round by round as you shoot, case + mag eject | **Hair-trigger** — rapid auto fire, less damage per round |
-| 2 | Crane Coachgun (shotgun) | modern over-under that **breaks UPWARD** — barrels crane skyward, twin hulls eject over the shoulder, two fresh shells seat, action snaps home | **Both barrels** — twin blast, two shells, big knockback |
+| 2 | Crane Coachgun (**not in the starting loadout**) | modern over-under that **breaks UPWARD** — barrels crane skyward, twin hulls eject over the shoulder, two fresh shells seat, action snaps home. It is in its owner's case in the blue clapboard house on Main St East — the first fifty kills are a pistol run, and opening Eastgate is what buys you a shoulder weapon | **Both barrels** — twin blast, two shells, big knockback |
 | 3 | Foundry Gun (rifle) | Lewis-pattern steam machine gun; flank pan drum ratchets a round per shot, charging handle reciprocates, live pressure valve, drum swap reload | **3-round burst** — tight grouping |
 | 4 | Meridian Long Rifle (sniper) | precision **bolt-action** — full lift/draw/eject/close cycle each shot, glowing telescope reticle, rangefinder drum, en-bloc clip reload | **Scope** — telescopic zoom |
 | 5 | Ironshod Slugger (melee) | ironclad club; swings alternate forehand / backhand horizontal cuts | **Heavy swing** — charged overhead slam, wider arc, more knockback |
 | 6 | Alien Blaster (**locked**) | recovered artefact — blue energy bolts that punch through two bodies, no reserve and no reload; the cell refills itself, faster the emptier it is, and the emitter vanes spin up while it does. Not on the wheel until you find it — see the scarecrow | **Overcharge** — four cells at once, heavier bolt, deeper pierce |
+
+## Soundtrack and voices
+
+Every note in this game is synthesised at run time by the same WebAudio
+machinery that makes the gunshots. There is not an audio file in the
+repository, and the score is no exception.
+
+**Nine pieces, and each of them exists twice.** One for the title screen, one
+for each of the six districts, one for dying and one for the end of the run
+(`src/audio/MusicTracks.js`, written as data — chord progressions, step
+patterns and written melodies over a table of voices in `MusicVoices.js`). Each
+has a **calm** arrangement and a **danger** arrangement built on the same root,
+the same tempo and the same bar grid, which is what lets the director cross-fade
+between them mid-phrase without a smear, a pitch bend or a dropped beat:
+
+- **Where you are picks the piece.** Old Town Square is a string chorale over a
+  walking sub with a music box in it; Eastgate is warmer and quieter than
+  anything else in the game; Downtown is phrygian and has a pulse; Hollow Park
+  is a choir and a whistle and almost no rhythm at all; Southside is struck
+  scrap over a pumping bass; Chapel Ridge is an organ, a choir and a bell with
+  no drums anywhere in the calm mix. Changing district is a real cross-fade —
+  both pieces keep playing and keep being scheduled for the length of it.
+- **How close to dead you are picks the version.** Below 25% health the mix
+  slides to the danger arrangement of whatever you were already listening to:
+  tremolo strings, a driving bass, a **heartbeat** that beats faster and harder
+  the lower you go, and a progression that leans on the flat second. Patch
+  yourself back past 32% and it slides back. The hysteresis is the point — a
+  score that flickers between two arrangements while you sit on exactly a
+  quarter health is worse than either of them.
+- **It stays out of the way.** The score runs about 14 dB under the effects
+  bus, everything above 3.2 kHz is rolled off so it never competes with a
+  rifle's crack, and each shot ducks it by a hair. **SETTINGS carries two
+  sliders — SOUNDTRACK and SOUND EFFECTS —** because a player who wants the
+  music down and the guns loud should not have to choose.
+- **The loops are clean because they are not loops.** Nothing is rendered and
+  butted against itself: `src/audio/Music.js` schedules 16th-note steps against
+  the AudioContext clock a fraction of a second ahead, and the step counter
+  simply wraps. A pad's release and a bell's tail cross the wrap the way they
+  would in a room, so there is no join to hear — and a dropped frame or a
+  backgrounded tab cannot make it stutter, only make the scheduler run late,
+  which it catches.
+
+**The horde talks.** The enemies are militia fighters, so they get voices
+instead of moans — synthesised the way arcade voices actually were, on a
+**formant synthesiser** (`src/audio/Speech.js`): a buzzing glottal source driven
+through three tuned resonators, pitch-quantised the way a speech chip's register
+was, band-limited to the speaker and pushed through an overdriven amplifier.
+Every archetype has its own pitch band, delivery speed and lines for every state
+it can be in — muttering, spotting you, closing, swinging, hit, dying
+(`src/audio/EnemyVoices.js`) — and every individual carries a voice value fixed
+when it spawned that picks its fundamental inside that band and which of the
+lines it uses, so one fighter always sounds like himself and eight of them do
+not sound like one man shouting eight times. The bomber's takbir goes off when
+he **commits** at ten metres, not on the quarter-second fuse: hung on the fuse
+you would hear one syllable and then the blast, and it is the only reliable
+warning a bomber gives.
 
 ## Dev console
 
@@ -399,7 +455,7 @@ There is deliberately no command that touches the kill counter — the
   and WAVE (a smoked trefoil-decal tube that rages during a wave and blinks
   through a respite) — plus a green CRT message log with a phosphor refresh
   sweep, a **counter bank** — every mechanical odometer bolted into one housed
-  steel instrument rather than left as loose tiles: **HP** and **TOKENS**
+  steel instrument rather than left as loose tiles: **HP** and **COINS**
   paired on its top line, **LOADED (in the gun)** and **RESERVE (carried)** on
   a scored line beneath, all of them ticking their wheels as they roll (the
   purse belongs with the ammunition, not with the score — it is a consumable
@@ -540,7 +596,7 @@ There is deliberately no command that touches the kill counter — the
 - **Loot has a clock on it.** Anything that DROPS during play — shells, medkits,
   supply crates, arcade payouts, the horde's coins — lies on the street for
   **45 seconds**, and spends its **last ten blinking** at an accelerating rate so
-  a token you meant to come back for tells you it is going. The ageing runs
+  a coin you meant to come back for tells you it is going. The ageing runs
   whether or not you are near it, so walking away does not preserve a pile, and
   it clears the road between waves instead of letting a hundred kills' payout
   carpet the district. Two
@@ -558,10 +614,10 @@ There is deliberately no command that touches the kill counter — the
   scratch (die at wave 45 → back to 40). The district barriers re-seal to match
   the rolled-back kill count, so any sections you'd opened stand again and must
   be re-earned. **The hardware does not roll back.** Dying costs you the wave,
-  not the kit you paid tokens for: every sentry folds up, both marks — the ones
+  not the kit you paid coins for: every sentry folds up, both marks — the ones
   bolted to the pavement and the one in your hands, each returning to its own
   satchel slot rather than being pooled — the adjutant folds up, and the
-  Companion Cube comes back from wherever you set it down, all of it stowed in
+  Friend Box comes back from wherever you set it down, all of it stowed in
   the satchel and none of it left across town from where you respawn. Whatever
   was already in the satchel is untouched.
 - **Progression:** six districts unlock at kill milestones — Old Town
@@ -770,11 +826,20 @@ There is deliberately no command that touches the kill counter — the
     (weapon slot 6): blue energy bolts, no reserve and no reload, a cell that
     refills itself faster the emptier it gets. Nothing marks the site on the
     map. The scarecrow told you, and only if you kept touching it.
-- **Companion Cube:** a findable Easter egg, built to the classic
+- **The wave-five sighting:** fifteen seconds into wave five a saucer crosses
+  the sky from the south, passes over the trading post on the Eastgate knoll
+  trailing smoke, and goes into the field at (62, −214) — which is where the
+  wreck the scarecrow points at **already is**. Nothing about the world changes
+  when it lands; this is the teaser for a place you cannot reach yet. It is
+  staged to be missable: it fades in out of the distance fog, its lit ring is
+  what you notice before its shape, and it is gone into the haze to the north
+  well before it touches down. The bang arrives afterwards, late, by the real
+  range divided by the real speed of sound.
+- **Friend Box:** a findable Easter egg, built to the classic
   reference — pale chamfered corners, magenta seams, a pink heart plate on
   every face — waiting in a back room somewhere high-rise adjacent, throwing
   no light of its own. Take it; it stows in the satchel and stays with you.
-- **Tokens:** the horde carries coins, and the coins are the only money in
+- **Coins:** the horde carries coins, and the coins are the only money in
   town. Each one is an eight-frame **spin** rather than a still disc, and the
   three are told apart by mass and by ear as well as by colour — copper is a
   small dull tick, silver rings a fifth above it, the gold has a tail on it.
@@ -858,7 +923,7 @@ There is deliberately no command that touches the kill counter — the
   with. The fourth is Escape, which by specification grants none — so that one
   exit leans on the silent recapture described under Controls rather than on a
   plate telling the player to go and click something. It sells a
-  **Portable Sentry at 100 tokens, six of them**; the **Sentry Mk II "Warden"
+  **Portable Sentry at 100 coins, six of them**; the **Sentry Mk II "Warden"
   at 300, two only**; the **adjutant android at 500, one only**; **every
   ammunition type separately at 10** a crate; and carries one dead bay at the
   bottom for whatever has not arrived yet.
@@ -906,7 +971,7 @@ There is deliberately no command that touches the kill counter — the
   vertical, hold it, and put it back down**. Every twenty-fifth kill it taps the
   barrel twice, like a gunner notching a stock. Pick one up and set it down
   three times inside twenty seconds and it deploys with a shake of the head.
-- **Sentry Mk II "WARDEN" — 300 tokens, two only.** The Mk I holds a doorway.
+- **Sentry Mk II "WARDEN" — 300 coins, two only.** The Mk I holds a doorway.
   This holds a junction. It carries in the satchel and comes out into your
   hands the same way, shows the same kind of preview — its own ghost, its own
   green wedge — and the wedge is visibly a different machine's: a **240° fan of
@@ -1096,7 +1161,7 @@ There is deliberately no command that touches the kill counter — the
     spade, shakes on its jacks, puts its lamps to red and says something about
     it through the horn.
 
-- **The adjutant — "NEKO", 500 tokens, one only.** A refurbished companion
+- **The adjutant — "NEKO", 500 coins, one only.** A refurbished companion
   android, and the only thing in this town that walks beside you on purpose.
   She stows in the satchel folded into a ball; click her and she unfolds on the
   ground, finds her feet, and stretches. **[E] on her opens the ORDER DIAL** — a
@@ -1190,20 +1255,28 @@ src/rendering/      renderer, texture pipeline, billboards, HUD (console bar +
                     SentryTwoModel.js — which also exports the Mk II's two
                     static poses, so the ghost, the carry model and the deploy
                     animation cannot disagree about what "folded" means)
-src/audio/          WebAudio synthesis (all sounds)
+src/audio/          WebAudio synthesis — every sound AND every note in the
+                    game. AudioManager.js (effects + the two buses), Music.js
+                    (the adaptive score's scheduler and vertical mixer),
+                    MusicTracks.js (the nine pieces, as data), MusicVoices.js
+                    (the instruments they are played on), Speech.js (the
+                    formant synthesiser the horde talks through) and
+                    EnemyVoices.js (what each archetype says, and when)
 src/world/          terrain, buildings, props, vegetation, zones, nav, secrets,
                     anomalies (cosmic-horror layer + dynamic props and
-                    surfaces), companion cube, scarecrow (aware animated set
-                    piece, its easter-egg chain and the crash site), sky
+                    surfaces), the Friend Box, scarecrow (aware animated set
+                    piece, its easter-egg chain and the crash site), the
+                    wave-five saucer that puts the crash site there
+                    (Flyby.js), sky
 src/systems/        score/win condition, waves, spawning, savable-citizen
-                    director, game state, inventory, tokens (currency +
-                    the coin drop table), sentries of both marks (carrying,
+                    director, game state, inventory, coins (currency +
+                    the drop table), sentries of both marks (carrying,
                     per-kind placement previews, deployed turrets)
 src/engine/Shell.js desktop-shell bridge (detects the Electron launcher)
 launcher/           Windows desktop launcher (Electron): startup window,
                     harmonograph boot animation, isolated fullscreen game window
 tests/              headless AI tests (ai.mjs), NPC behaviour tests against the
-                    real world (npc-behavior.mjs), the vendor/tokens/sentry
+                    real world (npc-behavior.mjs), the vendor/coins/sentry
                     suite (shop.mjs), Playwright smoke test (boot, combat,
                     exact win condition)
 ```

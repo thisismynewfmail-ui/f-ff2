@@ -9,7 +9,7 @@ import { SettingsPanel } from './SettingsPanel.js';
  *
  *   - LAST SESSION: the previous session's stats, served by the dev server's
  *     /api/session endpoint (localStorage on static hosts) — kills, score,
- *     accuracy, wave, time and secrets, with the save date. When a save
+ *     accuracy, wave and time, with the save date. When a save
  *     exists and no run is live, a RESUME LAST SESSION entry appears.
  *   - FIELD MANUAL: the control reference.
  *
@@ -169,8 +169,7 @@ export class TitleMenu {
       row('SCORE', (save.points || 0).toLocaleString('en-US')) +
       row('ACCURACY', ((save.accuracy || 0) * 100).toFixed(1) + '%') +
       row('WAVE REACHED', save.wave || 1) +
-      row('TIME SURVIVED', time) +
-      row('SECRETS', `${save.secretsFound ?? 0} / ${save.secretsTotal ?? '?'}`);
+      row('TIME SURVIVED', time);
     const d = save.savedAt ? new Date(save.savedAt) : null;
     date.textContent = d && !isNaN(d) ? 'FILED ' + d.toLocaleString() : '';
   }

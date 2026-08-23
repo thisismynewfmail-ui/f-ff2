@@ -11,6 +11,7 @@ import { Secrets } from './Secrets.js';
 import { Anomalies } from './Anomalies.js';
 import { CompanionCube } from './CompanionCube.js';
 import { Scarecrow } from './Scarecrow.js';
+import { Flyby } from './Flyby.js';
 import { TradingPost, TRADING_POST } from './TradingPost.js';
 import { deconflict, deconflictResolved, resolve } from './Materials.js';
 import { WorldBarrier } from './Boundary.js';
@@ -256,6 +257,8 @@ export class World {
     this.anomalies = new Anomalies(this);
     this.companionCube = new CompanionCube(this);
     this.scarecrow = new Scarecrow(this);
+    // The sighting that sets the wreck up, fifteen seconds into wave five.
+    this.flyby = new Flyby(this);
     return this;
   }
 
@@ -307,7 +310,7 @@ export class World {
 
   addInteractable(it) {
     // Store and return the SAME object (defaults filled in), so a caller can
-    // keep the handle and move its interactable later (the Companion Cube
+    // keep the handle and move its interactable later (the Friend Box
     // re-seats its prompt wherever it gets dropped).
     if (it.radius === undefined) it.radius = 2.2;
     if (it.enabled === undefined) it.enabled = () => true;
@@ -367,6 +370,7 @@ export class World {
     this.companionCube.update(dt);
     this.scarecrow.update(dt, time, cameraPos);
     this.tradingPost?.update(dt, time);
+    this.flyby?.update(dt);
     this._updateClock();
   }
 
@@ -595,14 +599,51 @@ export class World {
   _planBuildings() {
     const S = (o) => this._spec(o);
     // --- Old Town (zone 0): the kept-up civic heart around the plaza.
-    // Commercial fronts face the square; the two cottages face the plaza too.
-    S({ x: -18, z: -14, w: 12, d: 9, h: 4.6, mat: 'redbrickWalkup', roof: 'gable', door: 'S', chimney: true, shopfront: true, awning: true, name: 'tavern', use: 'tavern', zone: 0 });
-    S({ x: 15, z: -17, w: 10, d: 8, h: 4.2, mat: 'paintedBrickShop', roof: 'flat', door: 'S', shopfront: true, awning: true, name: 'store', use: 'store', zone: 0 });
-    S({ x: -17, z: 13, w: 8, d: 7, h: 3.8, mat: 'plasterTownhouse', roof: 'gable', door: 'E', chimney: true, partitions: housePartitions(8, 7, 'E'), name: 'npcHouse', use: 'house', zone: 0 });
+    //
+    // This is the ground every run starts on and the ground every run comes
+    // back to, so it is the one district that cannot afford to be a row of
+    // prisms with textures on them — and it was. Each building here is now
+    // ARTICULATED (see the spec notes in world/Buildings.js): the two flat
+    // -roofed commercial blocks have real cornices and parapets instead of a
+    // lid, the corners carry pilasters, the doors have porticos and hoods, the
+    // houses have bay windows, and three of them are two volumes rather than
+    // one — a taller block with a lower wing off the back, which is what stops
+    // a silhouette reading as a box before you are close enough to see any
+    // texture at all. The wings carry their own colliders, so what you can
+    // walk into is exactly what you can see.
+    //
+    // The clock tower is deliberately untouched: it is the landmark the whole
+    // square is laid out around and its proportions are load-bearing.
+    S({ x: -18, z: -14, w: 12, d: 9, h: 4.6, mat: 'redbrickWalkup', roof: 'gable', ridge: 'x',
+        roofPitch: 0.38, roofCap: 2.9, door: 'S', chimney: true, shopfront: true, awning: true,
+        dormers: 2, pilasters: true, entrance: 'hood',
+        wing: { side: 'N', w: 6.0, d: 3.4, h: 3.0, at: -1.6 },
+        name: 'tavern', use: 'tavern', zone: 0 });
+    S({ x: 15, z: -17, w: 10, d: 8, h: 4.2, mat: 'paintedBrickShop', roof: 'flat', door: 'S',
+        shopfront: true, awning: true, pilasters: true, parapet: 1.05, entrance: 'hood',
+        name: 'store', use: 'store', zone: 0 });
+    S({ x: -17, z: 13, w: 8, d: 7, h: 3.8, mat: 'plasterTownhouse', roof: 'gable', ridge: 'z',
+        // The bay goes on the NORTH elevation — the one facing down onto the
+        // plaza — and not on the door's wall: that wall is seven metres with a
+        // doorway in the middle of it, and a bay plus its base plus a door
+        // does not fit across seven metres without one of them standing in
+        // front of another.
+        roofPitch: 0.42, roofCap: 2.6, door: 'E', chimney: true, dormers: 1,
+        bay: { side: 'N' },
+        partitions: housePartitions(8, 7, 'E'), name: 'npcHouse', use: 'house', zone: 0 });
     S({ x: 14, z: 15, w: 5, d: 5, h: 14, mat: 'greyBrickCivic', family: 'civic', roof: 'flat', solid: true, name: 'clocktower', zone: 0 });
-    S({ x: -32, z: 26, w: 7, d: 6, h: 3.8, mat: 'stuccoTanVilla', roof: 'gable', door: 'E', shopfront: true, awning: true, name: 'bakery', use: 'bakery', zone: 0 });
-    S({ x: 28, z: 26, w: 8, d: 6, h: 4.0, mat: 'tanBrickDeco', roof: 'flat', door: 'W', name: 'postOffice', use: 'postOffice', zone: 0 });
-    S({ x: 34, z: -30, w: 7, d: 6, h: 3.6, mat: 'clapboardGreen', roof: 'gable', door: 'W', chimney: true, partitions: housePartitions(7, 6, 'W'), name: 'cottage', use: 'house', zone: 0 });
+    S({ x: -32, z: 26, w: 7, d: 6, h: 3.8, mat: 'stuccoTanVilla', roof: 'gable', ridge: 'z',
+        roofPitch: 0.4, roofCap: 2.5, door: 'E', shopfront: true, awning: true,
+        pilasters: true, chimney: true,
+        wing: { side: 'W', w: 3.0, d: 2.6, h: 2.8, roof: 'flat' },
+        name: 'bakery', use: 'bakery', zone: 0 });
+    S({ x: 28, z: 26, w: 8, d: 6, h: 4.0, mat: 'tanBrickDeco', roof: 'flat', door: 'W',
+        pilasters: true, parapet: 1.2, entrance: 'portico',
+        name: 'postOffice', use: 'postOffice', zone: 0 });
+    S({ x: 34, z: -30, w: 7, d: 6, h: 3.6, mat: 'clapboardGreen', roof: 'gable', ridge: 'z',
+        roofPitch: 0.44, roofCap: 2.4, door: 'W', chimney: true, porch: true, dormers: 1,
+        wing: { side: 'E', w: 2.8, d: 2.4, h: 2.5 },
+        partitions: housePartitions(7, 6, 'W'), name: 'cottage', use: 'house', zone: 0 });
 
     // --- Eastgate Residential (zone 1): a neighbourhood, laid out lot by lot.
     //
@@ -1064,6 +1105,150 @@ export class World {
   }
 
   /**
+   * Put a well down and register the water in it.
+   *
+   * The sheet crawls, swells and takes the drips off the bucket rope (see
+   * PropKit.well). The material is shared between the town's two wells, so it
+   * is only ever entered in the drift list once — a second entry would simply
+   * scroll it at twice the rate.
+   */
+  _wellAt(P, x, z) {
+    const w = P.well();
+    const g = this._prop(w, x, z);
+    if (!g || !w.water) return g;
+    if (!this._wellDrift) {
+      this._wellDrift = true;
+      this.uvDrifts.push({ mat: w.water.mat, u: 0.006, v: 0.009 });
+    }
+    this._animate(w.water.sheet, 'wellwater', x, z, {
+      speed: 0.55, amp: 0.012, rings: w.water.rings, baseY: w.water.baseY,
+      bucket: w.water.bucket,
+    });
+    return g;
+  }
+
+  /**
+   * The gun case, once the interiors have found a spot for it.
+   *
+   * World owns the interaction (Interiors builds furniture; it does not run
+   * gameplay), and it owns the RESET, so a new run puts the coachgun back in
+   * its case in the blue house instead of leaving the case empty and the
+   * weapon still in the player's hands.
+   */
+  registerGunCache(node, maker, spec) {
+    const p = node.position;
+    this.gunCache = {
+      node, gun: maker.gun, taken: false,
+      prompt: this.addInteractable({
+        x: p.x, z: p.z, y: p.y, radius: 1.9,
+        prompt: 'Take the coachgun [E]',
+        enabled: () => !this.gunCache.taken,
+        onInteract: () => this._takeGun(),
+      }),
+      where: spec.name,
+    };
+  }
+
+  _takeGun() {
+    const c = this.gunCache;
+    if (!c || c.taken) return;
+    c.taken = true;
+    if (c.gun) c.gun.visible = false;
+    this.events.emit('weapon:unlock', { id: 'shotgun' });
+    // What was in the box with it. Two magazines' worth and no more — the
+    // point of the coachgun is that you have to go and find shells for it.
+    this.events.emit('pickup', { type: 'ammo_shotgun', amount: 16, label: 'Shotgun shells' });
+    this.events.emit('subtitle', {
+      text: 'A break-action coachgun, still oiled, and sixteen shells loose in the case. Somebody kept this well.',
+    });
+  }
+
+  /** Mark it already taken (a resumed run that had already found it). */
+  emptyGunCache() {
+    const c = this.gunCache;
+    if (!c) return;
+    c.taken = true;
+    if (c.gun) c.gun.visible = false;
+  }
+
+  /** Put it back in its case — a new run starts without it again. */
+  resetGunCache() {
+    const c = this.gunCache;
+    if (!c) return;
+    c.taken = false;
+    if (c.gun) c.gun.visible = true;
+  }
+
+  /**
+   * One piece of natural clutter on the knoll.
+   *
+   * Solid pieces go through _prop so they inherit the doorway and
+   * overlapping-solid guards every other prop in the town is held to; the
+   * things you walk straight over (deadwood, brambles) are placed directly,
+   * because a collider on a pile of sticks is a snag and nothing else.
+   */
+  _eastgateClutter(P, kind, x, z, rng, weeds) {
+    const seed = Math.floor(x * 71 + z * 37) & 0x7fffffff;
+    const yaw = rng() * Math.PI * 2;
+    if (kind === 'boulder') {
+      this._prop(P.boulder(0.8 + rng() * 0.9, seed), x, z, { yaw });
+      if (rng() < 0.6) this._prop(P.boulder(0.4 + rng() * 0.4, seed + 3), x + 1.3, z + 0.9, { yaw: yaw + 1 });
+    } else if (kind === 'log') {
+      this._prop(P.fallenLog(2.4 + rng() * 2.0, seed), x, z, { yaw });
+    } else if (kind === 'stump') {
+      this._prop(P.stump(0.9 + rng() * 0.5, seed), x, z, { yaw });
+      if (rng() < 0.7) this._prop(P.fallenLog(1.8 + rng() * 1.4, seed + 5), x + 2.0, z - 1.1, { yaw: yaw + 0.7 });
+    } else if (kind === 'deadwood') {
+      const g = P.deadwood(seed).group;
+      P.place(g, x, z, { yaw });
+      this.group.add(g);
+    } else {
+      // a bramble thicket: a knot of bushes with weed round its feet
+      for (let i = 0; i < 3; i++) {
+        this.veg.bush(this.group, x + (rng() - 0.5) * 2.6, z + (rng() - 0.5) * 2.6, 0.7 + rng() * 0.5);
+      }
+      for (let k = 0; k < 10; k++) {
+        weeds.push([x + (rng() - 0.5) * 3.6, z + (rng() - 0.5) * 3.6]);
+      }
+    }
+  }
+
+  /**
+   * A filling station, wired up.
+   *
+   * The forecourt is not a static prop: its power is failing, so the canopy
+   * soffit, the pump heads and the price totem all strike, hold and drop out
+   * on their own beats (the same lamp model the town's interiors use), the air
+   * line's reel turns on the breeze, and one of the pumps can be tried — it
+   * still has pressure behind it, which is the only good news on the site.
+   */
+  _gasStationAt(P, x, z) {
+    const gs = P.gasStation(x, z, this.group);
+    for (const t of gs.tubes) this._animateMat(t.mat, 'tube', { ...t, t: 0, x, z });
+    if (gs.reel) this._animate(gs.reel, 'spin', x, z, { axis: 'x', speed: 0.22 });
+    const pump = gs.pumps[0];
+    if (pump) {
+      let tried = 0;
+      this.addInteractable({
+        x: pump.x, z: pump.z + 0.9, y: pump.y, radius: 2.0,
+        prompt: 'Try the pump [E]',
+        onInteract: () => {
+          tried++;
+          this.events.emit('pump:try', { pos: { x: pump.x, y: pump.y + 1, z: pump.z } });
+          this.events.emit('subtitle', {
+            text: tried === 1
+              ? 'The pump coughs, counts up eleven cents of nothing, and stops. The nozzle is dry.'
+              : tried === 2
+                ? 'It counts up again. Same eleven cents. Somewhere under the forecourt something is still turning.'
+                : 'The readout holds at eleven cents. It is going to do that for as long as you stand here.',
+          });
+        },
+      });
+    }
+    return gs;
+  }
+
+  /**
    * What a solid prop footprint at (x, z) would be standing inside, or null.
    *
    * Buildings are tested against their real footprint; other props only
@@ -1142,7 +1327,7 @@ export class World {
 
   _oldTown() {
     const P = this.props;
-    this._prop(P.well(), 0, 6);
+    this._wellAt(P, 0, 6);
     for (const [x, z] of [[-14, -6], [14, -6], [-12.2, 15], [14, 10]]) this._prop(P.lamppost(), x, z);
     // The lamp at the alley mouth casts a shadow the wrong way (secret #9
     // registers the trigger; this is the visual).
@@ -1324,7 +1509,7 @@ export class World {
     this._poleLine([[208, -34], [208, -8], [208, 20], [208, 46]]);
     for (const [x, z] of [[94, 24], [140, 58], [70, 84]]) this._prop(P.utilityPole(), x, z);
     // The filling station at the district gate, where you come in from the plaza.
-    P.gasStation(55, 12, this.group);
+    this._gasStationAt(P, 55, 12);
     // Cars left where they stopped. The two on Main St are the cover you use
     // on the way in; the third has been on the verge long enough to be planted.
     const rng = mulberry32(11);
@@ -1688,6 +1873,7 @@ export class World {
    */
   _eastgateNature() {
     const rng = mulberry32(11);
+    const P2 = this.props;
     // back-garden boundaries: the lines between the paired rows
     for (const [x1, z1, x2, z2, kind] of [
       [95, -18, 95, -8, 'hedge'], [124, -18, 124, -6, 'picket'],
@@ -1714,20 +1900,83 @@ export class World {
       this.veg.bush(this.group, cx - hx * 0.5, cz + hz * 0.6, 0.95);
     }
 
-    // Trees over the open knoll, thinning where the streets are — but never
-    // on the GREEN. Every neighbourhood keeps one piece of ground nobody built
-    // on and nobody planted, and Eastgate's is the field inside the Wend Loop:
-    // forty metres of open grass with clear sight lines the whole way across,
-    // which makes it the one place in the district you can fight at range and
-    // the one place a horde can see you coming from as far as you can see it.
-    for (let i = 0; i < 34; i++) {
-      const x = 55 + rng() * 175, z = -100 + rng() * 200;
-      if (this._nearBuilding(x, z, 6) || this.surfaceAt(x, z) !== 'grass') continue;
-      if (Math.hypot(x - EASTGATE_GREEN.x, z - EASTGATE_GREEN.z) < EASTGATE_GREEN.r) continue;
-      if (rng() < 0.62) this.veg.tree(this.group, x, z, 0.8 + rng() * 0.5);
-      else this.veg.bush(this.group, x, z, 0.8 + rng() * 0.5);
+    /**
+     * THE OPEN GROUND BETWEEN THE STREETS.
+     *
+     * Eastgate is a knoll with a neighbourhood on it, and the parts nobody
+     * built on are most of it — the verges, the paddocks behind the back
+     * lanes, the slope up to the trading post, the ground either side of Sable
+     * Lane. All of that used to be thirty-four scattered trees on an otherwise
+     * empty green plane, which reads as a golf course rather than as a hill
+     * somebody stopped mowing.
+     *
+     * So it is planted properly now, on a JITTERED GRID rather than by random
+     * draw: a random scatter of a hundred points clumps in some places and
+     * leaves bald patches in others, and a bald patch on open ground is the
+     * thing that gives a set dressing away. A grid with three metres of jitter
+     * on each cell covers the ground evenly and still looks unplanned.
+     *
+     * Three rules keep it out of the way of the game:
+     *   1. NOTHING NEAR A BUILDING. Seven metres clear of every footprint, so
+     *      no lot, garden, path, doorway or approach ever grows a tree in it.
+     *   2. NOTHING OFF THE GRASS. Roads, pavements, gravel and the trading
+     *      post's own pad are all surfaces, and none of them get planted.
+     *   3. NOTHING ON THE GREEN. The field inside the Wend Loop is the one
+     *      place in the district you can fight at range, and it stays clear.
+     */
+    const CLUTTER = ['boulder', 'log', 'stump', 'deadwood', 'bramble'];
+    let ci = 0;
+    // Ground cover is COLLECTED and laid down in one pass at the end. Both
+    // field builders merge whatever they are given into a single mesh, so
+    // calling them per cell would trade one draw call for four hundred.
+    const tufts = [], weeds = [];
+    for (let gx = 52; gx <= 236; gx += 8.5) {
+      for (let gz = -104; gz <= 104; gz += 8.5) {
+        const x = gx + (rng() - 0.5) * 6.4, z = gz + (rng() - 0.5) * 6.4;
+        if (this._nearBuilding(x, z, 7) || this.surfaceAt(x, z) !== 'grass') continue;
+        if (Math.hypot(x - EASTGATE_GREEN.x, z - EASTGATE_GREEN.z) < EASTGATE_GREEN.r) continue;
+        // The trading post keeps its own clearing. It is dressed already (a
+        // ring of trees standing back off it — see _tradingPost), and it is
+        // the one place in the district a player has to be able to WALK UP TO
+        // and read a counter: waist-high weed across that approach is not
+        // atmosphere, it is a wall.
+        if (Math.hypot(x - TRADING_POST.x, z - TRADING_POST.z) < 10) continue;
+        // ...and not through anything already standing there. `veg.tree` does
+        // not go through _prop, so it inherits none of the overlap guards the
+        // props are held to — which is how a tree ends up growing out of the
+        // roof of the bus shelter.
+        if (this._overlapsSolid(x, z, 2.6, 2.6)) continue;
+        const spread = (n, r, into) => {
+          for (let k = 0; k < n; k++) {
+            const px = x + (rng() - 0.5) * r, pz = z + (rng() - 0.5) * r;
+            if (this._nearBuilding(px, pz, 2) || this.surfaceAt(px, pz) !== 'grass') continue;
+            into.push([px, pz]);
+          }
+        };
+        const roll = rng();
+        if (roll < 0.44) {
+          this.veg.tree(this.group, x, z, 0.75 + rng() * 0.6);
+          // and what collects under a tree: long grass, and sometimes a bush
+          if (rng() < 0.5) this.veg.bush(this.group, x + 1.6, z - 1.2, 0.7 + rng() * 0.4);
+          spread(6, 5.2, tufts);
+        } else if (roll < 0.66) {
+          this.veg.bush(this.group, x, z, 0.8 + rng() * 0.6);
+          spread(5, 4.4, tufts);
+        } else if (roll < 0.80) {
+          // ground cover only — the ground between things has to be dressed
+          // too, or the things read as objects placed on a lawn
+          spread(12, 5.6, weeds);
+        } else if (roll < 0.92) {
+          const kind = CLUTTER[(ci++) % CLUTTER.length];
+          this._eastgateClutter(P2, kind, x, z, rng, weeds);
+        } else {
+          spread(4, 4.0, tufts);
+        }
+      }
     }
-    this._sprinkleTufts(140, 0, 95, 100, 70);
+    if (tufts.length) this.veg.tuftField(this.group, tufts);
+    if (weeds.length) this.veg.weedField(this.group, weeds);
+    this._sprinkleTufts(140, 0, 95, 100, 110);
   }
 
   _downtown() {
@@ -1914,7 +2163,7 @@ export class World {
     this._patch(-40, -158, 6, 8, 'sidewalk', 'concrete', 8);
     this.statuePos = { x: -40, z: -158 };
     this._prop(P.statue(), -40, -158, { yaw: 0.4 });
-    this._prop(P.well(), -40, -150.5);                       // the fountain
+    this._wellAt(P, -40, -150.5);                            // the fountain
     for (const [x, z, yaw] of [[-45, -153, 1.4], [-35, -153, -1.4], [-45, -163, 2.0], [-35, -163, -2.0]]) {
       this._prop(P.bench(), x, z, { yaw });
     }
@@ -2046,7 +2295,7 @@ export class World {
     const P = this.props;
     const rng = mulberry32(55);
     // South-end filling station
-    P.gasStation(24, 122, this.group);
+    this._gasStationAt(P, 21, 122);
     this._prop(P.dumpster(), 40, 118, { yaw: 0.2 }); // the key hides behind this one
     // Factory landmarks: the smokestack owns the south-west skyline, the
     // water tower the south-east, so the yard is legible from anywhere.

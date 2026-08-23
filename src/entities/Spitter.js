@@ -114,6 +114,12 @@ export class Spitter extends Zombie {
         this._setState('aiming');
         this._aim = cfg.aimTime;
         this._aimAt = this._torsoPoint(victim);
+        // He calls the shot as he plants his feet. That call IS the tell — the
+        // quarter-second pause is the only warning a player gets that a round
+        // is coming, and a pause you cannot hear is not a warning.
+        this.events.emit('spitter:aim', {
+          pos: this.position.clone(), type: this.config, voice: this.voice,
+        });
         this.yaw = Math.atan2(vdx, vdz);
         this._present(dt, ctx, false, 'aim');
         return;

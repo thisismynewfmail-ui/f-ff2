@@ -17,9 +17,9 @@
  * pickups, the drop rolls and the shop all read their values from here.
  */
 export const COINS = {
-  coin_copper: { value: 5, label: 'Copper token', tex: 'coinCopper', size: 0.34 },
-  coin_gold: { value: 10, label: 'Gold token', tex: 'coinGold', size: 0.42 },
-  coin_silver: { value: 20, label: 'Silver token', tex: 'coinSilver', size: 0.40 },
+  coin_copper: { value: 5, label: 'Copper coin', tex: 'coinCopper', size: 0.34 },
+  coin_gold: { value: 10, label: 'Gold coin', tex: 'coinGold', size: 0.42 },
+  coin_silver: { value: 20, label: 'Silver coin', tex: 'coinSilver', size: 0.40 },
 };
 
 /** Is this pickup type one of the coins? */
@@ -53,7 +53,7 @@ export class TokenSystem {
   canAfford(cost) { return this.tokens >= Math.max(0, Math.round(cost)); }
 
   /**
-   * Take `cost` tokens. Returns true if the purchase went through; a refusal
+   * Take `cost` coins. Returns true if the purchase went through; a refusal
    * is announced rather than silently ignored so the till can say why.
    */
   spend(cost) {

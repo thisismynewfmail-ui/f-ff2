@@ -49,7 +49,13 @@ const SEGMENTS = [
   { zone: 4, x1: -45, z1: 45, x2: -45, z2: 110 },
   { zone: 4, x1: 45, z1: 45, x2: 45, z2: 110 },
   { zone: 2, x1: 45, z1: -110, x2: 45, z2: -45 },
-  { zone: 3, x1: -45, z1: -110, x2: -45, z2: -45 },
+  // Stops at the record shop's north wall, not four and a half metres inside
+  // it. This run used to be given the same z=-110 endpoint as its neighbours,
+  // which put six metres of marble arcade — plinth, merlons and all — straight
+  // through the shopfront on the corner of the z=-110 street. The building
+  // closes the line from here south, which is what a border wall meeting a
+  // building is supposed to look like.
+  { zone: 3, x1: -45, z1: -105.4, x2: -45, z2: -45 },
 ];
 
 // Deep enough to swallow the minarets and portal domes completely before the

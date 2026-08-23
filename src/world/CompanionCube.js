@@ -3,7 +3,7 @@ import { local2world, mergeStatic } from './Buildings.js';
 import { canonXform } from './Interiors.js';
 
 /**
- * The Companion Cube — a findable Easter egg hidden in the Meridian Tower's
+ * The Friend Box — a findable Easter egg hidden in the Meridian Tower's
  * maintenance room, lit by nothing but whatever reaches the back of the
  * lobby. It casts no light of its own; you find it by looking.
  *
@@ -55,7 +55,7 @@ export class CompanionCube {
 
     this._interactable = world.addInteractable({
       x: this.pos.x, z: this.pos.z, y: this.baseY, radius: 2.0,
-      prompt: 'Take the Companion Cube [E]',
+      prompt: 'Take the Friend Box [E]',
       enabled: () => !this.taken,
       onInteract: () => this._take(),
     });
@@ -65,8 +65,8 @@ export class CompanionCube {
     if (this.taken) return;
     this.found = true;
     this._stow();
-    this.world.events.emit('pickup', { type: 'companionCube', amount: 1, label: 'Companion Cube' });
-    this.world.events.emit('subtitle', { text: 'The cube is warm. It seems glad you came.' });
+    this.world.events.emit('pickup', { type: 'companionCube', amount: 1, label: 'Friend Box' });
+    this.world.events.emit('subtitle', { text: 'The box is warm. It seems glad you came.' });
     this.world.events.emit('whisper', { intensity: 0.4 });
   }
 
@@ -94,7 +94,7 @@ export class CompanionCube {
     if (this.taken || !this.found || !this.mesh) return false;
     this._stow();
     this.world.events.emit('inventory:sync', {
-      type: 'companionCube', label: 'Companion Cube', count: 1,
+      type: 'companionCube', label: 'Friend Box', count: 1,
     });
     return true;
   }
@@ -118,7 +118,7 @@ export class CompanionCube {
     this._colliderId = this.world.collision.addBoxCentered(
       x, this.baseY + CUBE_SIZE / 2, z, 0.34, 0.34, 0.34, 'furniture');
     Object.assign(this._interactable, { x, y: this.baseY, z });
-    this.world.events.emit('subtitle', { text: 'The cube settles by your feet. It will wait.' });
+    this.world.events.emit('subtitle', { text: 'The box settles by your feet. It will wait.' });
     return true;
   }
 

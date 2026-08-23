@@ -122,7 +122,7 @@ export class ShopKeeper extends Entity {
         if (!this._metPlayer) {
           this._metPlayer = true;
           this.events.emit('subtitle', {
-            text: 'The machine grinds awake behind the counter. "TOKENS, friend. Only tokens."',
+            text: 'The machine grinds awake behind the counter. "COINS, friend. Only coins."',
           });
         }
       }

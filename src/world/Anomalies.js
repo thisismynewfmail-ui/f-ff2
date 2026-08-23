@@ -361,6 +361,24 @@ export class Anomalies {
               f.rotation.x = Math.cos(time * (1.7 + i * 0.3) + ph) * 0.09 * flick;
             });
           }
+        } else if (a.kind === 'wellwater') {
+          // The sheet swells on a slow beat, and the drips off the rope land
+          // in it: each ring grows from nothing to the shaft wall and fades as
+          // it goes, on its own phase so no two ever leave together. The
+          // bucket sways over it on a third, slower beat again.
+          a.node.position.y = a.baseY + Math.sin(time * a.speed) * a.amp
+            + Math.sin(time * a.speed * 2.7 + 1.1) * a.amp * 0.45;
+          for (const r of a.rings) {
+            const k = ((time * 0.42 + r.phase) % 2.6) / 2.6;   // 0 -> 1 per drip
+            const grow = 0.14 + k * 0.86;
+            r.mesh.scale.set(grow, grow, 1);
+            // opens fast, dies slowly, and is gone well before it wraps
+            r.mat.opacity = Math.max(0, Math.min(1, k * 6)) * (1 - k) * (1 - k) * 0.55;
+          }
+          if (a.bucket) {
+            a.bucket.rotation.z = Math.sin(time * 0.37 + a.phase) * 0.05;
+            a.bucket.rotation.x = Math.cos(time * 0.29 + a.phase) * 0.035;
+          }
         } else if (a.kind === 'swing') {
           a.node.rotation[a.axis] = Math.sin(time * a.speed + a.phase) * a.amp
             * (0.6 + 0.4 * Math.sin(time * 0.043 + a.phase));   // the arc breathes, never stops

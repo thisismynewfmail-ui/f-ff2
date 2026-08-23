@@ -45,17 +45,25 @@ export const WEAPON_CONFIGS = [
     alt: { mode: 'auto', fireInterval: 0.10, damageMul: 0.6, spread: 2.6, sound: 'pistolAuto', noise: 34 },
   },
   {
+    // NOT IN THE STARTING LOADOUT. The coachgun is somebody's — it is in the
+    // blue house on Main St East, in the case they kept it in (see
+    // Interiors.gunCache), which means the second district is where the run
+    // stops being a pistol run. `locked` keeps the bay empty, off the wheel
+    // and off the number keys until 'weapon:unlock' says otherwise.
     id: 'shotgun',
     name: 'SHOTGUN',
     flavor: 'CRANE COACHGUN',
     fireMode: 'BREAK',
     slot: 2,
+    locked: true,
     melee: false,
     damage: 10,
     pellets: 9,
     pierce: 1,
     magSize: 8,        // tube-fed: eight shells before it needs a reload
-    reserveStart: 40,
+    // Found loaded and with what was left in the case beside it — not with a
+    // quartermaster's forty rounds behind it.
+    reserveStart: 0,
     fireInterval: 0.42, // second trigger comes fast
     auto: false,
     reloadTime: 1.9,

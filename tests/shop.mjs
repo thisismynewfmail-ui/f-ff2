@@ -1517,7 +1517,7 @@ const death = await page.evaluate(async () => {
   // satchel, the way a player does it, so the drop wiring is under test too
   cube._take();
   [...g.inventory.gridEl.querySelectorAll('.inv-slot.droppable')]
-    .find((el) => el.dataset.label === 'Companion Cube')
+    .find((el) => el.dataset.label === 'Friend Box')
     ?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
   // and a key, which was in the satchel the whole time and must still be
   g.events.emit('pickup', { type: 'key', amount: 1, label: 'Brass Key' });
@@ -1526,7 +1526,7 @@ const death = await page.evaluate(async () => {
   const state = () => ({
     stowed: slot('Portable Sentry'), placed: g.sentries.deployed.length,
     holding: g.sentries.holding, adjutant: slot('Adjutant Unit'),
-    standing: !!g.companions.unit, cube: slot('Companion Cube'),
+    standing: !!g.companions.unit, cube: slot('Friend Box'),
     cubeDown: !cube.taken, key: slot('Brass Key'),
   });
   out.before = state();

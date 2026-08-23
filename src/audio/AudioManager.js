@@ -1,3 +1,7 @@
+import { MusicDirector, ZONE_TRACKS } from './Music.js';
+import { SpeechSynth } from './Speech.js';
+import { ENEMY_VOICES, voiceKeyFor } from './EnemyVoices.js';
+
 /**
  * All game audio, synthesized with WebAudio — no sound files.
  *
@@ -7,13 +11,31 @@
  * whispers and the victory fanfare.
  *
  * Everything is event-driven; systems never call into audio directly.
+ *
+ * TWO BUSES, TWO SLIDERS. Effects go through `master` (a bus compressor that
+ * gives the guns their punch); the dynamic soundtrack goes through `musicOut`
+ * with its own level, its own limiter and its own roll-off (see audio/Music.js).
+ * They are separate all the way to the destination, which is what makes the
+ * settings screen's SOUNDTRACK and EFFECTS sliders mean two different things
+ * rather than two names for the same knob.
  */
 export class AudioManager {
   constructor(events) {
     this.events = events;
     this.ctx = null;
     this.master = null;
-    this.volume = 0.5; // master gain; settable before/after unlock (settings)
+    // Two independent levels, both settable before or after the context is
+    // unlocked (the settings are loaded and applied before the first gesture).
+    this.sfxVolume = 0.5;
+    this.musicVolume = 0.5;
+    this.music = null;   // MusicDirector, once the context exists
+    this._track = null;  // what the score is currently pointed at
+    this._musicOn = true;
+    this.speech = null;   // SpeechSynth, once the context exists
+    // Who has said something lately, so a street full of fighters sounds like
+    // a street full of fighters and not like a choir (see enemyLine).
+    this._lastLine = 0;
+    this._lastByState = new Map();
     this._noiseBuf = null;
     this.moanIntensity = 0;
     this._moanTimer = 1;
@@ -37,7 +59,34 @@ export class AudioManager {
     on('player:damage', () => this.hurt());
     on('player:heal', () => {});
     on('player:died', () => this.deathSting());
-    on('zombie:death', ({ pos }) => this.zombieDeath(pos));
+    on('zombie:death', ({ pos, type, voice }) => {
+      this.zombieDeath(pos);
+      this.enemyLine('die', type, voice, pos, { force: true, gain: 1.15 });
+    });
+    on('zombie:hit', ({ pos, zombie }) => this.enemyLine('hurt', zombie?.config, zombie?.voice, pos));
+    on('zombie:attack', ({ pos, type, voice }) => this.enemyLine('attack', type, voice, pos, { force: true }));
+    on('zombie:spot', ({ pos, type, voice }) => this.enemyLine('spot', type, voice, pos, { force: true }));
+    on('zombie:idle', ({ pos, type, voice }) => this.enemyLine('idle', type, voice, pos, { gain: 0.55 }));
+    // THE BOMBER'S CALL, in two parts.
+    //
+    // The full takbir goes off when he COMMITS to his run — ten metres out,
+    // with a clear line — because that is the moment the warning is still
+    // worth something: a second and a bit of shouting while he crosses the
+    // last of the ground, which is exactly long enough to turn and put rounds
+    // into him or to get behind something. Hanging it on the fuse instead
+    // would have been honest and useless; the fuse is a quarter of a second
+    // and the line is five times that, so the player would have heard the
+    // first syllable and then the blast.
+    //
+    // The fuse gets the last syllable of it, clipped, higher and louder — the
+    // sound of somebody out of breath and out of distance.
+    on('exploder:prime', ({ pos, type, voice }) =>
+      this.enemyLine('prime', type, voice, pos, { force: true, gain: 1.6, shout: 1, maxDist: 52 }));
+    on('exploder:fuse', ({ pos, type, voice }) =>
+      this.enemyLine('fuse', type, voice, pos, {
+        force: true, gain: 1.9, shout: 1, rate: 2.1, maxDist: 46,
+      }));
+    on('spitter:aim', ({ pos, type, voice }) => this.enemyLine('aim', type, voice, pos, { force: true }));
     on('exploder:explode', ({ pos }) => this.explosion(pos));
     on('barrier:explode', (b) => this.barrierBlast(b));
     on('spitter:fire', ({ pos }) => this.spitterShot(pos));
@@ -66,7 +115,10 @@ export class AudioManager {
     on('vendor:greet', ({ pos }) => this.vendorWake(pos));
     on('shop:bought', () => this.tillChime());
     on('tokens:refused', () => this.tillRefuse());
-    on('zombie:aggro', ({ pos }) => this.growl(pos));
+    on('zombie:aggro', ({ pos, type, voice }) => {
+      this.growl(pos, type);
+      this.enemyLine('chase', type, voice, pos, { force: true });
+    });
     on('wave:start', () => this.horn());
     on('zone:unlock', () => this.rumble());
     on('secret:found', () => this.secretChime());
@@ -77,9 +129,31 @@ export class AudioManager {
     on('phone:answer', () => this.phoneVoice());
     on('car:alarm', ({ pos }) => this.carChirp(pos));
     on('elevator:call', ({ pos }) => this.elevatorHum(pos));
+    on('pump:try', ({ pos }) => this.pumpCough(pos));
+    // The wave-five sighting: one continuous voice, tracked, then the bang.
+    on('ufo:enter', () => this.ufoEnter());
+    on('ufo:track', ({ pos, vel, k }) => this.ufoTrack(pos, vel, k));
+    on('ufo:exit', () => this.ufoExit());
+    on('ufo:impact', ({ pos }) => this.ufoImpact(pos));
     on('crow:caw', ({ pos }) => this.crowCaw(pos));
     on('arcade:attract', ({ pos, id }) => this.arcadeAttract(pos, id));
     on('victory', () => this.fanfare());
+
+    /* --- the score reacts to the same events everything else does ------- *
+     * The music is not driven by polling wherever it can be helped: a wave
+     * landing, a district opening and a death are moments, and a moment is an
+     * event. Only the two CONTINUOUS quantities — which district you are
+     * standing in and how much health you have left — are read per frame in
+     * update(), because those are states, not moments.                     */
+    on('wave:start', () => this.music?.setIntensity(1));
+    on('wave:end', () => this.music?.setIntensity(0.25));
+    on('player:died', () => this.setTrack('death'));
+    on('victory', () => this.setTrack('victory'));
+    // Each shot dips the score a hair so the crack has room. Free of charge
+    // on a melee swing, which has nothing to make room for.
+    on('weapon:fire', ({ weapon }) => { if (!weapon?.isMelee) this.music?.duck(); });
+    on('exploder:explode', () => this.music?.duck(0.24));
+    on('barrier:explode', () => this.music?.duck(0.3));
   }
 
   /** Must be called from a user gesture (start button). */
@@ -89,7 +163,7 @@ export class AudioManager {
     if (!AC) return;
     this.ctx = new AC();
     this.master = this.ctx.createGain();
-    this.master.gain.value = this.volume;
+    this.master.gain.value = this.sfxVolume;
     // A bus compressor gives every gunshot its punch and keeps the loudest
     // weapon from swamping the mix — the shots are level-matched into it.
     const comp = this.ctx.createDynamicsCompressor();
@@ -100,17 +174,56 @@ export class AudioManager {
     comp.release.value = 0.12;
     this.master.connect(comp);
     comp.connect(this.ctx.destination);
+    // The soundtrack's own path to the speakers: its own level, its own
+    // limiter (inside MusicDirector), and deliberately NOT through the bus
+    // compressor above — music that ducked every time a rifle went off would
+    // pump, and the effects bus is tuned for transients, not for a pad.
+    this.musicOut = this.ctx.createGain();
+    this.musicOut.gain.value = this.musicVolume;
+    this.musicOut.connect(this.ctx.destination);
     const len = this.ctx.sampleRate * 1.5;
     this._noiseBuf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
     const d = this._noiseBuf.getChannelData(0);
     for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+    this.speech = new SpeechSynth(this.ctx, this._noiseBuf);
+    try {
+      this.music = new MusicDirector(this.ctx, this.musicOut);
+      if (this._musicOn && this._track) this.music.play(this._track, { fade: 1.2 });
+    } catch { this.music = null; }   // no score is survivable; a crash is not
   }
 
-  /** Settings hook: master volume 0..1, applied live once unlocked. */
-  setVolume(v) {
-    this.volume = Math.max(0, Math.min(1, Number.isFinite(+v) ? +v : 0.5));
-    if (this.master) this.master.gain.value = this.volume;
+  /**
+   * Point the soundtrack at a track by id (see audio/MusicTracks.js).
+   *
+   * Safe to call before the context exists — the request is remembered and
+   * honoured the moment the player's first gesture unlocks audio, which is how
+   * the title screen has music the instant it is allowed to.
+   */
+  setTrack(id) {
+    if (this._track === id) return;
+    this._track = id;
+    this.music?.play(id);
   }
+
+  /** Settings hook: EFFECTS level 0..1, applied live once unlocked. */
+  setSfxVolume(v) {
+    this.sfxVolume = clamp01(v, 0.5);
+    if (this.master) this.master.gain.value = this.sfxVolume;
+  }
+
+  /** Settings hook: SOUNDTRACK level 0..1, applied live once unlocked. */
+  setMusicVolume(v) {
+    this.musicVolume = clamp01(v, 0.5);
+    if (this.musicOut) {
+      const t = this.ctx.currentTime;
+      this.musicOut.gain.cancelScheduledValues(t);
+      this.musicOut.gain.setValueAtTime(this.musicOut.gain.value, t);
+      this.musicOut.gain.linearRampToValueAtTime(this.musicVolume, t + 0.08);
+    }
+  }
+
+  /** Back-compat alias: one knob for both buses (dev console, old saves). */
+  setVolume(v) { this.setSfxVolume(v); this.setMusicVolume(v); }
 
   get t() { return this.ctx.currentTime; }
 
@@ -380,11 +493,72 @@ export class AudioManager {
   hurt() { this._noise(0.14, 'lowpass', 600, 1, 0.4); this._tone('sawtooth', 160, 0.12, 0.2, 0, 0, 80); }
   deathSting() { this._tone('sawtooth', 220, 1.2, 0.3, 0, 0, 55); this._noise(1.0, 'lowpass', 400, 1, 0.25); }
 
-  growl(pos) {
+  /**
+   * The breath under the words.
+   *
+   * Not a growl any more — these are people — but a fighter breaking into a
+   * run makes a NOISE before he makes a word, and that noise is what tells you
+   * something changed without you having to parse a line. It is pitched off
+   * the archetype so the heavy's is a fifth below the rifleman's, the same way
+   * their voices are.
+   */
+  growl(pos, type = null) {
     const s = this._spatial(pos, 50);
     if (!s) return;
-    this._tone('sawtooth', 90 + Math.random() * 40, 0.5, 0.16 * s.vol, 0, s.pan, 60);
-    this._noise(0.4, 'bandpass', 300, 2, 0.12 * s.vol, 0, s.pan);
+    const key = voiceKeyFor(type?.name);
+    const base = { tank: 62, sprinter: 118, exploder: 104, spitter: 96 }[key] ?? 88;
+    const f = base * (0.9 + Math.random() * 0.25);
+    this._tone('sawtooth', f, 0.26, 0.10 * s.vol, 0, s.pan, f * 0.7);
+    this._noise(0.3, 'bandpass', 620, 1.6, 0.09 * s.vol, 0, s.pan, 260);
+  }
+
+  /* ---------------- the horde's voice ---------------- */
+
+  /**
+   * Say one of an archetype's lines for a state.
+   *
+   * Everything that keeps this from becoming noise lives here rather than at
+   * the twenty call sites that emit these events:
+   *
+   *   RANGE. Nothing carries past `maxDist`, and level falls off inside it.
+   *   THROTTLE. A global floor between any two lines, plus a longer per-state
+   *     floor, so a wave landing produces two or three voices rather than
+   *     forty. `force` shortens the global floor for the lines that carry
+   *     information (a bomber priming, a death) but never removes it.
+   *   IDENTITY. `voice` is a 0..1 value fixed to the individual when it
+   *     spawned; it picks the fundamental inside the archetype's band AND
+   *     picks which of the lines for that state he happens to use, so the same
+   *     fighter always sounds like himself and says his own things.
+   */
+  enemyLine(state, type, voice = 0.5, pos = null, opts = {}) {
+    if (!this.ctx || !this.speech) return;
+    const cfg = ENEMY_VOICES[voiceKeyFor(type?.name)];
+    const lines = cfg?.lines?.[state];
+    if (!lines || !lines.length) return;
+    const s = pos ? this._spatial(pos, opts.maxDist ?? 42) : { vol: 1, pan: 0 };
+    if (!s) return;
+    const now = this.t;
+    const floor = opts.force ? 0.14 : 0.5;
+    if (now - this._lastLine < floor) return;
+    const stateFloor = { idle: 2.6, hurt: 0.9, chase: 1.1, spot: 1.0, attack: 0.7 }[state] ?? 0.35;
+    if (now - (this._lastByState.get(state) ?? -99) < stateFloor) return;
+    this._lastLine = now;
+    this._lastByState.set(state, now);
+
+    const v = Math.max(0, Math.min(1, voice));
+    const [lo, hi] = cfg.f0;
+    const f0 = lo + (hi - lo) * v;
+    const line = lines[Math.floor(v * 997) % lines.length];
+    const pan = this.ctx.createStereoPanner();
+    pan.pan.value = s.pan;
+    pan.connect(this.master);
+    this.speech.speak(pan, line, {
+      f0,
+      gain: 0.42 * (opts.gain ?? 1) * (0.35 + s.vol * 0.65),
+      rate: cfg.rate * (0.94 + v * 0.12) * (opts.rate ?? 1),
+      grit: cfg.grit,
+      shout: opts.shout ?? (state === 'spot' || state === 'chase' || state === 'attack' ? 0.6 : 0.15),
+    });
   }
 
   gurgle(pos) {
@@ -510,10 +684,19 @@ export class AudioManager {
     this._tone('sine', 4800, 0.05, 0.03 * v, 0.05, pan, 3200);      // bright nickel ring
   }
 
+  /**
+   * The room the horde is in.
+   *
+   * Deliberately WORDLESS: the words are the fighters' own (see enemyLine),
+   * and a second stream of speech under them would only make both harder to
+   * pick out. What is left is what a crowd sounds like from a street away —
+   * movement, cloth, a sling swinging, the low unpitched wash of people
+   * nearby — laid on a slow filter sweep so it never sits still.
+   */
   moan(pan, vol) {
-    const f = 65 + Math.random() * 55;
-    this._tone('sawtooth', f, 1.4, 0.09 * vol, 0, pan, f * (0.8 + Math.random() * 0.5));
-    this._noise(1.1, 'bandpass', 260 + Math.random() * 160, 3, 0.05 * vol, 0.1, pan);
+    this._noise(1.3, 'bandpass', 300 + Math.random() * 220, 1.4, 0.055 * vol, 0, pan, 180);
+    this._noise(0.5, 'highpass', 2400 + Math.random() * 900, 0.7, 0.02 * vol, 0.25 + Math.random() * 0.4, pan);
+    this._tone('triangle', 58 + Math.random() * 26, 1.0, 0.035 * vol, 0.1, pan, 44);
   }
 
   whisper(intensity = 0.6) {
@@ -586,6 +769,189 @@ export class AudioManager {
     }
   }
 
+  /**
+   * The forecourt pump, tried.
+   *
+   * A solenoid clacking over, a vane motor spinning up against nothing and
+   * dying back, the mechanical totaliser ticking up its eleven cents, and the
+   * dry hiss of a line with no fuel in it. Honestly spatialised — this one is
+   * a machine in the world, not one of the town's wrongnesses.
+   */
+  pumpCough(pos) {
+    const s = this._spatial(pos, 40);
+    if (!s) return;
+    const v = s.vol, pan = s.pan;
+    this._noise(0.04, 'bandpass', 900, 3, 0.20 * v, 0, pan);          // the solenoid
+    this._tone('square', 260, 0.03, 0.10 * v, 0.01, pan, 150);
+    // the motor: up, then straight back down again
+    this._tone('sawtooth', 48, 0.5, 0.09 * v, 0.08, pan, 128);
+    this._tone('sawtooth', 128, 0.9, 0.07 * v, 0.58, pan, 41);
+    this._noise(1.3, 'bandpass', 380, 1.4, 0.05 * v, 0.08, pan, 190);
+    // the totaliser wheels, eleven cents of nothing
+    for (let i = 0; i < 11; i++) {
+      this._noise(0.012, 'highpass', 4200, 1, 0.055 * v, 0.22 + i * 0.055, pan);
+    }
+    // ...and the dry line
+    this._noise(0.7, 'highpass', 5200, 0.7, 0.045 * v, 0.5, pan);
+  }
+
+  /* ---------------- the thing that came down ---------------- */
+
+  /**
+   * THE SAUCER'S VOICE, and it is the only sound in the game that is a LIVE
+   * voice rather than a scheduled one.
+   *
+   * Everything else here is fire-and-forget: a gunshot is a graph built,
+   * played and thrown away inside a fifth of a second. This thing is in the
+   * sky for twelve seconds and it crosses the whole town while it is up there,
+   * so it has to be a standing set of oscillators whose pitch, level and pan
+   * are driven every frame from where it actually is — which is the only way
+   * to get the two things that sell a flyover:
+   *
+   *   DOPPLER. Approaching, the pitch is bent up; going away, down. The shift
+   *   is computed from the real closing speed against a real speed of sound,
+   *   so the drop happens exactly as it passes over the vendor's knoll and not
+   *   at some point that felt about right.
+   *
+   *   DISTANCE. Level falls off with range, and — the part that actually
+   *   reads — the air eats the top end long before it eats the bottom, so far
+   *   away it is a low hum and overhead it is a shriek with a hum under it.
+   *
+   * The voice itself is three layers: a detuned pair beating against each
+   * other (the drive), a sub an octave and a half down (the mass of it), and
+   * a band of moving noise (the air it is dragging). The drive is what
+   * flutters as the craft loses it.
+   */
+  ufoEnter() {
+    if (!this.ctx || this._ufo) return;
+    const t = this.t;
+    const out = this.ctx.createGain();
+    out.gain.value = 0;
+    const pan = this.ctx.createStereoPanner();
+    const air = this.ctx.createBiquadFilter();     // distance eats the top end
+    air.type = 'lowpass';
+    air.frequency.value = 800;
+    air.Q.value = 0.4;
+    out.connect(air).connect(pan).connect(this.master);
+
+    const osc = [];
+    for (const [type, det, lvl] of [['sawtooth', -9, 0.5], ['sawtooth', 11, 0.5], ['square', 3, 0.18]]) {
+      const o = this.ctx.createOscillator();
+      o.type = type;
+      o.frequency.setValueAtTime(220, t);
+      o.detune.setValueAtTime(det, t);
+      const g = this.ctx.createGain();
+      g.gain.value = lvl;
+      o.connect(g).connect(out);
+      o.start(t);
+      osc.push(o);
+    }
+    const sub = this.ctx.createOscillator();
+    sub.type = 'sine';
+    sub.frequency.setValueAtTime(74, t);
+    const subG = this.ctx.createGain();
+    subG.gain.value = 0.9;
+    sub.connect(subG).connect(out);
+    sub.start(t);
+    // the air it drags: a band of noise that rides the same pitch
+    const nz = this.ctx.createBufferSource();
+    nz.buffer = this._noiseBuf;
+    nz.loop = true;
+    const nf = this.ctx.createBiquadFilter();
+    nf.type = 'bandpass';
+    nf.frequency.setValueAtTime(900, t);
+    nf.Q.value = 1.1;
+    const nG = this.ctx.createGain();
+    nG.gain.value = 0.35;
+    nz.connect(nf).connect(nG).connect(out);
+    nz.start(t);
+    out.gain.linearRampToValueAtTime(0.0001, t);
+    this._ufo = { out, pan, air, osc, sub, nz, nf, lastDist: null };
+  }
+
+  /**
+   * Drive the voice from the craft's position and velocity.
+   *
+   * `k` is how far through the flight it is, which is used for one thing only:
+   * the drive is stable at the start and audibly failing by the end, so the
+   * pitch develops a wobble that gets worse the closer it gets to the ground.
+   */
+  ufoTrack(pos, vel, k = 0) {
+    const u = this._ufo;
+    if (!u || !this.ctx) return;
+    const t = this.t;
+    const dx = pos.x - this.listener.x, dz = pos.z - this.listener.z;
+    const dy = pos.y - 1.6;
+    const dist = Math.max(4, Math.hypot(dx, dy, dz));
+    // closing speed along the line to the listener, positive = approaching
+    const closing = -((vel.x * dx) + (vel.y * dy) + (vel.z * dz)) / dist;
+    const doppler = Math.max(0.72, Math.min(1.5, 343 / (343 - Math.max(-160, Math.min(160, closing)))));
+    // the drive tearing itself apart as it comes down
+    const flutter = 1 + Math.sin(t * (7 + k * 26)) * (0.006 + k * 0.05);
+    const base = 214 * doppler * flutter;
+    for (const o of u.osc) o.frequency.setTargetAtTime(base, t, 0.03);
+    u.sub.frequency.setTargetAtTime(base * 0.34, t, 0.05);
+    u.nf.frequency.setTargetAtTime(base * 4.2, t, 0.04);
+    // level and air absorption: a hum at four hundred metres, a shriek at forty
+    const near = Math.max(0, 1 - dist / 420);
+    u.out.gain.setTargetAtTime(0.34 * near * near, t, 0.06);
+    u.air.frequency.setTargetAtTime(420 + 5200 * Math.pow(near, 2.2), t, 0.08);
+    const ang = Math.atan2(dx, dz) - this.listener.yaw;
+    u.pan.pan.setTargetAtTime(Math.max(-1, Math.min(1, Math.sin(ang) * 0.85)), t, 0.05);
+  }
+
+  /** It has gone in. Cut the drive — the bang is a separate sound. */
+  ufoExit() {
+    const u = this._ufo;
+    if (!u || !this.ctx) return;
+    this._ufo = null;
+    const t = this.t;
+    u.out.gain.cancelScheduledValues(t);
+    u.out.gain.setValueAtTime(Math.max(0.0001, u.out.gain.value), t);
+    u.out.gain.exponentialRampToValueAtTime(0.0001, t + 0.12);
+    for (const o of u.osc) o.stop(t + 0.2);
+    u.sub.stop(t + 0.2);
+    u.nz.stop(t + 0.2);
+  }
+
+  /**
+   * The impact, and it arrives LATE.
+   *
+   * From the plaza the wreck is two hundred metres off, so the light is over
+   * the treeline before the sound is anywhere near you — and putting the boom
+   * on the same frame as the flash is the single most common way a distant
+   * explosion is got wrong. The delay here is the real one: the range divided
+   * by the speed of sound, scheduled on the audio clock so it is exact.
+   *
+   * What arrives is not a crack. Distance has already taken the top off it, so
+   * it is a low double thump with a long rumble under it, a slap of ground
+   * shock a beat behind that, and then the town's own echo of the whole thing
+   * a beat behind THAT.
+   */
+  ufoImpact(pos) {
+    if (!this.ctx) return;
+    const dx = pos.x - this.listener.x, dz = pos.z - this.listener.z;
+    const dist = Math.hypot(dx, dz);
+    if (dist > 700) return;
+    const delay = dist / 343;                       // the real thing
+    const v = Math.max(0.12, 1 - dist / 640);
+    const ang = Math.atan2(dx, dz) - this.listener.yaw;
+    const pan = Math.max(-1, Math.min(1, Math.sin(ang) * 0.7));
+    // the body of it: two thumps, the second bigger, both already dull
+    this._tone('sine', 74, 0.9, 0.36 * v, delay, pan, 26);
+    this._noise(1.1, 'lowpass', 190, 0.7, 0.30 * v, delay, pan, 70);
+    this._tone('sine', 58, 1.6, 0.44 * v, delay + 0.13, pan, 20);
+    this._noise(2.6, 'lowpass', 140, 0.6, 0.34 * v, delay + 0.13, pan, 48);
+    // ground shock, which travels faster than the air and hits first
+    this._tone('sine', 33, 0.7, 0.22 * v, Math.max(0, delay - 0.22), pan, 19);
+    // the long tail, and the town answering it
+    this._noise(4.5, 'lowpass', 120, 0.5, 0.16 * v, delay + 0.5, pan, 42);
+    this._noise(1.8, 'bandpass', 260, 1.2, 0.09 * v, delay + 0.95, -pan, 120);
+    // ...and something metal, a long way off, that did not stop when it landed
+    this._tone('triangle', 168, 0.5, 0.05 * v, delay + 1.5, -pan, 132);
+    this._tone('triangle', 121, 0.8, 0.04 * v, delay + 2.1, pan, 96);
+  }
+
   /** The booth phone rings — panned to the wrong side of the street. */
   /**
    * THE ONE SOUND IN THE GAME THAT IS SUPPOSED TO COME FROM THE WRONG SIDE.
@@ -647,7 +1013,7 @@ export class AudioManager {
     }
   }
 
-  /** Taking the Companion Cube: a warm rising chord, almost grateful. */
+  /** Taking the Friend Box: a warm rising chord, almost grateful. */
   cubeChime() {
     const seq = [[392, 0], [494, 0.09], [587, 0.18], [784, 0.3]];
     for (const [f, w] of seq) this._tone('triangle', f, 0.3, 0.12, w);
@@ -1213,13 +1579,40 @@ export class AudioManager {
 
   /* ---------------- ambient loop ---------------- */
 
-  /** Called each frame with the local horde pressure (0..~20). */
-  update(dt, player, nearbyZombies) {
+  /**
+   * Called each frame with the local horde pressure (0..~20) and, when the
+   * game is being played, the state the score reads: which district the player
+   * is standing in and how close to dead they are.
+   */
+  update(dt, player, nearbyZombies, scene = null) {
     if (!this.ctx) return;
     this.listener.x = player.position.x;
     this.listener.z = player.position.z;
     this.listener.yaw = player.yaw;
 
+    if (this.music) {
+      if (scene) {
+        // The district decides the piece; the health decides which version of
+        // it. Both are continuous, so both are pushed every frame and smoothed
+        // inside the director rather than switched here.
+        if (scene.zoneId != null) this.setTrack(ZONE_TRACKS[scene.zoneId] ?? ZONE_TRACKS[0]);
+        this.music.setHealth(scene.healthFrac);
+        // Horde pressure lifts the drums a little on top of the wave state, so
+        // a quiet street and a street with nine of them on it do not sound the
+        // same even inside one wave.
+        if (scene.waveActive != null) {
+          this.music.setIntensity((scene.waveActive ? 0.62 : 0.2)
+            + Math.min(0.38, nearbyZombies / 14));
+        }
+      }
+      this.music.update(dt);
+    }
+
+    // Ambient horde presence. This used to be a moan; it is now the sound of
+    // a street with people on it — someone muttering, a door somewhere, boots
+    // on gravel — and it thickens as the local pressure rises. The lines
+    // themselves come from whoever is actually standing near you (the horde
+    // emits 'zombie:idle'); this is the ROOM they are standing in.
     this.moanIntensity = Math.min(1, nearbyZombies / 12);
     this._moanTimer -= dt;
     if (this._moanTimer <= 0) {
@@ -1234,4 +1627,10 @@ export class AudioManager {
       this.whisper(0.35);
     }
   }
+}
+
+/** 0..1 with a fallback, for settings values that may arrive as anything. */
+function clamp01(v, fallback) {
+  const n = +v;
+  return Number.isFinite(n) ? Math.max(0, Math.min(1, n)) : fallback;
 }

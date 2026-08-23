@@ -746,9 +746,9 @@ html, body {
 /* header: lamp, stencil label, carrier dots */
 .notice-head {
   display: flex; align-items: center; gap: 6px;
-  /* side padding clears the corner screws so the lamp and the carrier
-     readout are never crowded against a fixing */
-  padding: 0 11px 5px; min-height: 13px;
+  /* side padding clears the corner screws so the lamp is never crowded
+     against a fixing */
+  padding: 0 11px 5px; min-height: 11px;
 }
 .notice-lamp {
   width: 7px; height: 7px; border-radius: 50%; flex: 0 0 auto;
@@ -757,14 +757,6 @@ html, body {
 }
 #notice.on .notice-lamp { animation: noticeLamp 1.15s steps(2, end) infinite; }
 @keyframes noticeLamp { 0%, 55% { opacity: 1; } 56%, 100% { opacity: 0.35; } }
-.notice-title {
-  font-size: 9px; font-weight: bold; letter-spacing: 2px; color: var(--fo-tan);
-  text-shadow: 0 1px 0 rgba(0,0,0,0.8);
-}
-.notice-carrier { margin-left: auto; font-size: 9px; letter-spacing: 2px; color: var(--fo-green); }
-#notice.on .notice-carrier { animation: noticeCarrier 0.9s steps(4, end) infinite; }
-@keyframes noticeCarrier { 0% { opacity: 0.25; } 50% { opacity: 1; } 100% { opacity: 0.25; } }
-
 /* the green CRT the message actually prints on */
 .notice-crt {
   position: relative; overflow: hidden; min-height: 31px;
@@ -816,20 +808,6 @@ html, body {
 @keyframes noticeCursor { 0% { opacity: 1; } 50% { opacity: 0; } 100% { opacity: 1; } }
 
 /* depletion bar: how long the message has left, drained from HUD.update */
-.notice-timer {
-  margin: 5px 11px 0; height: 4px; overflow: hidden;
-  background-color: var(--fo-recess); border: 1px solid var(--fo-steel-lo); border-radius: var(--rad-well);
-  box-shadow: var(--bev-in);
-}
-.notice-timer > i {
-  display: block; height: 100%; width: 100%;
-  background: linear-gradient(90deg, var(--fo-amber-lo), var(--fo-amber));
-  box-shadow: 0 0 6px rgba(240,160,32,0.55);
-}
-#notice.expiring .notice-timer > i {
-  background: linear-gradient(90deg, var(--fo-red-lo), var(--fo-red));
-  box-shadow: 0 0 6px rgba(184,40,28,0.6);
-}
 /* The interact prompt sits in the LOWER RIGHT, small.
    It used to be a 13px plate parked just under the crosshair — dead centre of
    the one part of the screen you are aiming with, and big enough to read from
@@ -994,16 +972,12 @@ body.in-play, body.in-play * { cursor: none !important; }
   position: absolute; left: 0; right: 0; bottom: -14px; font-size: 8px;
   letter-spacing: 1px; color: var(--fo-tan-dim); text-align: center; white-space: nowrap; overflow: hidden;
 }
-.inv-foot {
-  margin-top: 20px; font-size: 11px; color: var(--fo-green-dim);
-  text-align: center; letter-spacing: 1px;
-}
 
 /* ===================================================================
    PAUSE SCREEN — the instrument case, opened on the bench
    ===================================================================
    Same materials as the HUD dock: scratched gunmetal ground, corner
-   screws, dark bezels, ivory dials and green CRT. Seven readouts, seven
+   screws, dark bezels, ivory dials and green CRT. Six readouts, six
    DIFFERENT instruments, because a panel of identical rings makes the
    operator read every one of them from scratch every time. Everything
    animates in from rest when the case is `.armed` (set one frame after
@@ -1066,21 +1040,28 @@ body.in-play, body.in-play * { cursor: none !important; }
 }
 
 /* --- the bay grid ---------------------------------------------------- */
+/* Six bays, not seven: the SECRETS lamp row was pulled out of the bench, so
+   the fluid cell now runs the full height of the left column (which is what a
+   fluid cell wants to do anyway) and SCORE takes the middle of the bottom row
+   the lamps used to hold. Nothing is stretched to fill a hole. */
 .pause-bays {
   display: grid; gap: 8px;
   grid-template-columns: 168px minmax(0, 1fr) 196px;
   grid-template-areas:
-    "vitals wave    aim"
+    "vitals wave     aim"
     "vitals progress aim"
-    "score  secrets clock";
+    "vitals score    clock";
 }
 .bay-vitals { grid-area: vitals; }
 .bay-wave { grid-area: wave; }
 .bay-aim { grid-area: aim; }
 .bay-progress { grid-area: progress; }
-.bay-secrets { grid-area: secrets; }
 .bay-score { grid-area: score; }
 .bay-clock { grid-area: clock; }
+/* the cell grows into the taller column instead of floating in the middle */
+.bay-vitals .bay-body { flex: 1; }
+.bay-vitals .cell-col { flex: 1; justify-content: center; }
+.bay-vitals .cell-tube { height: 100%; min-height: 112px; }
 
 .bay {
   position: relative; min-width: 0;
@@ -1097,9 +1078,8 @@ body.in-play, body.in-play * { cursor: none !important; }
 .armed .bay-wave { animation-delay: 0.07s; }
 .armed .bay-aim { animation-delay: 0.12s; }
 .armed .bay-progress { animation-delay: 0.17s; }
-.armed .bay-secrets { animation-delay: 0.22s; }
-.armed .bay-score { animation-delay: 0.27s; }
-.armed .bay-clock { animation-delay: 0.32s; }
+.armed .bay-score { animation-delay: 0.22s; }
+.armed .bay-clock { animation-delay: 0.27s; }
 @keyframes bayIn {
   0% { opacity: 0; transform: translateY(10px); }
   100% { opacity: 1; transform: none; }
@@ -1164,7 +1144,7 @@ body.in-play, body.in-play * { cursor: none !important; }
 .pause-odo .digit { width: 17px; height: 24px; line-height: 24px; font-size: 18px; }
 .pause-odo.wide .digit { width: 21px; height: 30px; line-height: 30px; font-size: 23px; }
 
-/* --- ENGAGEMENT: a bank of vacuum tubes ------------------------------ */
+/* --- PURGE: a bank of vacuum tubes ----------------------------------- */
 .tube-row { display: flex; align-items: center; gap: 10px; width: 100%; }
 .tube-num {
   font-size: 30px; font-weight: bold; color: var(--fo-amber); letter-spacing: 2px;
@@ -1267,25 +1247,6 @@ body.in-play, body.in-play * { cursor: none !important; }
 }
 .armed .tape-punch { animation: tapecrawl 2.6s linear infinite; }
 @keyframes tapecrawl { 0% { background-position-x: 0; } 100% { background-position-x: -30px; } }
-
-/* --- SECRETS: one lamp per secret ------------------------------------ */
-.bay-secrets .bay-body { flex-direction: column; gap: 6px; }
-.sec-row { display: flex; flex-wrap: wrap; gap: 7px; justify-content: center; }
-.sec-lamp {
-  width: 20px; height: 20px; border-radius: 50%;
-  background: radial-gradient(circle at 38% 30%, #4a4a34, #14150e 70%);
-  border: 1px solid #000;
-  box-shadow: inset 0 -2px 3px rgba(0,0,0,0.5), inset 0 2px 2px rgba(255,255,255,0.12);
-  transition: background 0.2s, box-shadow 0.25s, transform 0.25s;
-  transition-delay: calc(var(--i) * 55ms);
-}
-.sec-lamp.lit {
-  background: radial-gradient(circle at 38% 30%, #ffd97a, var(--fo-amber) 72%);
-  box-shadow: inset 0 2px 2px rgba(255,255,255,0.3), 0 0 10px 2px rgba(240,160,32,0.8);
-  transform: scale(1.08);
-}
-.sec-count { font-size: 12px; letter-spacing: 3px; color: var(--fo-tan-dim); }
-.sec-count b { font-size: 20px; color: var(--fo-amber); text-shadow: 0 0 8px rgba(240,160,32,0.45); }
 
 /* --- SCORE + CLOCK --------------------------------------------------- */
 .bay-score .bay-body, .bay-clock .bay-body { padding: 2px 0; }
