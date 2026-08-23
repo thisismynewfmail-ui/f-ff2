@@ -1090,15 +1090,43 @@ export class BuildingKit {
       slab.position.set(lx, wh + 0.1, lz);
       group.add(slab);
     } else {
-      // a lean-to falling away from the main block
-      const rise = Math.min(1.0, outDepth * 0.34);
-      const slope = this.box(bw + 0.4, 0.16, Math.hypot(outDepth + 0.4, rise), spec.roofTex || 'roofShingle');
-      slope.position.set(lx - n[0] * 0.05, wh + rise / 2 + 0.06, lz - n[1] * 0.05);
-      slope.rotation[alongX ? 'x' : 'z'] = (alongX ? -n[1] : n[0]) * Math.atan2(rise, outDepth);
+      /**
+       * A lean-to, and it drains AWAY from the block it leans on.
+       *
+       * That sounds obvious and it is the one thing that was wrong: the tilt
+       * was signed off the outward normal the wrong way round, so the roof ran
+       * downhill INTO the parent wall — the one place on a building water must
+       * never be sent. The high end is against the parent and the low end is
+       * out over the far wall, and the two side walls are closed by real
+       * triangles rather than by a rectangle standing in for one.
+       */
+      const across = alongX ? bw : bd;         // along the parent's wall
+      const rise = Math.min(1.1, outDepth * 0.36);
+      const a = Math.atan2(rise, outDepth);
+      const slopeLen = Math.hypot(outDepth + 0.5, rise);
+      const slope = alongX
+        ? this.box(across + 0.4, 0.16, slopeLen, spec.roofTex || 'roofShingle')
+        : this.box(slopeLen, 0.16, across + 0.4, spec.roofTex || 'roofShingle');
+      slope.position.set(lx, wh + rise / 2 + 0.1, lz);
+      if (alongX) slope.rotation.x = n[1] * a; else slope.rotation.z = -n[0] * a;
       group.add(slope);
-      const gableA = this.box(alongX ? bw + 0.2 : 0.2, rise, alongX ? 0.2 : bd + 0.2, tex);
-      gableA.position.set(lx + n[0] * (outDepth / 2 - 0.1), wh + rise / 2, lz + n[1] * (outDepth / 2 - 0.1));
-      group.add(gableA);
+      // the closing triangles: shape-space +X points at the parent
+      const tri = new THREE.Shape([
+        new THREE.Vector2(-outDepth / 2, 0),
+        new THREE.Vector2(outDepth / 2, 0),
+        new THREE.Vector2(outDepth / 2, rise),
+      ]);
+      const ry = alongX ? (n[1] > 0 ? Math.PI / 2 : -Math.PI / 2) : (n[0] > 0 ? Math.PI : 0);
+      for (const sgn of [-1, 1]) {
+        const geo = new THREE.ExtrudeGeometry(tri, { depth: 0.16, bevelEnabled: false });
+        geo.translate(0, 0, -0.08);
+        geo.rotateY(ry);
+        const wall = new THREE.Mesh(geo, this.mat(tex));
+        wall.position.set(
+          lx + (alongX ? sgn * across / 2 : 0), wh,
+          lz + (alongX ? 0 : sgn * across / 2));
+        group.add(wall);
+      }
     }
     this._collideLocalBox(spec, rot, lx, lz, bw / 2, wh, bd / 2);
   }

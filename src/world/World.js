@@ -1935,6 +1935,12 @@ export class World {
         const x = gx + (rng() - 0.5) * 6.4, z = gz + (rng() - 0.5) * 6.4;
         if (this._nearBuilding(x, z, 7) || this.surfaceAt(x, z) !== 'grass') continue;
         if (Math.hypot(x - EASTGATE_GREEN.x, z - EASTGATE_GREEN.z) < EASTGATE_GREEN.r) continue;
+        // The trading post keeps its own clearing. It is dressed already (a
+        // ring of trees standing back off it — see _tradingPost), and it is
+        // the one place in the district a player has to be able to WALK UP TO
+        // and read a counter: waist-high weed across that approach is not
+        // atmosphere, it is a wall.
+        if (Math.hypot(x - TRADING_POST.x, z - TRADING_POST.z) < 10) continue;
         // ...and not through anything already standing there. `veg.tree` does
         // not go through _prop, so it inherits none of the overlap guards the
         // props are held to — which is how a tree ends up growing out of the

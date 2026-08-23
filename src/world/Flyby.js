@@ -211,6 +211,7 @@ export class Flyby {
     this._armed = -1;
     this.active = true;
     this._done = true;
+    this._flown = false;
     this.t = 0;
     if (!this.node) this._build();
     this.node.visible = true;
@@ -219,6 +220,7 @@ export class Flyby {
 
   _impact(p) {
     this.active = false;
+    this._flown = true;
     this.node.visible = false;
     const pos = { x: CRASH.x, y: this.world.terrain.heightAt(CRASH.x, CRASH.z), z: CRASH.z };
     this.events.emit('ufo:exit', {});
@@ -229,8 +231,26 @@ export class Flyby {
   /** A new run has not seen it yet. */
   reset() {
     this._done = false;
+    this._flown = false;
     this._armed = -1;
     this.active = false;
+    if (this.node) this.node.visible = false;
+  }
+
+  /**
+   * A death rolled the run back past wave five.
+   *
+   * A sighting the player never actually GOT — they died during the fifteen
+   * second count, or before the wave that arms it — is re-armed, because the
+   * whole point of it is that somebody sees it. One they watched is not
+   * repeated: it came down once. Without this the count also survives the
+   * rollback, and the saucer turns up over a wave-one street.
+   */
+  rollback() {
+    if (this._flown) { this._armed = -1; return; }
+    this._armed = -1;
+    this.active = false;
+    this._done = false;
     if (this.node) this.node.visible = false;
   }
 }

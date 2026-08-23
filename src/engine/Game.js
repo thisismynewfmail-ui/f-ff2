@@ -745,6 +745,9 @@ export class Game {
     // Re-seal the districts that the rolled-back kill count no longer clears, so
     // the section walls stand again (and reopen as the player re-earns them).
     this.world.zones.syncTo(cp.score.kills);
+    // A sighting the player died before seeing is re-armed with the waves it
+    // rolled back to; one they watched stays watched (see Flyby.rollback).
+    this.world.flyby?.rollback();
     this.waves.restartAtWave(Math.max(1, cp.wave));
     this.player.respawn();
     this.hud.showScreen(null);
@@ -777,13 +780,26 @@ export class Game {
   frame(dt) {
     // The satchel, the arcade and the vendor's counter all freeze the world
     // while they are open (the mouse is on the UI).
+    let simulated = false;
     if (this.state.is('menu')) {
       this._menuCinematic(dt);
     } else if (this.state.is('playing') && !this.inventory.open && !this.arcade.open
       && !this.shop.open && !this.radial.open) {
       this.time += dt;
       this.update(dt);
+      simulated = true;
     }
+    /**
+     * THE SCORE IS NOT PART OF THE SIMULATION.
+     *
+     * It plays under the title cinematic, under the pause case, over the death
+     * panel and while the satchel is open — all states in which the world is
+     * deliberately frozen and update() never runs. Its cross-fades are advanced
+     * inside AudioManager.update, so on any frame the sim did not run it still
+     * has to be ticked, or a track that has just been selected sits at gain
+     * zero forever and the title screen is silent.
+     */
+    if (!simulated) this.audio.update(dt, this.player, 0);
     // The machine and the vendor run on their own clocks while the town holds
     // its breath — a shop whose proprietor stood still would be a photograph.
     this.arcade.update(dt);

@@ -462,10 +462,11 @@ const fx = await page.evaluate(async () => {
   // 7. Death FX pools exist (graphic + digital death).
   out.deathFx = !!g.effects.spark && !!g.effects.deathLight;
 
-  // 8. Stats are OFF the HUD and rendered as circular gauges on pause.
+  // 8. Stats are OFF the HUD and rendered as instruments on pause. Six of
+  // them: the SECRETS lamp row was taken off the bench.
   out.noHudStats = document.getElementById('hud-tr') === null && document.getElementById('acc') === null;
   g.state.state = 'playing'; g.pause();
-  out.pauseBays = document.querySelectorAll('#pause-stats .bay').length >= 7;
+  out.pauseBays = document.querySelectorAll('#pause-stats .bay').length >= 6;
   g.hud.showScreen(null);
 
   // restore for the win-condition test
@@ -1228,7 +1229,7 @@ const pauseChrome = await page.evaluate(() => ({
 }));
 await page.mouse.move(4, 4);
 check('the pause readouts do not move under the pointer',
-  bayRest.length >= 7 && bayMoved.length === 0,
+  bayRest.length >= 6 && bayMoved.length === 0,
   `${bayRest.length} bays probed, moved: ${[...new Set(bayMoved)].join(' ') || 'none'}`);
 check('and the panel carries no caption restating what an instrument shows',
   pauseChrome.extra.length === 0 && /^(\d+\/\d+|CLEAR)$/.test(pauseChrome.count),
@@ -2039,11 +2040,13 @@ check('a key can only be in one place, and no action is left unbound',
   + ` cleared jump's last key ${binds.clearedLast}`);
 
 /* a weapon you have not found leaves an EMPTY bay, not a preview          */
-// The Alien Blaster is a secret. A dimmed silhouette of it sitting in slot 6
-// from the first frame of a run tells the player there is a sixth weapon and
-// roughly what it looks like, which is exactly the thing a secret must not
-// do — so a locked bay shows the bay number and nothing else, in both the
-// persistent ARMS grid and the ARMORY fly-in.
+// TWO weapons start a run unfound: the coachgun, which is in a case in the
+// blue house on Main St East, and the Alien Blaster, which is out at the
+// crash site. A dimmed silhouette of either sitting in its bay from the first
+// frame of a run tells the player a weapon is out there and roughly what it
+// looks like, which is exactly the thing a find must not do — so a locked bay
+// shows the bay number and nothing else, in both the persistent ARMS grid and
+// the ARMORY fly-in, and fills in the moment it is found.
 const bays = await page.evaluate(async () => {
   const g = window.__game;
   g.hud.showScreen(null); g.state.state = 'playing';
@@ -2064,27 +2067,33 @@ const bays = await page.evaluate(async () => {
   g.hud.showWeaponMenu?.();
   await frame(); await frame();
   const before = read();
-  g.events.emit('weapon:unlock', { id: 'blaster' });
+  const lockedIds = g.weapons.weapons
+    .filter((w) => !g.weapons.unlocked.has(w.config.id)).map((w) => w.config.id);
+  for (const id of lockedIds) g.events.emit('weapon:unlock', { id });
   for (let i = 0; i < 4; i++) await frame();
   const after = read();
-  return { before, after };
+  return { before, after, lockedIds };
 });
-const lockedIdx = bays.before.locked.indexOf(true);
+const lockedIdx = bays.before.locked.flatMap((v, i) => (v ? [i] : []));
 check('an unfound weapon leaves a blank bay in both racks',
-  lockedIdx >= 0
-  && !bays.before.armsGlyph[lockedIdx] && bays.before.armsText[lockedIdx] === ''
-  && !bays.before.rackGlyph[lockedIdx] && bays.before.rackText[lockedIdx] === '',
-  `slot ${lockedIdx + 1}: arms glyph ${bays.before.armsGlyph[lockedIdx]}`
-  + ` "${bays.before.armsText[lockedIdx]}", rack glyph ${bays.before.rackGlyph[lockedIdx]}`
-  + ` "${bays.before.rackText[lockedIdx]}"`);
+  lockedIdx.length >= 1 && lockedIdx.every((i) =>
+    !bays.before.armsGlyph[i] && bays.before.armsText[i] === ''
+    && !bays.before.rackGlyph[i] && bays.before.rackText[i] === ''),
+  `locked slots ${lockedIdx.map((i) => i + 1).join(',')} (${bays.lockedIds.join(',')}) — `
+  + lockedIdx.map((i) => `${i + 1}: arms ${bays.before.armsGlyph[i]}`
+    + ` "${bays.before.armsText[i]}", rack ${bays.before.rackGlyph[i]}`
+    + ` "${bays.before.rackText[i]}"`).join(' | '));
 check('and finding it fills the bay in',
-  lockedIdx >= 0 && !bays.after.locked[lockedIdx]
-  && bays.after.armsGlyph[lockedIdx] && bays.after.armsText[lockedIdx] !== ''
-  && bays.after.rackGlyph[lockedIdx] && bays.after.rackText[lockedIdx] !== '',
-  `arms "${bays.after.armsText[lockedIdx]}", rack "${bays.after.rackText[lockedIdx]}"`);
-check('and no OTHER bay was blank to begin with',
-  bays.before.armsGlyph.filter((v) => !v).length === 1,
-  `${bays.before.armsGlyph.filter((v) => !v).length} blank of ${bays.before.armsGlyph.length}`);
+  lockedIdx.length >= 1 && lockedIdx.every((i) =>
+    !bays.after.locked[i]
+    && bays.after.armsGlyph[i] && bays.after.armsText[i] !== ''
+    && bays.after.rackGlyph[i] && bays.after.rackText[i] !== ''),
+  lockedIdx.map((i) => `${i + 1}: arms "${bays.after.armsText[i]}",`
+    + ` rack "${bays.after.rackText[i]}"`).join(' | '));
+check('and no bay was blank except the ones nobody has found yet',
+  bays.before.armsGlyph.filter((v) => !v).length === lockedIdx.length,
+  `${bays.before.armsGlyph.filter((v) => !v).length} blank,`
+  + ` ${lockedIdx.length} locked, of ${bays.before.armsGlyph.length}`);
 
 /* the dock always fits the window, however wide its contents get         */
 // The dock is scaled to fit by measuring its own natural width. Measured once

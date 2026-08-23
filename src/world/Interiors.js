@@ -1773,8 +1773,12 @@ export class InteriorKit {
       [-hw + 1.1, -0.6], [hw - 1.1, -0.6], [-hw + 1.1, 1.4], [hw - 1.1, 1.4],
       [0, -hd + 3.7], [-1.6, -0.2], [1.6, -0.2], [0, 0],
     ];
+    // Built ONCE and offered to each spot in turn. _put rejects a placement
+    // before it touches the group, so a refused attempt leaves the maker
+    // untouched and reusable — and the alternative is assembling (and throwing
+    // away) up to eight copies of a weapon model at load time.
+    const maker = this.gunCache();
     for (const [lx, lz] of spots) {
-      const maker = this.gunCache();
       const g = this._put(built, maker, lx, lz, { yaw: lx < 0 ? Math.PI / 2 : -Math.PI / 2 });
       if (!g) continue;
       this.w.registerGunCache(g, maker, built.spec);
