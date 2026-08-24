@@ -43,8 +43,13 @@ const TICK_MS = 40;          // how often we top that up
 const RESYNC = 0.9;          // a scheduler this far behind gives up and re-zeros
 const XFADE = 2.2;           // seconds, track -> track
 const VFADE = 1.15;          // seconds, calm <-> danger
-const LOW_ENTER = 0.25;      // health fraction that turns the lights off...
-const LOW_EXIT = 0.32;       // ...and the one that turns them back on
+// Where the lights go out. Pitched high on purpose: a quarter health is a
+// player who is already dead in most fights, and a score that only warns them
+// then is a score that never warns them. Forty-five per cent is the point at
+// which the next mistake is the last one, and the gap up to the exit threshold
+// is what stops a player parked on the line getting a strobing arrangement.
+const LOW_ENTER = 0.45;      // health fraction that turns the lights off...
+const LOW_EXIT = 0.53;       // ...and the one that turns them back on
 const AUDIBLE = 0.002;       // below this a variant stops being scheduled
 
 /** Scale degree (any integer, negative or past the octave) -> semitones. */

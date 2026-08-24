@@ -1402,23 +1402,38 @@ export class PropKit {
       const slot = this.box(0.18, 0.03, 0.03, steel);
       slot.position.set(-0.16, 1.18, s * 0.235);
       p.add(slot);
-      // the nozzle, hung in its boot, and the hose looping back to the body
-      const boot = this.box(0.14, 0.30, 0.12, dark);
-      boot.position.set(-0.38, 1.02, s * 0.16);
+      /**
+       * The nozzle in its boot, and the hose looping back to the body.
+       *
+       * Both of these used to hang off the pump's LEFT END — the narrow face,
+       * 0.66 m wide with two whole nozzle assemblies and two hoses crowded
+       * onto it, so the two sets ran through each other — and the hose's tail
+       * was routed to x = −0.02, which is dead centre of the body it is
+       * supposed to be plugged into, so it disappeared into the enamel.
+       *
+       * A pump serves the two lanes either side of its island, so a nozzle
+       * belongs on each of the two WIDE faces, one per customer, and that is
+       * where they are now: boot on the face at z = ±0.25, hose looping from
+       * the head down to it, every control point held at |z| >= 0.25 so no
+       * part of the run can re-enter the 0.44 m-deep body.
+       */
+      const face = s * 0.25;
+      const boot = this.box(0.16, 0.32, 0.10, dark);
+      boot.position.set(-0.20, 1.02, face);
       p.add(boot);
-      const grip = this.box(0.10, 0.26, 0.09, brand);
-      grip.position.set(-0.40, 1.06, s * 0.16);
-      const spout = new THREE.Mesh(new THREE.CylinderGeometry(0.028, 0.028, 0.22, 6), steel);
-      spout.position.set(-0.40, 0.88, s * 0.16);
+      const grip = this.box(0.11, 0.26, 0.09, brand);
+      grip.position.set(-0.20, 1.07, face + s * 0.04);
+      const spout = new THREE.Mesh(new THREE.CylinderGeometry(0.028, 0.028, 0.20, 6), steel);
+      spout.position.set(-0.20, 0.89, face + s * 0.04);
       p.add(grip, spout);
       const hose = new THREE.Mesh(new THREE.TubeGeometry(
         new THREE.CatmullRomCurve3([
-          new THREE.Vector3(-0.40, 1.16, s * 0.16),
-          new THREE.Vector3(-0.52, 1.02, s * 0.22),
-          new THREE.Vector3(-0.50, 0.72, s * 0.24),
-          new THREE.Vector3(-0.30, 0.58, s * 0.22),
-          new THREE.Vector3(-0.02, 0.62, s * 0.21),
-        ]), 12, 0.026, 5, false), rubber);
+          new THREE.Vector3(0.22, 1.26, face),          // off the head
+          new THREE.Vector3(0.28, 1.12, face + s * 0.06),
+          new THREE.Vector3(0.20, 0.82, face + s * 0.09),
+          new THREE.Vector3(-0.04, 0.70, face + s * 0.08),
+          new THREE.Vector3(-0.20, 0.88, face + s * 0.05),  // up into the boot
+        ]), 14, 0.026, 5, false), rubber);
       p.add(hose);
     }
     // the topper: the one lit thing above head height on the island

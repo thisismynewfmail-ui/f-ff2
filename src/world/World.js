@@ -27,6 +27,8 @@ const DOOR_LANE_HALF = 1.6;
  * on it rather than on a coordinate that happens to be empty today.
  */
 export const EASTGATE_GREEN = { x: 158, z: 42, r: 20 };
+/** The two filling stations, so the terrain pass and the prop pass agree. */
+export const GAS_STATIONS = [[55, 12], [21, 122]];
 
 /**
  * Grass bias per district — [dry, lush, wild] overlay weights over the kept
@@ -541,6 +543,16 @@ export class World {
     // small pad with a wide blend, so the clearing reads as ground somebody
     // flattened by using it rather than as a shelf cut into a hill.
     this.terrain.padAtGrade(TRADING_POST.x, TRADING_POST.z, 3.4, 2.8, 7);
+
+    // The two filling-station forecourts, for the same reason and with the
+    // same caveat: a poured slab is FLAT, so the ground under one has to be
+    // flat too. Dropped on raw terrain the apron stood proud of the grass at
+    // one corner and was buried at the other, and anything parked on it — a
+    // car at a pump, most obviously — sat half in the concrete and half in the
+    // ground. The flat core covers the whole apron; the blend runs out past it
+    // so the forecourt reads as ground somebody levelled rather than as a
+    // shelf cut into the knoll.
+    for (const [gx, gz] of GAS_STATIONS) this.terrain.padAtGrade(gx, gz, 8.2, 5.2, 7);
 
     // The pond basin.
     //
@@ -1137,8 +1149,16 @@ export class World {
    */
   registerGunCache(node, maker, spec) {
     const p = node.position;
+    // The glow is a moving part, so it goes on the town's own animation pass
+    // rather than being driven from here (see Anomalies: kind 'pickupGlow').
+    if (maker.glow) {
+      this._animate(maker.glow.node, 'pickupGlow', p.x, p.z, {
+        discMat: maker.glow.discMat, shaftMat: maker.glow.shaftMat,
+        motes: maker.glow.motes, lamp: maker.glow.lamp,
+      });
+    }
     this.gunCache = {
-      node, gun: maker.gun, taken: false,
+      node, gun: maker.gun, glow: maker.glow?.node, taken: false,
       prompt: this.addInteractable({
         x: p.x, z: p.z, y: p.y, radius: 1.9,
         prompt: 'Take the coachgun [E]',
@@ -1154,6 +1174,7 @@ export class World {
     if (!c || c.taken) return;
     c.taken = true;
     if (c.gun) c.gun.visible = false;
+    if (c.glow) c.glow.visible = false;
     this.events.emit('weapon:unlock', { id: 'shotgun' });
     // What was in the box with it. Two magazines' worth and no more — the
     // point of the coachgun is that you have to go and find shells for it.
@@ -1169,6 +1190,7 @@ export class World {
     if (!c) return;
     c.taken = true;
     if (c.gun) c.gun.visible = false;
+    if (c.glow) c.glow.visible = false;
   }
 
   /** Put it back in its case — a new run starts without it again. */
@@ -1177,6 +1199,7 @@ export class World {
     if (!c) return;
     c.taken = false;
     if (c.gun) c.gun.visible = true;
+    if (c.glow) c.glow.visible = true;
   }
 
   /**
@@ -1509,7 +1532,7 @@ export class World {
     this._poleLine([[208, -34], [208, -8], [208, 20], [208, 46]]);
     for (const [x, z] of [[94, 24], [140, 58], [70, 84]]) this._prop(P.utilityPole(), x, z);
     // The filling station at the district gate, where you come in from the plaza.
-    this._gasStationAt(P, 55, 12);
+    this._gasStationAt(P, ...GAS_STATIONS[0]);
     // Cars left where they stopped. The two on Main St are the cover you use
     // on the way in; the third has been on the verge long enough to be planted.
     const rng = mulberry32(11);
@@ -2295,7 +2318,7 @@ export class World {
     const P = this.props;
     const rng = mulberry32(55);
     // South-end filling station
-    this._gasStationAt(P, 21, 122);
+    this._gasStationAt(P, ...GAS_STATIONS[1]);
     this._prop(P.dumpster(), 40, 118, { yaw: 0.2 }); // the key hides behind this one
     // Factory landmarks: the smokestack owns the south-west skyline, the
     // water tower the south-east, so the yard is legible from anywhere.
@@ -2476,9 +2499,12 @@ export class World {
     const plazaCar = P.parkedCar(0x6b3a32);
     this._prop(plazaCar, 20, 6.5, { yaw: 0.05 });
     this._registerAlarmCar(plazaCar, 20, 6.5);
+    // Parked at the pump it never got filled at. It used to sit at (48, 16),
+    // which is the forecourt's north-west CORNER — half its wheelbase on the
+    // slab and half on the grass, which is exactly where a car cannot be.
     const stationCar = P.parkedCar(0x39465e);
-    this._prop(stationCar, 48, 16, { yaw: 0.2 });
-    this._registerAlarmCar(stationCar, 48, 16);
+    this._prop(stationCar, 56.4, 14.9, { yaw: 0.04 });
+    this._registerAlarmCar(stationCar, 56.4, 14.9);
 
     // the phone booth outside the library (Anomalies gives it its voice)
     const booth = P.phoneBooth();

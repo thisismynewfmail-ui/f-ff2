@@ -36,6 +36,7 @@ export class AudioManager {
     // a street full of fighters and not like a choir (see enemyLine).
     this._lastLine = 0;
     this._lastByState = new Map();
+    this._lineSeq = new Map();
     this._noiseBuf = null;
     this.moanIntensity = 0;
     this._moanTimer = 1;
@@ -66,7 +67,12 @@ export class AudioManager {
     on('zombie:hit', ({ pos, zombie }) => this.enemyLine('hurt', zombie?.config, zombie?.voice, pos));
     on('zombie:attack', ({ pos, type, voice }) => this.enemyLine('attack', type, voice, pos, { force: true }));
     on('zombie:spot', ({ pos, type, voice }) => this.enemyLine('spot', type, voice, pos, { force: true }));
-    on('zombie:idle', ({ pos, type, voice }) => this.enemyLine('idle', type, voice, pos, { gain: 0.55 }));
+    // The horde's own chatter — invocations when nobody has found anybody,
+    // position calls once they are coming for you. One event, two pools; the
+    // fighter decides which by whether he is hunting (see Zombie).
+    on('zombie:chatter', ({ pos, type, voice, hunting }) =>
+      this.enemyLine(hunting ? 'prowl' : 'idle', type, voice, pos,
+        { gain: hunting ? 0.8 : 0.62, maxDist: hunting ? 40 : 32 }));
     // THE BOMBER'S CALL, in two parts.
     //
     // The full takbir goes off when he COMMITS to his run — ten metres out,
@@ -538,9 +544,19 @@ export class AudioManager {
     const s = pos ? this._spatial(pos, opts.maxDist ?? 42) : { vol: 1, pan: 0 };
     if (!s) return;
     const now = this.t;
-    const floor = opts.force ? 0.14 : 0.5;
+    const floor = opts.force ? 0.22 : 0.5;
     if (now - this._lastLine < floor) return;
-    const stateFloor = { idle: 2.6, hurt: 0.9, chase: 1.1, spot: 1.0, attack: 0.7 }[state] ?? 0.35;
+    // How long the WHOLE TOWN waits before it will say this kind of thing
+    // again. The chatter floors are the long ones on purpose: fifteen fighters
+    // each offering a line every twenty seconds is a line on offer roughly
+    // every second, and a street where somebody is always talking is a street
+    // nobody is listening to.
+    // A pack of eight in melee on a cornered player was producing an attack
+    // grunt a second — a wall of voice under the gunfire rather than a scrum
+    // you can hear individuals in. A grunt and a half a second is a scrum.
+    const stateFloor = {
+      idle: 6.0, prowl: 4.5, hurt: 1.3, chase: 1.1, spot: 1.0, attack: 1.5,
+    }[state] ?? 0.35;
     if (now - (this._lastByState.get(state) ?? -99) < stateFloor) return;
     this._lastLine = now;
     this._lastByState.set(state, now);
@@ -548,7 +564,15 @@ export class AudioManager {
     const v = Math.max(0, Math.min(1, voice));
     const [lo, hi] = cfg.f0;
     const f0 = lo + (hi - lo) * v;
-    const line = lines[Math.floor(v * 997) % lines.length];
+    // WHICH line, out of that state's pool. The individual's voice value picks
+    // where in the pool he starts, and a per-state counter walks it on — so two
+    // fighters speaking at the same moment say different things AND the same
+    // fighter does not repeat himself every time he opens his mouth, which a
+    // straight hash of the voice value did.
+    const seqKey = state + ':' + (type?.name ?? '?');
+    const n = ((this._lineSeq.get(seqKey) ?? 0) + 1) % 1e6;
+    this._lineSeq.set(seqKey, n);
+    const line = lines[(Math.floor(v * 997) + n) % lines.length];
     const pan = this.ctx.createStereoPanner();
     pan.pan.value = s.pan;
     pan.connect(this.master);
@@ -557,7 +581,7 @@ export class AudioManager {
       gain: 0.42 * (opts.gain ?? 1) * (0.35 + s.vol * 0.65),
       rate: cfg.rate * (0.94 + v * 0.12) * (opts.rate ?? 1),
       grit: cfg.grit,
-      shout: opts.shout ?? (state === 'spot' || state === 'chase' || state === 'attack' ? 0.6 : 0.15),
+      shout: opts.shout ?? ({ spot: 0.6, chase: 0.6, attack: 0.6, prowl: 0.42, idle: 0.08 }[state] ?? 0.15),
     });
   }
 
@@ -1612,7 +1636,7 @@ export class AudioManager {
     // a street with people on it — someone muttering, a door somewhere, boots
     // on gravel — and it thickens as the local pressure rises. The lines
     // themselves come from whoever is actually standing near you (the horde
-    // emits 'zombie:idle'); this is the ROOM they are standing in.
+    // emits 'zombie:chatter'); this is the ROOM they are standing in.
     this.moanIntensity = Math.min(1, nearbyZombies / 12);
     this._moanTimer -= dt;
     if (this._moanTimer <= 0) {
