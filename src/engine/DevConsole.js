@@ -223,8 +223,9 @@ const COMMANDS = {
   time(con, game, args) {
     const h = Number(args[0]);
     if (!Number.isFinite(h) || h < 0 || h > 24) throw new Error('usage: time <0-24>');
-    // Map clock hours to the sky phase: sunrise 6 → 0, noon 12 → 0.25.
-    game.sky.setPhase((h - 6) / 24);
+    // Sunrise 6, noon 12, sunset 18, midnight 0. Sky owns the conversion: the
+    // day is longer than the night, so hours are not a linear cycle fraction.
+    game.sky.setHour(h);
     con.print(`time set to ${h}:00 — ${game.sky.isDay ? 'daylight' : 'night'}`, 'ok');
   },
 

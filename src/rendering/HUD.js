@@ -1145,19 +1145,16 @@ export class HUD {
     el.style.backgroundImage = `url(${this._tex.device})`;
     for (const c of ['tl', 'tr', 'bl', 'br']) this._el('div', null, el, 'screw ' + c);
 
-    // A lamp, and nothing else. The header used to carry the word
-    // TRANSMISSION and a run of carrier dashes, and the panel a bar draining
-    // toward the moment the message would vanish — three separate ways of
-    // telling the player about the readout instead of telling them the thing
-    // the readout is for. The lamp already says a message has arrived and the
-    // message itself says the rest.
-    const head = this._el('div', null, el, 'notice-head');
-    this._el('span', null, head, 'notice-lamp');
-
+    // The tube and the message on it, and nothing else. This panel has been
+    // stripped three times now: first of the word TRANSMISSION and its run of
+    // carrier dashes, then of the bar draining toward the message's expiry,
+    // and now of the blinking lamp and the bullet in front of the line. Every
+    // one of them was a second way of saying "a message has arrived" over the
+    // top of the message that says it — and the lamp, being the only thing on
+    // the panel that MOVED, was the one drawing the eye away from the words.
     const crt = this._el('div', null, el, 'notice-crt');
     crt.style.backgroundImage = `url(${this._tex.inset})`;
     const line = this._el('div', null, crt, 'notice-line');
-    this._el('span', null, line, 'notice-bullet').textContent = '▪';
     this.noticeBody = this._el('span', null, line, 'notice-body');
     this._el('span', null, line, 'notice-cursor').textContent = '█';
 

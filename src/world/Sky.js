@@ -3,10 +3,10 @@ import * as THREE from '../../lib/three.module.js';
 /**
  * Day/night sky.
  *
- * Drives a slow cycle that colours the sky + fog, swings a sun and a moon
- * across the dome (the scene's single directional light follows whichever is
- * up, warm by day and cool by night), and drifts a handful of chunky clouds
- * overhead.
+ * Drives a slow eight-minute cycle — five minutes of daylight, three of night
+ * — that colours the sky + fog, swings a sun and a moon across the dome (the
+ * scene's single directional light follows whichever is up, warm by day and
+ * cool by night), and drifts a handful of chunky clouds overhead.
  *
  * Everything up there is REAL 3D geometry — low-poly, flat-shaded orbs and
  * puff clusters, not sprites — sat at a fixed distance in front of the sky
@@ -19,8 +19,23 @@ import * as THREE from '../../lib/three.module.js';
  * Exposes `isDay` and `dayFactor` (0 night … 1 full day) for gameplay — the
  * cockroach uses them to decide whether to hide indoors or roam outside.
  */
-const CYCLE = 600;         // seconds for a full day+night: ~5 min of day, ~5 of night
-const START_PHASE = 0.22;  // begin mid-morning: sun + clouds visible at once
+
+/**
+ * DAY IS LONGER THAN NIGHT.
+ *
+ * The sun used to ride a plain sine off the cycle clock, which splits any
+ * cycle exactly in half — you cannot lengthen the day without lengthening the
+ * night with it. So the phase is WARPED before it becomes a sun angle: the
+ * first DAY_FRAC of the clock is stretched over the sun's half-turn above the
+ * horizon and the rest is squeezed into its half-turn below, which buys an
+ * asymmetric cycle without touching a single curve that reads off elevation
+ * (light colour, fog, cloud emissive, the cockroach's day/night brain).
+ */
+const DAY_LENGTH = 300;    // seconds the sun spends above the horizon — 5 min
+const NIGHT_LENGTH = 180;  // ...and below it — 3 min
+const CYCLE = DAY_LENGTH + NIGHT_LENGTH;
+const DAY_FRAC = DAY_LENGTH / CYCLE;
+const START_PHASE = DAY_FRAC * 0.35;  // begin mid-morning: sun + clouds at once
 const SKY_DIST = 150;      // how far sun/moon sit from the camera (< camera far)
 const CLOUD_ALT = 86;      // cloud altitude
 const CLOUD_SPREAD = 130;  // how far clouds wander from the camera on X/Z
@@ -29,6 +44,21 @@ const CLOUD_COUNT = 9;     // "not too numerous"
 const DAY_SKY = new THREE.Color(0x8fb6e0);
 const NIGHT_SKY = new THREE.Color(0x0b1226);
 const DUSK = new THREE.Color(0xd9884a);
+
+/** Cycle fraction -> sun angle (0 sunrise, PI/2 noon, PI sunset, 3PI/2 midnight). */
+function sunAngle(phase) {
+  return phase < DAY_FRAC
+    ? Math.PI * (phase / DAY_FRAC)
+    : Math.PI * (1 + (phase - DAY_FRAC) / (1 - DAY_FRAC));
+}
+
+/** ...and back again, so a wall-clock hour still lands where it should. */
+function phaseForAngle(ang) {
+  const a = ((ang % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+  return a < Math.PI
+    ? DAY_FRAC * (a / Math.PI)
+    : DAY_FRAC + (1 - DAY_FRAC) * ((a - Math.PI) / Math.PI);
+}
 
 export class Sky {
   constructor(renderer, _texLib) {
@@ -107,15 +137,26 @@ export class Sky {
     return g;
   }
 
+  /** Wall-clock hours (0..24) read off the SUN, not off the cycle clock: the
+   *  two run at different rates now, and the town's clock tower has to agree
+   *  with the thing everyone can see in the sky. */
+  get hour() { return ((sunAngle(this.phase) / (Math.PI * 2)) * 24 + 6) % 24; }
+
   get isDay() { return this._el > 0; }
   get dayFactor() { return Math.max(0, Math.min(1, (this._el + 0.1) / 0.35)); }
 
-  /** Jump straight to a time of day (0..1, 0 = sunrise, 0.25 = noon). */
+  /** Jump straight to a point in the cycle (0..1, 0 = sunrise; the sun is up
+   *  for the first DAY_FRAC of it). */
   setPhase(p) { this.phase = ((p % 1) + 1) % 1; }
+
+  /** Jump to a clock hour: 6 sunrise, 12 noon, 18 sunset, 0 midnight. Day and
+   *  night are not the same length in seconds, so the hour goes through the
+   *  sun angle rather than straight onto the cycle clock. */
+  setHour(h) { this.phase = phaseForAngle(((h - 6) / 24) * Math.PI * 2); }
 
   update(dt, camPos) {
     this.phase = (this.phase + dt / CYCLE) % 1;
-    const ang = this.phase * Math.PI * 2;          // 0 sunrise → noon → sunset → midnight
+    const ang = sunAngle(this.phase);              // 0 sunrise → noon → sunset → midnight
     const el = Math.sin(ang);                       // sun elevation, -1..1
     this._el = el;
     const day = this.dayFactor;

@@ -85,16 +85,26 @@ export class SpeechSynth {
   constructor(ctx, noiseBuf) {
     this.ctx = ctx;
     this.noise = noiseBuf;
-    // One shared waveshaper curve — the amplifier, and it is the same
-    // amplifier for every voice in the town.
-    this.crunch = ctx.createWaveShaper();
+    /**
+     * The amplifier curve — one array, shared by every voice in the town,
+     * because it is the same amplifier.
+     *
+     * The NODE, however, is per utterance, and that is not a detail. A single
+     * shared waveshaper is a single shared summing point: every line built
+     * while another is speaking picks up the other's signal downstream of it,
+     * so the near fighter's shout came back out of the distant one's panner at
+     * the distant one's position, and the distant one's out of the near one's
+     * at full weight. With every line levelled and filtered for its own
+     * distance (see AudioManager.enemyLine) that is precisely the thing being
+     * built — a voice at a place — being unbuilt one node later. A waveshaper
+     * is a lookup table; one per line costs nothing.
+     */
     const n = 1024, curve = new Float32Array(n);
     for (let i = 0; i < n; i++) {
       const x = (i / (n - 1)) * 2 - 1;
       curve[i] = Math.tanh(x * 2.4) * 0.92;
     }
-    this.crunch.curve = curve;
-    this.crunch.oversample = '2x';
+    this.curve = curve;
   }
 
   /**
@@ -129,7 +139,10 @@ export class SpeechSynth {
     top.type = 'lowpass'; top.frequency.value = 3400 - grit * 900; top.Q.value = 0.8;
     const horn = ctx.createBiquadFilter();     // the honk of a cone in a box
     horn.type = 'peaking'; horn.frequency.value = 1700; horn.Q.value = 1.1; horn.gain.value = 5;
-    band.connect(horn).connect(top).connect(this.crunch).connect(out).connect(dest);
+    const crunch = ctx.createWaveShaper();
+    crunch.curve = this.curve;
+    crunch.oversample = '2x';
+    band.connect(horn).connect(top).connect(crunch).connect(out).connect(dest);
 
     /* --- the glottal source: a buzz, and a coarse one ---------------- */
     const src = ctx.createOscillator();
@@ -238,6 +251,12 @@ export class SpeechSynth {
     buzz.start(t0); buzz.stop(stop);
     nz.start(t0); nz.stop(stop);
     hiss.start(t0); hiss.stop(stop);
+    // Let the line go when it is over. Nothing here was ever disconnected, so
+    // a long run left a graph of every sentence the town had ever spoken —
+    // silent, since each one's output gain is ramped to nothing, but still
+    // resident and still summed every block. Cutting the one edge that reaches
+    // the bus makes the whole chain unreachable and it is collected.
+    src.onended = () => { try { out.disconnect(); } catch { /* already gone */ } };
     return total;
   }
 

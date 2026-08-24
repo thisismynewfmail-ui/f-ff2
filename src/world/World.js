@@ -376,11 +376,11 @@ export class World {
     this._updateClock();
   }
 
-  /** Drive the tower clock from the sky: phase 0 = sunrise = 06:00. */
+  /** Drive the tower clock from the sky: sunrise = 06:00, noon = 12:00. */
   _updateClock() {
     const sky = this.game?.sky;
     if (!sky || !this.clockHands) return;
-    const hours = (sky.phase * 24 + 6) % 24;
+    const hours = sky.hour;
     this.clockHands.hour.rotation.z = -((hours % 12) / 12) * Math.PI * 2;
     this.clockHands.minute.rotation.z = -(hours % 1) * Math.PI * 2;
   }
