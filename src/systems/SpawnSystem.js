@@ -4,6 +4,7 @@ import { Spitter } from '../entities/Spitter.js';
 import { ZOMBIE_TYPES } from '../entities/ZombieTypes.js';
 import { makeSpriteMaterial } from '../rendering/Billboard.js';
 import { rollCoin } from './TokenDrops.js';
+import { NATURAL_SPAWN_CAP } from './WaveSystem.js';
 
 /**
  * Spawn director. Streams the current wave's budget into the world while
@@ -14,6 +15,15 @@ import { rollCoin } from './TokenDrops.js';
  *
  * The concurrent-zombie cap and per-pulse batch size are read from the wave
  * system so the horde swells with "heat" past 250 kills without overflowing.
+ *
+ * On top of that cap there is a HARD one: NATURAL_SPAWN_CAP bodies streamed by
+ * this director at once, and no more, whatever the ramps add up to. The two
+ * are different measurements on purpose. The wave cap counts SLOTS, where an
+ * Advanced costs two, and it is what the difficulty ramps lift; the hard cap
+ * counts BODIES this director put on the field, and it is what stops the
+ * ramps from ever becoming a frame-rate problem. Anything spawned by anything
+ * else — the console, a set-piece — carries no natural flag, so it neither
+ * counts against the hard cap nor is limited by it.
  */
 const TANK_SLOTS = 2;
 // Brushing against a live zombie's body costs health, so the player can't just
@@ -56,6 +66,13 @@ export class SpawnSystem {
   activeSlots() {
     let n = 0;
     for (const z of this.zombies) n += z.config === ZOMBIE_TYPES.tank ? TANK_SLOTS : 1;
+    return n;
+  }
+
+  /** Live bodies this director streamed in — what NATURAL_SPAWN_CAP limits. */
+  naturalCount() {
+    let n = 0;
+    for (const z of this.zombies) if (z.natural) n++;
     return n;
   }
 
@@ -104,11 +121,14 @@ export class SpawnSystem {
     return best;
   }
 
-  spawnOne(typeName, player) {
+  /** `natural` marks a body the wave director streamed in, as opposed to one
+   *  the console or a set-piece placed; only those count against the hard cap. */
+  spawnOne(typeName, player, natural = false) {
     const p = this.pickSpawnPoint(player);
     if (!p) return null;
     const Ctor = typeName === 'exploder' ? Exploder : typeName === 'spitter' ? Spitter : Zombie;
     const z = new Ctor(ZOMBIE_TYPES[typeName], this.materials[typeName], this.world, this.events);
+    z.natural = natural;
     z.placeAt(p.x + (Math.random() - 0.5) * 2, p.z + (Math.random() - 0.5) * 2);
     if (this.cullBlindSeconds > 0) z.flags.cullBlindSeconds = this.cullBlindSeconds;
     this.zombies.push(z);
@@ -127,16 +147,26 @@ export class SpawnSystem {
   }
 
   update(dt, player) {
-    // stream the wave in
+    // Stream the wave in. Both counts are taken ONCE and carried through the
+    // pulse rather than re-walked per body: with two hundred zombies on the
+    // field and a dozen going down in a pulse, re-counting inside the loop is
+    // a few thousand pointless comparisons every time the horde is at its
+    // thickest, which is exactly when there is no frame time to spare.
     const cap = this.waves.activeCap();
     if (this.waves.wantsSpawn() && player.alive) {
       this.spawnTimer -= dt;
-      if (this.spawnTimer <= 0 && this.activeSlots() < cap) {
+      let slots = this.activeSlots();
+      let natural = this.naturalCount();
+      if (this.spawnTimer <= 0 && slots < cap && natural < NATURAL_SPAWN_CAP) {
         this.spawnTimer = this.waves.spawnInterval();
         const batch = Math.min(this.waves.toSpawn, this.waves.batchSize());
         for (let i = 0; i < batch; i++) {
-          if (this.activeSlots() >= cap) break;
-          if (this.spawnOne(this.pickType(), player)) this.waves.noteSpawned(1);
+          if (slots >= cap || natural >= NATURAL_SPAWN_CAP) break;
+          const type = this.pickType();
+          if (!this.spawnOne(type, player, true)) continue;
+          slots += type === 'tank' ? TANK_SLOTS : 1;
+          natural++;
+          this.waves.noteSpawned(1);
         }
       }
     }

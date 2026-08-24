@@ -19,6 +19,12 @@ import { ENEMY_VOICES, voiceKeyFor } from './EnemyVoices.js';
  * settings screen's SOUNDTRACK and EFFECTS sliders mean two different things
  * rather than two names for the same knob.
  */
+
+/** Reference distance for a shouted voice, in metres: the range at which it
+ *  has fallen to half strength. Deliberately short — a street fight is close
+ *  work, and the whole point is that ten metres and thirty sound different. */
+const VOICE_REF = 7;
+
 export class AudioManager {
   constructor(events) {
     this.events = events;
@@ -295,7 +301,7 @@ export class AudioManager {
     const dist = Math.hypot(dx, dz);
     if (dist > maxDist) return null;
     const ang = Math.atan2(dx, dz) - this.listener.yaw;
-    return { pan: Math.max(-1, Math.min(1, Math.sin(ang) * 0.8)), vol: 1 - dist / maxDist };
+    return { pan: Math.max(-1, Math.min(1, Math.sin(ang) * 0.8)), vol: 1 - dist / maxDist, dist };
   }
 
   /* ---------------- weapons ---------------- */
@@ -573,16 +579,62 @@ export class AudioManager {
     const n = ((this._lineSeq.get(seqKey) ?? 0) + 1) % 1e6;
     this._lineSeq.set(seqKey, n);
     const line = lines[(Math.floor(v * 997) + n) % lines.length];
+    /**
+     * WHERE IT IS COMING FROM.
+     *
+     * The line used to be panned and then levelled off a straight ramp to the
+     * cutoff — `0.35 + vol * 0.65`, which over forty metres is nine decibels,
+     * near enough no fall at all. A bomber calling his run from across the
+     * district arrived at the same weight as one at arm's length, and a voice
+     * that does not get quieter with distance is a voice with no distance: the
+     * pan said "to your left" and nothing said "a long way to your left".
+     *
+     * Three things carry that instead, and all three are how a shout actually
+     * reaches you across open ground:
+     *
+     *   LEVEL falls on an inverse law rather than a line — halved by the time
+     *   he is seven metres out and down twenty decibels at the far edge of the
+     *   range — so the difference between ten metres and thirty is something
+     *   you hear rather than something you infer.
+     *
+     *   AIR takes the top off it. Distance is a low-pass filter: the further a
+     *   voice travels the less of its consonants survive, which is why you can
+     *   tell somebody is shouting from the far end of a street even when you
+     *   cannot make out the words. Without this a quiet voice is just a quiet
+     *   voice — turned down, not moved away.
+     *
+     *   And it ARRIVES LATE, by the time sound takes to cover the ground. It
+     *   is a tenth of a second at forty metres and nobody consciously hears
+     *   it, but it is the difference between a shout that happened over there
+     *   and one dubbed onto the scene.
+     *
+     * The pan is unchanged and still does the left/right work.
+     */
+    const dist = s.dist ?? 0;
+    // 1/(1+d/ref) is the textbook point source; the exponent past it is the
+    // ground and the buildings taking their cut, which is what makes the far
+    // end of the street sound like the far end of the street.
+    const roll = Math.pow(VOICE_REF / (VOICE_REF + dist), 1.25);
     const pan = this.ctx.createStereoPanner();
     pan.pan.value = s.pan;
-    pan.connect(this.master);
-    this.speech.speak(pan, line, {
+    const air = this.ctx.createBiquadFilter();
+    air.type = 'lowpass';
+    air.frequency.value = 700 + 4300 * Math.pow(roll, 0.7);
+    air.Q.value = 0.7;
+    air.connect(pan).connect(this.master);
+    const len = this.speech.speak(air, line, {
       f0,
-      gain: 0.42 * (opts.gain ?? 1) * (0.35 + s.vol * 0.65),
+      gain: 0.52 * (opts.gain ?? 1) * (0.04 + roll * 0.96),
+      when: dist / 343,
       rate: cfg.rate * (0.94 + v * 0.12) * (opts.rate ?? 1),
       grit: cfg.grit,
       shout: opts.shout ?? ({ spot: 0.6, chase: 0.6, attack: 0.6, prowl: 0.42, idle: 0.08 }[state] ?? 0.15),
     });
+    // ...and take the chain down behind it. Speech disconnects its own end
+    // (see Speech.speak); these two nodes are this method's, they are made
+    // fresh for every line, and a run is thousands of lines long.
+    const gone = (dist / 343 + len + 0.4) * 1000;
+    setTimeout(() => { try { pan.disconnect(); air.disconnect(); } catch { /* gone */ } }, gone);
   }
 
   gurgle(pos) {

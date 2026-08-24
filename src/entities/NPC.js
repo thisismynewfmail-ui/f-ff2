@@ -253,7 +253,9 @@ export class NPC extends Entity {
         this.lineCooldown = 14;
         this.restLeft = Math.max(this.restLeft, 4);
         this.yaw = Math.atan2(player.position.x - this.position.x, player.position.z - this.position.z);
-        this.events.emit('subtitle', { text: '"' + LINES[this.lineIndex % LINES.length] + '"' });
+        // No quotation marks: the readout prints what was said, it does not
+        // report it. The panel is already a voice coming out of a speaker.
+        this.events.emit('subtitle', { text: LINES[this.lineIndex % LINES.length] });
         this.lineIndex++;
         moving = false;
       }

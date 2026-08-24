@@ -221,9 +221,18 @@ between them mid-phrase without a smear, a pitch bend or a dropped beat:
   sixteenth-note bass under a four-on-the-floor kick, a hammered minor
   ostinato and a horn answering it every other bar. It is the track heard
   first, longest and on every restart, and what it is about is a horde coming
-  up four roads at once, not a town somebody has already lost. Eastgate is
-  warmer and quieter than anything else in the game; Downtown is phrygian and
-  has a pulse; Hollow Park
+  up four roads at once, not a town somebody has already lost. Eastgate is a
+  street being moved through rather than mourned — a running eight-note figure
+  on a plucked voice over a bass that lands off the beat as often as on it,
+  with the dorian sixth still doing the warmth and a drone, an answering
+  whistle and a glass tone arriving where a resolution should be doing the
+  unease. Downtown is a canyon with something coming down it: four to the floor
+  at 132, a filtered bass answering on the off-beat, a piece of the BUILDING
+  for a backbeat instead of a snare, and a phrygian hook built either side of
+  the flat second that keeps falling back onto a tonic it cannot leave. Neither
+  is any louder than it was — both carry their energy in events per bar rather
+  than in gain, which is how they drive without climbing over a gunshot.
+  Hollow Park
   is a choir and a whistle and almost no rhythm at all; Southside is struck
   scrap over a pumping bass; Chapel Ridge is an organ, a choir and a bell with
   no drums anywhere in the calm mix. Changing district is a real cross-fade —
@@ -276,6 +285,19 @@ horde only ever spoke when it was shot or killed. The bomber's takbir goes off w
 he **commits** at ten metres, not on the quarter-second fuse: hung on the fuse
 you would hear one syllable and then the blast, and it is the only reliable
 warning a bomber gives.
+
+**And every line has a place.** A voice is levelled on an inverse-distance law
+— half gone by seven metres, twenty decibels down at the far edge of its range
+— rather than on a straight ramp to the cutoff, which over forty metres is
+barely nine decibels and reads as no distance at all. On top of that, distance
+is a low-pass filter: the far end of a street takes the consonants out of a
+shout, so a line loses its top as it loses its level (4.5 kHz at arm's length,
+1.4 kHz at forty-five metres) and sounds moved away rather than turned down.
+And it arrives late, by the time sound takes to cross the ground. Each
+utterance is built on its own chain end to end — its own amplifier, its own
+filter, its own panner — because a shared one is a shared summing point, and
+the near fighter's shout coming back out of the distant one's speaker is
+exactly the cue this is meant to give.
 
 ## Dev console
 
@@ -593,11 +615,20 @@ There is deliberately no command that touches the kill counter — the
 - **Waves:** **kill-driven** escalating hordes. Each wave sets a kill quota and
   clears the moment you hit it, so racking up kills is what advances the wave;
   then a short respite with a supply drop before the next, larger wave. Past
-  **250 kills** the horde "heats up" — faster spawns, bigger waves and a higher
-  active cap — ramping over the waves that follow without overflowing, and past
+  **125 kills** the standard horde arrives in NUMBERS — the steepest ramp in
+  the file, fattening every pulse, shortening the gap between pulses and
+  lifting the concurrent cap by more than everything else combined, climbing
+  over the next seven hundred kills. Past **250 kills** the horde "heats up" —
+  faster spawns, bigger waves and a higher active cap — ramping over the waves
+  that follow without overflowing, and past
   **~400 kills** a second, steeper **surge** on the overall spawn rate kicks in
   (shorter spawn interval, fatter batches, higher concurrent cap) so the field
-  thickens tangibly deeper into a run. Those ramps are all keyed to the KILL
+  thickens tangibly deeper into a run. Every one of those ramps is bounded by a
+  hard stop: **the natural spawner will not have more than 200 bodies of its
+  own on the field at once**, whatever the ramps add up to, so difficulty can
+  climb without the frame rate paying for it. It is a limit on the STREAM, not
+  on the world — anything placed by something other than the spawn director
+  (the console, a set-piece) is outside that count. Those ramps are all keyed to the KILL
   count, which means a careful player who takes their time never feels them, so
   there is one more on the WAVE clock: **past wave 6** the horde starts pressing
   harder whether or not the kills are there — shorter interval, fatter pulses,

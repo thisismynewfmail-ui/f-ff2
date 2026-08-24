@@ -1861,7 +1861,7 @@ export class InteriorKit {
     // away) up to eight copies of a weapon model at load time.
     const maker = this.gunCache();
     for (const [lx, lz, yaw] of spots) {
-      if (!this._clearOfWalls(built, lx, lz, yaw)) continue;
+      if (!this._caseFits(built, lx, lz, yaw)) continue;
       const g = this._put(built, maker, lx, lz, { yaw });
       if (!g) continue;
       this.w.registerGunCache(g, maker, built.spec);
@@ -1870,10 +1870,24 @@ export class InteriorKit {
     return false;
   }
 
-  /** Would the gun case at this canonical spot pass through a wall? Outer
-   *  walls are a bounds test in the canonical frame; partitions are stored in
-   *  the building-local frame, so the footprint is mapped there to meet them. */
-  _clearOfWalls(built, lx, lz, yaw) {
+  /**
+   * Is this canonical spot somewhere the gun case may actually go?
+   *
+   * Three ways it can fail. It can run through an OUTER WALL, which is a
+   * bounds test in the canonical frame. It can run through an INTERIOR
+   * PARTITION — those are stored in the building-local frame, so the footprint
+   * is mapped there to meet them, and the doorway gap counts as part of the
+   * line because a case standing in it seals the only way through.
+   *
+   * And it can land on the room's INDOOR SPAWN POINT, which every enterable
+   * building registers at local (0, -d/4) — the middle of the back room, which
+   * is exactly where a case laid along the back wall wants to be. A zombie
+   * that streams in there arrives inside a solid box and has to squeeze itself
+   * out of it before it can go anywhere, which is a route that sometimes does
+   * not finish. Nothing else in the room can bury that point, because nothing
+   * else in the room is placed by name — this case is.
+   */
+  _caseFits(built, lx, lz, yaw) {
     const spec = built.spec;
     const c = this._canon(spec);
     // Two frames, two rotations: in the canonical frame the case is turned by
@@ -1894,6 +1908,12 @@ export class InteriorKit {
         : { minX: p.at - band, maxX: p.at + band, minZ: p.from, maxZ: p.to };
       if (Math.min(mx + hx, a.maxX) > Math.max(mx - hx, a.minX)
         && Math.min(mz + hz, a.maxZ) > Math.max(mz - hz, a.minZ)) return false;
+    }
+    // ...and the spawn point, in world coordinates, where they already are.
+    const w = local2world(spec, spec.rot || 0, mx, mz);
+    const ROOM = 0.6;                    // somewhere to stand, not just to fit
+    for (const p of built.spawnPoints ?? []) {
+      if (Math.abs(p.x - w.x) < hx + ROOM && Math.abs(p.z - w.z) < hz + ROOM) return false;
     }
     return true;
   }

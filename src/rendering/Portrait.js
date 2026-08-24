@@ -227,6 +227,7 @@ function keyGreen(img) {
   const near = (i) => d[i + 1] - Math.max(d[i], d[i + 2]) >= 30
     && Math.abs(d[i] - key[0]) < 60
     && Math.abs(d[i + 1] - key[1]) < 60 && Math.abs(d[i + 2] - key[2]) < 60;
+
   const seen = new Uint8Array(w * h);
   const stack = [];
   for (let x = 0; x < w; x++) { stack.push(x, 0, x, h - 1); }
@@ -242,9 +243,68 @@ function keyGreen(img) {
     stack.push(x + 1, y, x - 1, y, x, y + 1, x, y - 1);
   }
 
-  // Four layers rather than three: these are soft-edged 512px renders, so the
-  // blend into the field runs a texel wider than a pixel-art sheet's does.
-  unmatteFringe(d, w, h, key, 4);
+  /**
+   * EIGHT layers, not four — and that number is the whole of the white-edge
+   * fix.
+   *
+   * These are not pixel art with a one-texel blend into the backdrop. They are
+   * soft 512px renders whose subject carries a light feathered edge, so the
+   * ramp from field to art runs FIVE to SEVEN texels: a pale, barely-green
+   * band that the flood cannot take (it is nowhere near green enough to pass
+   * the dominance test) and that four layers of unmatting cannot reach either.
+   * Worse than not reaching it: the outermost texels of that ramp then sit
+   * outside the fringe, get taken for core art, and become the colour the
+   * fringe is solved AGAINST — so the whole band was rebuilt in its own washed
+   * green and drawn at full opacity. That is the pale outline round the hair
+   * and the shoulders, and it was always there; the green tube simply hid it,
+   * while the amber and red tubes of the hurt and critical heads draw it.
+   *
+   * Widening the band to eight puts real hair behind every rim texel, which is
+   * what the solve needs to recover a true colour and a true coverage. The
+   * thin-feature guard inside unmatteFringe is what keeps that safe: anything
+   * with no core behind it is left alone rather than thinned away.
+   */
+  unmatteFringe(d, w, h, key, 8);
+  despillEdge(d, w, h, 3);
   ctx.putImageData(data, 0, 0);
   return c;
+}
+
+/**
+ * Take the green back out of whatever is left standing at the silhouette.
+ *
+ * Undoing the matte recovers a rim texel's true colour from the core art
+ * behind it, but only where there IS core art behind it — on a jagged, hairy
+ * edge some texels have nothing but more rim in every inward direction, and
+ * those keep the colour the field gave them. One survivor is invisible; a
+ * chain of them is a green pencil line round the head.
+ *
+ * This is the standard chroma-key despill and it is applied ONLY inside a
+ * three-texel band along the edge, so nothing green in the art itself is
+ * touched: no texel there may be greener than the strongest of its own red and
+ * blue, which leaves a spilled texel neutral rather than lit, and leaves an
+ * unspilled one exactly as it was.
+ */
+function despillEdge(d, w, h, reach) {
+  const n = w * h;
+  let band = new Uint8Array(n);
+  for (let p = 0; p < n; p++) if (!d[p * 4 + 3]) band[p] = 1;
+  for (let k = 0; k < reach; k++) {
+    const next = band.slice();
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const p = y * w + x;
+        if (band[p]) continue;
+        if ((x > 0 && band[p - 1]) || (x < w - 1 && band[p + 1])
+          || (y > 0 && band[p - w]) || (y < h - 1 && band[p + w])) next[p] = 1;
+      }
+    }
+    band = next;
+  }
+  for (let p = 0; p < n; p++) {
+    const i = p * 4;
+    if (!band[p] || !d[i + 3]) continue;
+    const cap = Math.max(d[i], d[i + 2]) + 6;
+    if (d[i + 1] > cap) d[i + 1] = cap;
+  }
 }

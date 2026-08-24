@@ -56,6 +56,32 @@ export const ADVANCED_SHARE = 0.02;
 // up well before the later heat/surge gates ever engage.
 export const HORDE_PUSH_GATE = 100;
 const HORDE_PUSH_SPAN = 1200;   // kills over which the push climbs 0 → 1 past the gate
+// ...and a second, HARDER step on the same standard horde, twenty-five kills
+// later. The push above is a gentle lean on a player who has just found their
+// feet; this one is the horde arriving in numbers. It is deliberately the
+// steepest ramp in the file — it fattens every pulse, shortens the gap between
+// pulses and lifts the concurrent cap by more than everything else combined —
+// and it climbs over a short span, so the difference between 125 kills and 400
+// is something the player can feel rather than something a spreadsheet can.
+// The wave ramps keep working on top of it exactly as before: this raises the
+// floor the per-wave escalation then builds on.
+export const HORDE_RAMP_GATE = 125;
+const HORDE_RAMP_SPAN = 700;    // kills over which the ramp climbs 0 → 1 past the gate
+/**
+ * How many bodies the natural spawner may have on the field at once, ever.
+ *
+ * The ramps above multiply: heat, surge, the push, the ramp and the wave-clock
+ * escalation all lift the concurrent cap, and past a few thousand kills their
+ * sum is a number that has nothing to do with what the renderer and the AI can
+ * carry. This is the hard stop on the stream — the director simply stops
+ * pulsing while this many of its own zombies are alive.
+ *
+ * It is NOT a limit on how many NPCs may EXIST. Anything placed by something
+ * other than the spawn director — the console, a scripted set-piece — is
+ * outside this count and can push the field past it; the point is only that
+ * the natural stream cannot be the thing that does.
+ */
+export const NATURAL_SPAWN_CAP = 200;
 // The Spitter (ranged dual-pistol enemy) only starts spawning once the player
 // has made this many kills, then joins the table with a small, growing share.
 export const SPITTER_KILL_GATE = 100;
@@ -114,6 +140,14 @@ export class WaveSystem {
   get hordePush() { return Math.min(1, Math.max(0, (this.score.kills - HORDE_PUSH_GATE) / HORDE_PUSH_SPAN)); }
 
   /**
+   * The 125-kill ramp: 0 below HORDE_RAMP_GATE, climbing to 1 over
+   * HORDE_RAMP_SPAN kills past it. See the constant — this is the one that
+   * turns the trickle into a horde, and it is capped by NATURAL_SPAWN_CAP
+   * rather than by arithmetic.
+   */
+  get hordeRamp() { return Math.min(1, Math.max(0, (this.score.kills - HORDE_RAMP_GATE) / HORDE_RAMP_SPAN)); }
+
+  /**
    * Wave-clock escalation: 0 through wave 6, climbing to 1 by wave 14. Unlike
    * heat / surge / hordePush this does not care how many kills are banked, so
    * a player who is clearing waves slowly still feels the pressure build. It
@@ -128,32 +162,41 @@ export class WaveSystem {
     return Math.round(Math.min(320, base * (1 + this.heat * 0.6 + this.progress * 2)));
   }
 
-  /** Seconds between spawn pulses — falls with the wave, progress, heat and the
-   *  post-400-kill surge (which drops the floor so pulses can come faster). */
+  /** Seconds between spawn pulses — falls with the wave, progress, the 125-kill
+   *  ramp, heat and the post-400-kill surge (which drops the floor so pulses
+   *  can come faster). */
   spawnInterval() {
     // Past wave 6 each further wave shaves a little more off than the one
     // before it, so the ramp itself ramps.
     const perWave = 0.08 + this.heat * 0.05 + this.escalation * 0.02;
-    const floor = 0.3 - this.escalation * 0.04;
+    const floor = 0.3 - this.escalation * 0.04 - this.hordeRamp * 0.06;
     return Math.max(floor, 2.1 - this.wave * perWave - this.progress * 0.8
-      - this.heat * 0.7 - this.surge * 0.6 - this.escalation * 0.3);
+      - this.heat * 0.7 - this.surge * 0.6 - this.escalation * 0.3
+      - this.hordeRamp * 0.55);
   }
 
   /** Zombies per spawn pulse — a bigger trickle once the standard horde push
-   *  engages past ~100 kills, bigger again as the horde heats up, and bigger
-   *  still once the surge kicks in past ~400 kills. */
+   *  engages past ~100 kills, a markedly bigger one past the 125-kill ramp,
+   *  bigger again as the horde heats up, and bigger still once the surge kicks
+   *  in past ~400 kills. */
   batchSize() {
-    return 2 + Math.round(this.hordePush * 3) + Math.round(this.heat * 3)
+    return 2 + Math.round(this.hordePush * 3) + Math.round(this.hordeRamp * 5)
+      + Math.round(this.heat * 3)
       + Math.round(this.surge * 3) + Math.round(this.escalation * 2)
       + ((Math.random() * 4) | 0);
   }
 
-  /** Concurrent-zombie cap — lifts with the post-100-kill horde push, again with
-   *  heat, and again with the post-400-kill surge, so the thicker spawn stream
-   *  always has room to stay on the field. */
+  /** Concurrent-zombie cap — lifts with the post-100-kill horde push, hard with
+   *  the 125-kill ramp, again with heat, and again with the post-400-kill
+   *  surge, so the thicker spawn stream always has room to stay on the field.
+   *  The spawner clamps whatever comes out of here to NATURAL_SPAWN_CAP. */
   activeCap() {
-    return Math.round(55 + this.hordePush * 15 + this.heat * 22 + this.surge * 22
-      + this.escalation * 14);
+    // Sized so that everything at full tilt lands just PAST the hard cap: the
+    // late-game field is meant to be the two hundred bodies NATURAL_SPAWN_CAP
+    // allows, with the cap doing the stopping, rather than arithmetic quietly
+    // topping out somewhere under it and the limiter never meaning anything.
+    return Math.round(55 + this.hordePush * 15 + this.hordeRamp * 75
+      + this.heat * 22 + this.surge * 22 + this.escalation * 14);
   }
 
   typeWeights() {

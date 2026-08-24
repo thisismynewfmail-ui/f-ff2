@@ -710,9 +710,8 @@ html, body {
    NOTICE — the incoming-transmission readout, top right.
    Built from the same parts as the console bar so it reads as another
    instrument bolted to the rig rather than as a floating subtitle:
-   scratched gunmetal chassis, corner screws, a stencil header with a
-   live lamp, a green CRT inset behind scanlines, and a depletion bar
-   that shows exactly how long the message has left.
+   scratched gunmetal chassis, corner screws and a green CRT inset
+   behind scanlines, with the message teletyping onto the tube.
    =================================================================== */
 #notice {
   position: absolute; top: 18px; right: 18px; z-index: 26;
@@ -743,21 +742,7 @@ html, body {
   100% { opacity: 0; transform: translateX(10px); }
 }
 
-/* header: lamp, stencil label, carrier dots */
-.notice-head {
-  display: flex; align-items: center; gap: 6px;
-  /* side padding clears the corner screws so the lamp is never crowded
-     against a fixing */
-  padding: 0 11px 5px; min-height: 11px;
-}
-.notice-lamp {
-  width: 7px; height: 7px; border-radius: 50%; flex: 0 0 auto;
-  background: radial-gradient(circle at 35% 30%, #ffd97a, #e0a020 60%, #6b4a10);
-  box-shadow: 0 0 6px rgba(224,168,32,0.85), inset 0 0 2px rgba(0,0,0,0.6);
-}
-#notice.on .notice-lamp { animation: noticeLamp 1.15s steps(2, end) infinite; }
-@keyframes noticeLamp { 0%, 55% { opacity: 1; } 56%, 100% { opacity: 0.35; } }
-/* the green CRT the message actually prints on */
+/* the green CRT the message actually prints on — the whole panel now */
 .notice-crt {
   position: relative; overflow: hidden; min-height: 31px;
   background-color: var(--fo-recess); background-image: var(--tex-recess);
@@ -790,15 +775,13 @@ html, body {
 
 /* Plain inline flow, NOT flex: the block cursor has to sit against the last
    character it printed wherever that lands, and a long message has to wrap
-   under its own bullet. A flex row does neither — it pins the cursor to the
-   far edge and refuses to shrink the text below its one-line width. */
+   the full width of the tube. A flex row does neither — it pins the cursor to
+   the far edge and refuses to shrink the text below its one-line width. */
 .notice-line {
   font-size: 12px; line-height: 1.45; color: var(--fo-green);
   text-shadow: 0 0 5px rgba(64,240,64,0.5);
-  padding-left: 11px; text-indent: -11px;     /* hanging indent under the bullet */
   overflow-wrap: break-word;
 }
-.notice-bullet { color: var(--fo-green); margin-right: 4px; }
 .notice-cursor {
   color: #9bf09b; margin-left: 1px;
   animation: noticeCursor 0.62s steps(2, end) infinite;
