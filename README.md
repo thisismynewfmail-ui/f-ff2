@@ -434,13 +434,18 @@ There is deliberately no command that touches the kill counter — the
 - **Cockroach:** an AI-test critter on the same stack. It skitters and wanders,
   **hides inside buildings by day**, **roams outdoors at night**, and **darts
   away from the player** — but only a very short distance before settling.
-- **Sky & day/night:** a slow cycle colours the sky and fog, swings a sun and
+- **Sky & day/night:** a slow **eight-minute cycle — five minutes of daylight,
+  three of night** — colours the sky and fog, swings a sun and
   moon across the dome (the light warms by day and cools to moonlight at
   night), and drifts a handful of clouds overhead. The sun, moon and clouds are
   real low-poly, flat-shaded **3D geometry** (not sprites), depth-tested so the
   town's rooftops and walls correctly occlude them instead of bleeding through.
-  `time <0-24>` in the dev console jumps the clock; the cockroach reads
-  day/night from it.
+  Day and night are deliberately NOT the same length, so the cycle clock is
+  warped before it becomes a sun angle rather than the sun riding a plain sine
+  (which would always split the cycle in half); the clock tower in Old Town
+  Square and `time <0-24>` in the dev console both read the sun's angle, so
+  they agree with what is actually in the sky. The cockroach reads day/night
+  from it.
 - **Inventory (Tab):** a themed satchel for quest items such as keys. Opening
   frees the mouse for the UI and freezes the world; Tab (or a click outside the
   panel) closes it and
