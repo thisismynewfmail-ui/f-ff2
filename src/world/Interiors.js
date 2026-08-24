@@ -33,6 +33,10 @@ const FURNITURE_GAP = 0.12;
  *  Main St East, first lot inside the Eastgate gate. */
 const GUN_HOUSE = 'house01';
 
+/** Half-extents of the gun case's real footprint (case + folded lid + the
+ *  shell box beside it), once the assembly is centred on it. */
+const FOOT_HX = 0.91, FOOT_HZ = 0.54;
+
 /** Canonical-frame transform for a door side. cw/cd are the canonical
  *  width (door wall) and depth; m maps canonical -> building-local coords. */
 export function canonXform(w, d, door) {
@@ -1707,7 +1711,9 @@ export class InteriorKit {
    * disappear when it is taken (and come back when a run restarts).
    */
   gunCache() {
+    const root = new THREE.Group();
     const g = new THREE.Group();
+    root.add(g);
     const wood = this._mat('gunCaseWood', () => new THREE.MeshLambertMaterial({ color: 0x4a3524 }));
     const baize = this._mat('gunCaseBaize', () => new THREE.MeshLambertMaterial({ color: 0x2b4433 }));
     const brass = this._mat('gunCaseBrass', () => new THREE.MeshLambertMaterial({ color: 0xa98b3c }));
@@ -1803,8 +1809,19 @@ export class InteriorKit {
     glow.add(lamp);
     g.add(glow);
 
+    /**
+     * The case is NOT symmetric about the point it is built around: the lid
+     * folds back a whole case-depth behind it and the shells lie off its left
+     * end, so its true footprint runs x -0.98..+0.64 and z -0.65..+0.22 while
+     * its collider was centred on the origin. A placement that looked clear by
+     * the collider therefore buried the lid in the bedroom partition. Shifting
+     * the assembly onto the centre of its own footprint makes the anchor mean
+     * what every placement test assumes it means, and the collider below is
+     * then the real thing plus a hand's width.
+     */
+    g.position.set(0.17, 0, 0.215);
     return {
-      group: g, collide: [CW / 2 + 0.24, 0.16, CD + 0.12], live: true, gun,
+      group: root, collide: [FOOT_HX, 0.16, FOOT_HZ], live: true, gun,
       glow: { node: glow, discMat, shaftMat, motes, lamp },
     };
   }
@@ -1812,31 +1829,73 @@ export class InteriorKit {
   /**
    * Put the case down somewhere it actually fits.
    *
-   * Candidates are tried in order and _put refuses any that would land in the
-   * entry lane or inside a piece already in the room, so the case cannot end
-   * up inside the sofa however the house's plan came out (the plan is mirrored
-   * and re-anchored per building — see _house). The last resort is the middle
-   * of the floor, which is ugly and always legal.
+   * Every candidate lies ALONG a wall rather than across the room, with the
+   * open lid folding back into the floor space instead of into whatever is
+   * behind the case — a gun case left against a wall is how a gun case is
+   * left, and it is also the only orientation whose lid cannot end up inside
+   * masonry. Candidates are tried in order; _clearOfWalls rejects any that
+   * would put the footprint through an outer wall or through one of the
+   * house's interior partitions (the bedroom wall the case used to sit half
+   * inside), and _put rejects any that would land in the entry lane or inside
+   * a piece already in the room. The last resort is the middle of the floor,
+   * which is ugly and always legal.
    */
   _placeGunCache(built) {
     const c = this._canon(built.spec);
     const hw = c.cw / 2, hd = c.cd / 2;
+    const part = -hd + 3.1;                  // the bedroom wall (housePartitions)
+    const clear = 0.16 + FOOT_HZ + 0.2;      // half a wall + half the case + air
+    // [x, z, yaw] in the canonical frame. yaw 0 lays the case along X with the
+    // lid folding back toward -Z, yaw PI folds it back toward +Z.
     const spots = [
-      [-hw + 1.1, -0.6], [hw - 1.1, -0.6], [-hw + 1.1, 1.4], [hw - 1.1, 1.4],
-      [0, -hd + 3.7], [-1.6, -0.2], [1.6, -0.2], [0, 0],
+      [0.6, part - clear, 0],                // bedroom side of the bedroom wall
+      [-1.9, part - clear, 0],
+      [0.6, part + clear, Math.PI],          // main-room side of it
+      [-1.9, part + clear, Math.PI],
+      [0.6, -hd + 0.16 + FOOT_HZ + 0.2, Math.PI],   // under the far wall
+      [0, 0.4, 0],
     ];
     // Built ONCE and offered to each spot in turn. _put rejects a placement
     // before it touches the group, so a refused attempt leaves the maker
     // untouched and reusable — and the alternative is assembling (and throwing
     // away) up to eight copies of a weapon model at load time.
     const maker = this.gunCache();
-    for (const [lx, lz] of spots) {
-      const g = this._put(built, maker, lx, lz, { yaw: lx < 0 ? Math.PI / 2 : -Math.PI / 2 });
+    for (const [lx, lz, yaw] of spots) {
+      if (!this._clearOfWalls(built, lx, lz, yaw)) continue;
+      const g = this._put(built, maker, lx, lz, { yaw });
       if (!g) continue;
       this.w.registerGunCache(g, maker, built.spec);
       return true;
     }
     return false;
+  }
+
+  /** Would the gun case at this canonical spot pass through a wall? Outer
+   *  walls are a bounds test in the canonical frame; partitions are stored in
+   *  the building-local frame, so the footprint is mapped there to meet them. */
+  _clearOfWalls(built, lx, lz, yaw) {
+    const spec = built.spec;
+    const c = this._canon(spec);
+    // Two frames, two rotations: in the canonical frame the case is turned by
+    // yaw alone, and in the building-local frame the door's own quarter turn
+    // is on top of it.
+    const quarters = (a) => Math.abs(Math.round(a / (Math.PI / 2))) % 2;
+    const [cx, cz] = quarters(yaw) ? [FOOT_HZ, FOOT_HX] : [FOOT_HX, FOOT_HZ];
+    if (Math.abs(lx) + cx > c.cw / 2 - 0.24) return false;
+    if (Math.abs(lz) + cz > c.cd / 2 - 0.24) return false;
+    const [hx, hz] = quarters(yaw + c.yaw) ? [FOOT_HZ, FOOT_HX] : [FOOT_HX, FOOT_HZ];
+    const [mx, mz] = c.m(lx, lz);
+    for (const p of spec.partitions ?? []) {
+      // The whole line counts, gap included: standing a case in the gap blocks
+      // the only way through to the bedroom.
+      const band = 0.16 + 0.12;
+      const a = p.axis === 'x'
+        ? { minX: p.from, maxX: p.to, minZ: p.at - band, maxZ: p.at + band }
+        : { minX: p.at - band, maxX: p.at + band, minZ: p.from, maxZ: p.to };
+      if (Math.min(mx + hx, a.maxX) > Math.max(mx - hx, a.minX)
+        && Math.min(mz + hz, a.maxZ) > Math.max(mz - hz, a.minZ)) return false;
+    }
+    return true;
   }
 
   _tavern(b) {
