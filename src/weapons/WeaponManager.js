@@ -3,8 +3,8 @@ import { WEAPON_CONFIGS } from './WeaponConfigs.js';
 import { Weapon } from './Weapon.js';
 
 /**
- * Owns the five weapons, switching (keys 1-5 / wheel), reload input, the
- * sniper scope, and all hit resolution:
+ * Owns the weapons, switching (number keys / wheel), reload input, the sniper
+ * scope, and all hit resolution:
  *
  *  - hitscan rays against zombies (cylinder tests, headshot bonus, pierce),
  *    world geometry (AABBs + terrain march) and shootable secrets
@@ -13,6 +13,30 @@ import { Weapon } from './Weapon.js';
  * Accuracy counts one 'shot' per trigger pull; a pull that hits any zombie
  * counts as a hit (pellets don't inflate the numbers). Melee doesn't count.
  * Gunshots emit 'noise' events that draw the horde.
+ *
+ * ---------------------------------------------------------------------------
+ * THE BAYS ARE HANDED OUT IN THE ORDER THE RUN FINDS THINGS.
+ *
+ * A weapon's number key used to be written into its config, which meant every
+ * run of the game had the same six bays in the same order whether or not
+ * anything was in them — and with four of the six now waiting to be found,
+ * that is most of the rack reserved for weapons the player may never see. Walk
+ * into the arcade and take the Foundry Gun first and it went into bay 3
+ * because a table said 3, leaving bay 2 empty for a coachgun four streets
+ * back that the player may never go and get.
+ *
+ * So the rack is a LIST now, not a table: `order` holds weapon indices in the
+ * order the run acquired them, the starting loadout first and every find
+ * appended, and bay N is simply the Nth thing you own. Find the Foundry Gun
+ * before the coachgun and the Foundry Gun is 3 and the coachgun is 4.
+ *
+ * `order` is the only thing that decides a bay. `weapons` stays in config
+ * order forever, because that is the identity every other system indexes by —
+ * the view model's rigs, the ammo snapshots, the save file. `index` is a
+ * weapons index (which gun is in your hands); a SLOT is an index into `order`.
+ * The two are deliberately different types, and every method below says which
+ * one it takes.
+ * ---------------------------------------------------------------------------
  */
 export class WeaponManager {
   constructor(events, world, player, renderer) {
@@ -21,10 +45,13 @@ export class WeaponManager {
     this.player = player;
     this.renderer = renderer;
     this.weapons = WEAPON_CONFIGS.map((c) => new Weapon(c));
-    // A locked weapon is not in the run yet: it cannot be selected by key or
-    // wheel and its ARMS bay reads empty. Found weapons announce themselves.
-    this.unlocked = new Set(WEAPON_CONFIGS.filter((c) => !c.locked).map((c) => c.id));
-    this.index = 0;
+    // A weapon the run has not found is not in `order`: it cannot be selected
+    // by key or wheel, it holds no bay, and its place in the rack reads empty.
+    // Found weapons announce themselves and take the next bay along.
+    this.order = [];
+    this.unlocked = new Set();
+    this._setOrder(this._startingOrder());
+    this.index = this.order[0] ?? 0;
     this.switchTimer = 0;
     this.scoped = false;
     this._burstLeft = 0; // rifle alt-fire burst counter
@@ -32,13 +59,14 @@ export class WeaponManager {
 
     events.on('weapon:unlock', ({ id }) => {
       if (this.unlocked.has(id)) return;
-      this.unlocked.add(id);
       const i = this.weapons.findIndex((w) => w.config.id === id);
-      if (i >= 0) {
-        this.weapons[i].mag = this.weapons[i].config.magSize;
-        this.switchTo(i);
-        this.events.emit('weapon:menu:poke', { index: i });
-      }
+      if (i < 0) return;
+      // The bay it lands in is the bay it was FOUND in — the next one along.
+      this._setOrder([...this.order, i]);
+      this.weapons[i].mag = this.weapons[i].config.magSize;
+      const slot = this.order.length - 1;
+      this.switchTo(slot);
+      this.events.emit('weapon:menu:poke', { index: slot });
     });
 
     events.on('pickup', ({ type, amount }) => {
@@ -53,43 +81,78 @@ export class WeaponManager {
 
   get current() { return this.weapons[this.index]; }
 
-  /** Which weapons the run has found. Rides with a save (see Game). */
-  snapshotUnlocked() { return [...this.unlocked]; }
+  /** How many bays the rack has. Fixed: one per weapon in the game. */
+  get slotCount() { return this.weapons.length; }
+
+  /** Which bay the weapon in your hands is in (-1 if somehow none). */
+  get slot() { return this.order.indexOf(this.index); }
+
+  /** The bays the run starts with: the loadout, in config order. */
+  _startingOrder() {
+    const order = [];
+    WEAPON_CONFIGS.forEach((c, i) => { if (!c.locked) order.push(i); });
+    return order;
+  }
 
   /**
-   * Put the found-weapons set back exactly as it was.
+   * Set the rack. `order` is the source of truth for what the run owns and
+   * which bay each thing is in; `unlocked` is the same fact keyed by id, kept
+   * beside it because everything that asks "do I have the coachgun" asks by
+   * name rather than by bay.
+   */
+  _setOrder(order) {
+    this.order = order.slice();
+    this.unlocked = new Set(this.order.map((i) => this.weapons[i].config.id));
+    if (this.index !== undefined && !this.order.includes(this.index)) {
+      this.index = this.order[0] ?? 0;
+      this.events?.emit('weapon:switch', { weapon: this.current });
+    }
+  }
+
+  /** Which weapons the run has found, IN THE ORDER IT FOUND THEM. Rides with
+   *  a save (see Game) — the order is half the state, because it is what the
+   *  number keys are. */
+  snapshotUnlocked() { return this.order.map((i) => this.weapons[i].config.id); }
+
+  /**
+   * Put the rack back exactly as it was.
    *
    * Deliberately NOT a burst of 'weapon:unlock' events: each of those switches
    * the player onto the weapon and pokes the arms bay, which is right when you
    * pick something up off the floor and absurd when a saved run is being
    * rebuilt behind a loading screen. The magazines come from the ammo snapshot
    * that is restored alongside this.
+   *
+   * The starting loadout always leads whatever the save says, so a save
+   * written by an older build — or a corrupted one — cannot leave the run
+   * without a pistol.
    */
   restoreUnlocked(ids) {
     if (!Array.isArray(ids) || !ids.length) return;
-    const valid = new Set(WEAPON_CONFIGS.map((c) => c.id));
-    this.unlocked = new Set(ids.filter((id) => valid.has(id)));
-    for (const c of WEAPON_CONFIGS) if (!c.locked) this.unlocked.add(c.id);
-    if (!this.has(this.index)) {
-      const first = this.weapons.findIndex((_, i) => this.has(i));
-      if (first >= 0) { this.index = first; this.events.emit('weapon:switch', { weapon: this.current }); }
+    const byId = new Map(this.weapons.map((w, i) => [w.config.id, i]));
+    const order = this._startingOrder();
+    for (const id of ids) {
+      const i = byId.get(id);
+      if (i !== undefined && !order.includes(i)) order.push(i);
     }
+    this._setOrder(order);
   }
 
-  /** Back to the pristine loadout — everything found this run is lost again. */
+  /** Back to the pristine loadout — everything found this run is lost again,
+   *  and so is the order it was found in. */
   resetUnlocked() {
-    this.unlocked = new Set(WEAPON_CONFIGS.filter((c) => !c.locked).map((c) => c.id));
-    this.index = 0;
+    this.index = 0;                       // _setOrder re-seats it and announces
+    this._setOrder(this._startingOrder());
     this.events.emit('weapon:switch', { weapon: this.current });
   }
 
-  has(i) {
-    const w = this.weapons[i];
-    return !!w && this.unlocked.has(w.config.id);
-  }
+  /** Is there anything in this BAY? */
+  has(slot) { return this.order[slot] !== undefined; }
 
-  switchTo(i) {
-    if (i === this.index || i < 0 || i >= this.weapons.length || !this.has(i)) return;
+  /** Equip whatever is in this BAY. */
+  switchTo(slot) {
+    const i = this.order[slot];
+    if (i === undefined || i === this.index) return;
     this.current.cancelReload();
     this.setScope(false);
     this._burstLeft = 0;
@@ -114,22 +177,20 @@ export class WeaponManager {
 
     // switching (number keys + wheel). Poke the weapon menu into view on any
     // slot input, even when the selection doesn't change.
-    for (let i = 0; i < this.weapons.length; i++) {
-      if (input.wasPressed('Digit' + (i + 1)) && this.has(i)) {
-        this.switchTo(i);
-        this.events.emit('weapon:menu:poke', { index: i });
+    for (let s = 0; s < this.slotCount; s++) {
+      if (input.wasPressed('Digit' + (s + 1)) && this.has(s)) {
+        this.switchTo(s);
+        this.events.emit('weapon:menu:poke', { index: s });
       }
     }
-    if (input.wheelDelta !== 0) {
-      // step over anything not found yet rather than stalling on it
+    // The wheel walks the RACK, which only holds things the run owns — so
+    // there is nothing to step over any more, and the wheel never stalls on
+    // a bay that is waiting for a weapon out in the town.
+    if (input.wheelDelta !== 0 && this.order.length) {
       const step = input.wheelDelta > 0 ? 1 : -1;
-      let next = this.index;
-      for (let n = 0; n < this.weapons.length; n++) {
-        next = (next + step + this.weapons.length) % this.weapons.length;
-        if (this.has(next)) break;
-      }
+      const next = (this.slot + step + this.order.length) % this.order.length;
       this.switchTo(next);
-      this.events.emit('weapon:menu:poke', { index: this.index });
+      this.events.emit('weapon:menu:poke', { index: next });
     }
 
     // reload (full, or the faster quick-tap variant when the mag isn't dry)
@@ -349,25 +410,44 @@ export class WeaponManager {
   }
 
   /** HUD snapshot for the ammo counter + weapon menu. */
+  /**
+   * The rack, BAY BY BAY — not weapon by weapon.
+   *
+   * One entry per bay, always `slotCount` of them so the grid keeps its shape,
+   * in the order the run found things. A bay past the end of the rack is a
+   * bay the run has not filled yet: it carries no id, which is what tells the
+   * HUD to draw it blank rather than as a dimmed preview of a weapon that is
+   * still lying in a case somewhere.
+   */
   hudState() {
-    return this.weapons.map((w, i) => ({
-      id: w.config.id,
-      name: w.config.name,
-      flavor: w.config.flavor,
-      altLabel: w.config.altLabel,
-      fireMode: w.config.fireMode ?? (w.config.melee ? 'MELEE' : w.config.auto ? 'AUTO' : 'SINGLE'),
-      slot: w.config.slot,
-      active: i === this.index,
-      mag: w.mag,
-      reserve: w.reserve,
-      magSize: w.config.magSize,
-      reloading: w.reloading,
-      reloadFrac: w.reloading ? 1 - w.reloadLeft / w.config.reloadTime : 0,
-      // an energy cell shows its refill on the same line a reload uses
-      energy: w.isEnergy,
-      chargeFrac: w.chargeFrac,
-      locked: !this.unlocked.has(w.config.id),
-    }));
+    const out = [];
+    for (let s = 0; s < this.slotCount; s++) {
+      const i = this.order[s];
+      if (i === undefined) {
+        out.push({ id: null, slot: s + 1, locked: true, active: false, mag: 0, reserve: 0 });
+        continue;
+      }
+      const w = this.weapons[i];
+      out.push({
+        id: w.config.id,
+        name: w.config.name,
+        flavor: w.config.flavor,
+        altLabel: w.config.altLabel,
+        fireMode: w.config.fireMode ?? (w.config.melee ? 'MELEE' : w.config.auto ? 'AUTO' : 'SINGLE'),
+        slot: s + 1,
+        active: i === this.index,
+        mag: w.mag,
+        reserve: w.reserve,
+        magSize: w.config.magSize,
+        reloading: w.reloading,
+        reloadFrac: w.reloading ? 1 - w.reloadLeft / w.config.reloadTime : 0,
+        // an energy cell shows its refill on the same line a reload uses
+        energy: w.isEnergy,
+        chargeFrac: w.chargeFrac,
+        locked: false,
+      });
+    }
+    return out;
   }
 }
 

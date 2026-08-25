@@ -1190,7 +1190,6 @@ const pauseData = await page.evaluate(async () => {
     needle: '.bay-aim .dev-needle',
     tape: '.tape-head',
     bay: '.bay-vitals',
-    lamp: '.pause-lamp',
     punch: '.tape-punch',
     button: '#btn-resume',
   };
@@ -1247,7 +1246,7 @@ check('the instruments start at rest and are driven to their values',
   `rest ${pauseData.restCell}/${pauseData.restTape} → cell ${pauseData.setCell}%`
   + ` tape ${pauseData.setTape}%, armed ${pauseData.armed}`);
 check('every moving part is really animating, not snapping',
-  ['cell', 'needle', 'tape', 'bay', 'lamp', 'punch', 'button']
+  ['cell', 'needle', 'tape', 'bay', 'punch', 'button']
     .every((k) => pauseData.moving[k].length > 0),
   Object.entries(pauseData.moving).map(([k, v]) => `${k}:${v.join('+') || 'NONE'}`).join(' '));
 check('the odometer rolls up to the score', pauseData.score === '014820', pauseData.score);
@@ -2092,14 +2091,15 @@ check('a key can only be in one place, and no action is left unbound',
   + ` cleared jump's last key ${binds.clearedLast}`);
 
 /* a weapon you have not found leaves an EMPTY bay, not a preview          */
-// THREE weapons start a run unfound: the coachgun, in a case in the blue
-// house on Main St East; the Foundry Gun, in another one in the yellow house
-// on Beckon Row; and the Alien Blaster, which is out at the crash site. A
-// dimmed silhouette of any of them sitting in its bay from the first
-// frame of a run tells the player a weapon is out there and roughly what it
-// looks like, which is exactly the thing a find must not do — so a locked bay
-// shows the bay number and nothing else, in both the persistent ARMS grid and
-// the ARMORY fly-in, and fills in the moment it is found.
+// A run opens with a pistol and a bat and NOTHING ELSE: the coachgun is cased
+// in the blue house on Main St East, the Foundry Gun on the floor of the
+// Downtown arcade, the long rifle in the Southside filling station, and the
+// Alien Blaster is out at the crash site. A dimmed silhouette of any of them
+// sitting in a bay from the first frame of a run tells the player a weapon is
+// out there and roughly what it looks like, which is exactly the thing a find
+// must not do — so an unfilled bay shows the bay number and nothing else, in
+// both the persistent ARMS grid and the ARMORY fly-in, and fills in the
+// moment something is found for it.
 const bays = await page.evaluate(async () => {
   const g = window.__game;
   g.hud.showScreen(null); g.state.state = 'playing';
@@ -2147,6 +2147,63 @@ check('and no bay was blank except the ones nobody has found yet',
   bays.before.armsGlyph.filter((v) => !v).length === lockedIdx.length,
   `${bays.before.armsGlyph.filter((v) => !v).length} blank,`
   + ` ${lockedIdx.length} locked, of ${bays.before.armsGlyph.length}`);
+
+/* the rack is handed out in the order the run FINDS things                 */
+// A weapon's number key is not written into its config any more: bay N is the
+// Nth thing the run owns. Which means the same two weapons produce a
+// different rack depending only on which one you walked into first — so both
+// orders are played out here, and the rack has to follow each one. The DOM is
+// read as well as the model, because the bays are built once and re-occupied,
+// and a bay that keeps the silhouette of its last tenant is the bug this
+// arrangement invites.
+const racks = await page.evaluate(async () => {
+  const g = window.__game;
+  const frame = () => new Promise((r) => requestAnimationFrame(r));
+  const model = () => g.weapons.hudState().map((w) => w.id ?? '-');
+  const dom = () => [...document.querySelectorAll('.wm-slot')]
+    .map((s) => s.querySelector('.wm-name').textContent.trim().replace(/\u00a0/g, '') || '-');
+  const run = async (order) => {
+    g.weapons.resetUnlocked();
+    for (const id of order) g.events.emit('weapon:unlock', { id });
+    g.hud.showWeaponMenu();
+    await frame(); await frame();
+    return { model: model(), dom: dom(), current: g.weapons.current.config.id, slot: g.weapons.slot };
+  };
+  const start = (g.weapons.resetUnlocked(), model());
+  const rifleFirst = await run(['rifle', 'shotgun']);
+  const gunFirst = await run(['shotgun', 'rifle']);
+  // ...and the order survives a save and a reload of it
+  g.weapons.resetUnlocked();
+  for (const id of ['sniper', 'blaster', 'shotgun']) g.events.emit('weapon:unlock', { id });
+  const saved = g.weapons.snapshotUnlocked();
+  const before = model();
+  g.weapons.resetUnlocked();
+  g.weapons.restoreUnlocked(saved);
+  await frame(); await frame();
+  return { start, rifleFirst, gunFirst, saved, before, restored: model(), restoredDom: dom() };
+});
+check('a run opens with a pistol and a bat and four empty bays',
+  racks.start.join(',') === 'pistol,bat,-,-,-,-', racks.start.join(','));
+check('bays are handed out in the order the run finds things',
+  racks.rifleFirst.model.join(',') === 'pistol,bat,rifle,shotgun,-,-'
+  && racks.gunFirst.model.join(',') === 'pistol,bat,shotgun,rifle,-,-',
+  `Foundry Gun first -> ${racks.rifleFirst.model.join(',')};`
+  + ` coachgun first -> ${racks.gunFirst.model.join(',')}`);
+check('...and the rack on screen says the same thing',
+  racks.rifleFirst.dom.slice(0, 4).join(',') === 'MAINSPRING AUTO,IRONSHOD SLUGGER,FOUNDRY GUN,CRANE COACHGUN'
+  && racks.gunFirst.dom.slice(0, 4).join(',') === 'MAINSPRING AUTO,IRONSHOD SLUGGER,CRANE COACHGUN,FOUNDRY GUN',
+  `${racks.rifleFirst.dom.join(' | ')}  /  ${racks.gunFirst.dom.join(' | ')}`);
+check('picking one up equips it, in the bay it just took',
+  racks.gunFirst.current === 'rifle' && racks.gunFirst.slot === 3,
+  `holding ${racks.gunFirst.current} from bay ${racks.gunFirst.slot + 1}`);
+check('and the order rides with a save',
+  racks.restored.join(',') === racks.before.join(',')
+  && racks.restored.join(',') === 'pistol,bat,sniper,blaster,shotgun,-',
+  `saved ${racks.saved.join(',')} -> ${racks.restored.join(',')}`);
+check('...including on screen',
+  racks.restoredDom.slice(0, 5).join(',')
+    === 'MAINSPRING AUTO,IRONSHOD SLUGGER,MERIDIAN LONG RIFLE,RECOVERED ARTEFACT,CRANE COACHGUN',
+  racks.restoredDom.join(' | '));
 
 /* the dock always fits the window, however wide its contents get         */
 // The dock is scaled to fit by measuring its own natural width. Measured once

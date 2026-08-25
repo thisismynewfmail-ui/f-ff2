@@ -182,19 +182,19 @@ const r = await page.evaluate(async () => {
   }
 
   // --- 3c. the weapons that are out in the town ---------------------------
-  // Neither shoulder weapon is in the starting loadout: each is in a case in
-  // a named house, which is three ways to go wrong at once. It can fail to
+  // No shoulder weapon is in the starting loadout: each is in a case in a
+  // named building, which is three ways to go wrong at once. It can fail to
   // place at all (a weapon the run can never find); it can place with the
-  // folded lid or the pool of light around it INSIDE a wall; or it can land
-  // behind the partition instead of in the room the front door opens into,
-  // which is where the player is actually looking.
+  // folded lid or the cloud of embers over it INSIDE a wall; or, in a
+  // building with a back room, it can land behind the partition instead of in
+  // the room the front door opens into, which is where the player looks.
   const { WEAPON_CACHES } = await import('/src/world/Interiors.js');
   const THREE0 = await import('/lib/three.module.js');
   out.caches = [];
   for (const cfg of WEAPON_CACHES) {
     const c = w.weaponCaches.get(cfg.id);
     if (!c) { out.caches.push({ id: cfg.id, missing: true }); continue; }
-    const spec = w.buildingSpecs.find((b) => b.name === cfg.house);
+    const spec = w.buildingSpecs.find((b) => b.name === cfg.building);
     // The whole lit assembly, glow included — that is what must be in the room.
     // Measured to the INNER face of the shell, not to the footprint line: the
     // wall has thickness, and a pool of light half inside the plaster is
@@ -222,7 +222,7 @@ const r = await page.evaluate(async () => {
     }
     // Which room is it in? The partition runs across the far end, so "in
     // front of it" is the side the front door is on.
-    const door = w.built.get(cfg.house)?.doorWorld;
+    const door = w.built.get(cfg.building)?.doorWorld;
     let frontRoom = true;
     for (const p of spec.partitions ?? []) {
       const A = l2w(spec, ...(p.axis === 'x' ? [p.from, p.at] : [p.at, p.from]));
@@ -234,7 +234,7 @@ const r = await page.evaluate(async () => {
       if (Math.sign(mid - at) !== Math.sign(doorSide - at)) frontRoom = false;
     }
     out.caches.push({
-      id: cfg.id, house: cfg.house, frontRoom,
+      id: cfg.id, building: cfg.building, frontRoom, partitioned: !!(spec.partitions ?? []).length,
       shell: +clearOfShell.toFixed(3), part: +clearOfParts.toFixed(3),
       size: `${(bb.max.x - bb.min.x).toFixed(2)}x${(bb.max.z - bb.min.z).toFixed(2)}`,
     });
@@ -805,10 +805,11 @@ check('no building footprints overlap', r.overlaps.length === 0, r.overlaps.slic
 check('every doorway has a clear approach', r.blockedDoors.length === 0, r.blockedDoors.slice(0, 5).join(', '));
 check('nothing stands in a doorway INSIDE a building', r.blockedGaps.length === 0,
   `${r.blockedGaps.length} of ${r.doorways} interior doorways blocked: ` + r.blockedGaps.slice(0, 6).join(', '));
-check('both found weapons are lying in their houses, in the room you walk into',
-  r.caches.length === 2 && r.caches.every((c) => !c.missing && c.frontRoom),
-  r.caches.map((c) => `${c.id}: ${c.missing ? 'NOT PLACED' : `${c.house}, front room ${c.frontRoom}`}`).join(' | '));
-check('no case has its lid or its glow inside a wall',
+check('every found weapon is lying in its building, in the room you walk into',
+  r.caches.length === 3 && r.caches.every((c) => !c.missing && c.frontRoom),
+  r.caches.map((c) => `${c.id}: ${c.missing ? 'NOT PLACED'
+    : `${c.building}${c.partitioned ? `, front room ${c.frontRoom}` : ' (one room)'}`}`).join(' | '));
+check('no case has its lid or its embers inside a wall',
   r.caches.every((c) => !c.missing && c.shell > 0.05 && c.part > 0.05),
   r.caches.map((c) => `${c.id} ${c.size}m — ${c.shell}m off the shell, ${c.part}m off the partition`).join(' | '));
 check('no adjacent buildings share a wall texture', r.adjacentSame === 0, `${r.adjacentSame} clashes`);

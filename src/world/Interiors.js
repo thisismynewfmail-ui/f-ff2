@@ -35,33 +35,48 @@ const GAP_LANE = 0.85;
 const FURNITURE_GAP = 0.12;
 
 /**
- * THE TWO WEAPONS THAT ARE NOT IN THE STARTING LOADOUT.
+ * THE THREE WEAPONS THAT ARE NOT IN THE STARTING LOADOUT.
  *
- * A run begins with a pistol and a bat, and the two shoulder weapons are out
- * in the town in the houses they belonged to. That is the whole point of them
- * being here rather than on the wheel: the first fifty kills are a pistol run,
- * and each of these is a reward for going somewhere.
+ * A run begins with a pistol and a bat. Every shoulder weapon in the game is
+ * out in the town, in the building somebody left it in, and each one is a
+ * district further out than the last:
  *
- *   coachgun    the blue clapboard house on the north side of Main St East,
- *               the first lot inside the Eastgate gate
- *   Foundry Gun the yellow clapboard house on Beckon Row, the back lane
- *               behind Main St — four streets further in
+ *   coachgun    Eastgate, the blue clapboard house on the north side of
+ *               Main St East — the first lot inside the district gate
+ *   Foundry Gun Downtown, on the floor of the arcade on the south strip,
+ *               where somebody put it down and did not come back for it
+ *   long rifle  Southside Industrial, in the filling station out on the road
  *
- * Both are laid out in the SAME case by the same code (see weaponCase), so
- * neither can end up clipped into a wall while the other is fine.
+ * That is the whole point of them being here rather than on the wheel: the
+ * first fifty kills are a pistol run, and every one of these is a reward for
+ * getting further out than you have been.
+ *
+ * `building` is a building NAME, not a use — these are the only three things
+ * in the town placed by name. All three are laid out in the SAME case by the
+ * same code (see weaponCase), so none of them can end up clipped into a wall
+ * while the others are fine, and `spot` is an optional hand-picked canonical
+ * position for a room whose floor plan the generic candidates do not suit.
  */
 export const WEAPON_CACHES = [
   {
-    id: 'shotgun', house: 'house01', loose: 'shells',
+    id: 'shotgun', building: 'house01', loose: 'shells',
     prompt: 'Take the coachgun [E]',
     ammo: { type: 'ammo_shotgun', amount: 16, label: 'Shotgun shells' },
     found: 'A break-action coachgun, still oiled, and sixteen shells loose in the case. Somebody kept this well.',
   },
   {
-    id: 'rifle', house: 'house11', loose: 'drums',
+    // The arcade has no back room to lay a case along, so this one is where a
+    // case gets left in a room like that: open floor, in front of the machines.
+    id: 'rifle', building: 'arcade', loose: 'drums', spot: [1.2, -1.3, Math.PI],
     prompt: 'Take the Foundry Gun [E]',
     ammo: { type: 'ammo_rifle', amount: 120, label: 'Rifle rounds' },
-    found: 'A Foundry Gun, cased on the boards with two full pan drums beside it. Whoever kept this was expecting company.',
+    found: 'A Foundry Gun, cased on the arcade floor with two full pan drums beside it. Somebody put this down and did not come back.',
+  },
+  {
+    id: 'sniper', building: 'gasShop', loose: 'clips',
+    prompt: 'Take the long rifle [E]',
+    ammo: { type: 'ammo_sniper', amount: 15, label: 'Rifle clips' },
+    found: 'A Meridian long rifle, cased on the floor of the filling station with three clips beside it. Whoever was watching this road was watching it a long way off.',
   },
 ];
 
@@ -160,7 +175,7 @@ export class InteriorKit {
     fn.call(this, built);
     // The two things in the town placed by NAME rather than by use: the
     // shoulder weapons, each in a particular house (see WEAPON_CACHES).
-    const cache = WEAPON_CACHES.find((c) => c.house === built.spec.name);
+    const cache = WEAPON_CACHES.find((c) => c.building === built.spec.name);
     if (cache) this._placeWeaponCache(built, cache);
     mergeStatic(this._bucket);
     this.w.group.add(this._bucket);
@@ -1777,6 +1792,38 @@ export class InteriorKit {
   }
 
   /**
+   * The ember's own shape: one soft dot, drawn once and shared.
+   *
+   * A Points cloud with no map draws hard squares, and a hard-edged square is
+   * the same fault as the painted ellipse this replaced — an edge where light
+   * has none. The falloff is squared rather than linear so the middle stays
+   * small and bright and the outside is almost nothing, which is what stops a
+   * dozen of these overlapping into one orange smear.
+   */
+  _emberDot() {
+    return this._mat('emberDot', () => {
+      const cv = document.createElement('canvas');
+      cv.width = cv.height = 32;
+      const g = cv.getContext('2d');
+      const img = g.createImageData(32, 32);
+      for (let y = 0; y < 32; y++) {
+        for (let x = 0; x < 32; x++) {
+          const d = Math.hypot(x - 15.5, y - 15.5) / 15.5;
+          const a = Math.max(0, 1 - d) ** 2;
+          const o = (y * 32 + x) * 4;
+          img.data[o] = 255; img.data[o + 1] = 226; img.data[o + 2] = 172;
+          img.data[o + 3] = Math.round(a * 255);
+        }
+      }
+      g.putImageData(img, 0, 0);
+      const t = new THREE.CanvasTexture(cv);
+      t.colorSpace = THREE.SRGBColorSpace;
+      t.needsUpdate = true;
+      return t;
+    });
+  }
+
+  /**
    * THE GUN CASE.
    *
    * Neither shoulder weapon is in the player's hands at the start of a run any
@@ -1857,6 +1904,13 @@ export class InteriorKit {
         drum.position.set(-CW / 2 - 0.30 + i * 0.06, 0.085, -0.08 + i * 0.1);
         g.add(drum);
       }
+    } else if (cfg.loose === 'clips') {
+      for (let i = 0; i < 3; i++) {          // en-bloc clips, stacked flat
+        const clip = box(0.075, 0.018, 0.13, brass);
+        clip.position.set(-CW / 2 - 0.30 + i * 0.02, 0.012 + i * 0.019, -0.09 + i * 0.07);
+        clip.rotation.y = 0.2 - i * 0.18;
+        g.add(clip);
+      }
     } else {
       for (let i = 0; i < 4; i++) {
         const sh = new THREE.Mesh(new THREE.CylinderGeometry(0.011, 0.011, 0.065, 7), card);
@@ -1891,62 +1945,94 @@ export class InteriorKit {
      *
      * An open case on a floorboard in an unlit house is a prop. What separates
      * a prop from something the game wants you to walk up to is that it puts
-     * out LIGHT — so this one does: a warm pool lying over the case, a low
-     * shaft standing in it, four motes drifting up out of it and a small lamp
-     * that actually lands on the boards around it, which is the part that
-     * carries from the doorway. Deliberately slow and soft: this is a weapon
-     * somebody left in its case, not a rune.
+     * out LIGHT — so this one does. It used to do it with a painted ellipse
+     * lying on the boards and a translucent cone standing in it, and both of
+     * those are the same mistake: a flat surface pretending to be light. Read
+     * from anywhere but head-on they were a sheet of orange lying on the
+     * floor, they had a visible EDGE where light does not have one, and the
+     * cone had a silhouette, which is what turns a hint into a beacon.
      *
-     * The pool is an ELLIPSE cut to the case's own footprint rather than the
-     * disc it used to be. A disc is the wrong shape for a thing three times
-     * longer than it is deep, and the wrong shape here is not a cosmetic
-     * problem: the case stands against a wall, so every centimetre the light
-     * reached past the case's ends reached INTO the plaster, where it read
-     * from the next room as a glow coming through solid masonry.
+     * So it is EMBERS now. A few dozen sparks lift out of the case on their
+     * own clocks, curl inward as they rise, brighten as they leave the lining
+     * and go out before they reach the top of their run — one Points cloud,
+     * one draw call, one small canvas of a soft dot between them. Nothing is
+     * bright: a single ember is at the edge of visible and the effect is what
+     * two dozen of them do together, which is the difference between a warm
+     * thing on a dark floor and a rune. Nothing is fast either, and no two
+     * share a phase, so it never settles into a pulse you can predict.
      *
-     * It hangs off the ROOT rather than off the case, so it is centred on the
-     * footprint every placement test is done with, and all of it is additive
-     * and depth-write-free so it never occludes the gun it is advertising.
+     * The only real LIGHT is the lamp, which is the part that carries from a
+     * doorway: a point source low over the boards, breathing slowly. Real
+     * light has no edge and no silhouette, so it can afford to be the one
+     * thing here that is not a particle.
+     *
+     * The whole lot hangs off the ROOT rather than off the case, so it is
+     * centred on the footprint every placement test is done with, and the
+     * cloud is additive and depth-write-free so it never occludes the gun it
+     * is advertising.
      */
     const glow = new THREE.Group();
     glow.position.y = CH + 0.02;
-    const mat = (color, opacity) => new THREE.MeshBasicMaterial({
-      color, opacity, transparent: true, depthWrite: false,
-      blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
-    });
-    const discMat = mat(0xffb44a, 0.20);
-    const disc = new THREE.Mesh(new THREE.CircleGeometry(1, 24), discMat);
-    disc.rotation.x = -Math.PI / 2;
-    // scale is applied before the rotation, so y here is the pool's depth in z
-    disc.scale.set(foot[0] + GLOW_PAD, foot[2] + GLOW_PAD, 1);
-    disc.renderOrder = 3;
-    glow.add(disc);
-    // Small and faint: additive warm over a dark interior goes a very long
-    // way, and a shaft you can see the SILHOUETTE of stops being a hint and
-    // starts being a beacon.
-    const shaftMat = mat(0xff9a2c, 0.05);
-    const shaft = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.24, Math.min(0.40, foot[2]), 0.8, 14, 1, true), shaftMat);
-    shaft.position.y = 0.42;
-    shaft.renderOrder = 3;
-    glow.add(shaft);
-    const moteMat = mat(0xffd88a, 0.55);
-    const motes = [];
-    for (let i = 0; i < 4; i++) {
-      const m = new THREE.Mesh(new THREE.PlaneGeometry(0.05, 0.05), moteMat.clone());
-      m.position.set((i - 1.5) * 0.22, 0.1, (i % 2 ? 0.1 : -0.1));
-      m.renderOrder = 4;
-      glow.add(m);
-      motes.push({ mesh: m, phase: i * 0.27, baseY: 0.05 });
+    const N = 30;
+    const pos = new Float32Array(N * 3);
+    const col = new Float32Array(N * 3);
+    const seeds = [];
+    let top = 0;
+    // Deterministic, so a case looks the same every time the run rebuilds it.
+    let seed = 0x5eed;
+    for (const ch of cfg.id) seed = (Math.imul(seed, 31) + ch.charCodeAt(0)) >>> 0;
+    const rnd = mulberry32(seed);
+    for (let i = 0; i < N; i++) {
+      seeds.push({
+        // Where it leaves the case: anywhere over the lining, biased to the
+        // middle, so the column has a soft base rather than a rim.
+        ax: (rnd() * 2 - 1) * Math.sqrt(rnd()),
+        az: (rnd() * 2 - 1) * Math.sqrt(rnd()),
+        rise: 0.34 + rnd() * 0.5,          // how far this one gets
+        speed: 0.16 + rnd() * 0.2,         // ...and how long it takes
+        phase: rnd(),
+        curl: (rnd() * 2 - 1) * 1.1,       // lateral drift on the way up
+        warm: 0.72 + rnd() * 0.28,         // some run hotter than others
+      });
+      top = Math.max(top, seeds[i].rise);
     }
-    const lamp = new THREE.PointLight(0xffb04a, 1.3, 4.0, 2);
-    lamp.position.y = 0.45;
+    // Every position starts at the origin and every colour at black, which
+    // under additive blending is nothing at all — so the cloud is invisible
+    // until the first animation frame writes it, with no parked-at-minus-99
+    // vertex to blow the bounds out in the meantime.
+    const spread = [foot[0] * 0.7 + 0.1, foot[2] * 0.7 + 0.1];
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    // Stated rather than computed: the buffer is rewritten every frame, so a
+    // box worked out from whatever happened to be in it once is a box that is
+    // wrong for the rest of the run. These are the extremes the seeds above
+    // can actually reach, and everything that asks how much room this effect
+    // needs — the placement test, the wall clearance — reads them.
+    // (the 0.09 is the lateral drift the animation adds on top of the spread,
+    // and the drift on z is one-sided — see Anomalies, kind 'pickupGlow')
+    geo.boundingBox = new THREE.Box3(
+      new THREE.Vector3(-spread[0] - 0.09, 0, -spread[1] - 0.18),
+      new THREE.Vector3(spread[0] + 0.09, top + 0.01, spread[1]));
+    geo.boundingSphere = new THREE.Sphere(
+      new THREE.Vector3(0, top / 2, 0), Math.hypot(spread[0] + 0.09, spread[1] + 0.18) + top);
+    const emberMat = new THREE.PointsMaterial({
+      map: this._emberDot(), size: 0.085, sizeAttenuation: true, vertexColors: true,
+      transparent: true, depthWrite: false, alphaTest: 0.01,
+      blending: THREE.AdditiveBlending,
+    });
+    const embers = new THREE.Points(geo, emberMat);
+    embers.renderOrder = 4;
+    embers.frustumCulled = false;
+    glow.add(embers);
+    const lamp = new THREE.PointLight(0xffb04a, 1.1, 3.4, 2);
+    lamp.position.y = 0.32;
     glow.add(lamp);
     root.add(glow);
 
     return {
       group: root, collide: foot, foot, live: true, gun, cfg,
-      glow: { node: glow, discMat, shaftMat, motes, lamp },
+      glow: { node: glow, embers, pos, col, seeds, spread, lamp },
     };
   }
 
@@ -1989,6 +2075,9 @@ export class InteriorKit {
     // half its thickness is what _caseFits measures against, so a candidate
     // written this way is a candidate that can actually be taken.
     const spots = [
+      // A hand-picked spot for a room whose plan the generic candidates do not
+      // suit — the arcade has no back wall to lay a case along, only floor.
+      ...(cfg.spot ? [cfg.spot] : []),
       [0.6, part + PART_BAND + dz + AIR, Math.PI],       // front room, off the bedroom wall
       [-1.4, part + PART_BAND + dz + AIR, Math.PI],
       [-(hw - 0.3 - sx), hd - 2.6, -Math.PI / 2],        // ...or along a side wall

@@ -1160,8 +1160,8 @@ export class World {
     // rather than being driven from here (see Anomalies: kind 'pickupGlow').
     if (maker.glow) {
       this._animate(maker.glow.node, 'pickupGlow', p.x, p.z, {
-        discMat: maker.glow.discMat, shaftMat: maker.glow.shaftMat,
-        motes: maker.glow.motes, lamp: maker.glow.lamp,
+        embers: maker.glow.embers, pos: maker.glow.pos, col: maker.glow.col,
+        seeds: maker.glow.seeds, spread: maker.glow.spread, lamp: maker.glow.lamp,
       });
     }
     const cache = {
