@@ -25,17 +25,52 @@ import { MACHINES, MACHINE_IDS, marqueeArt, screenSheet, sideArt, cabinetSkin }
  *  furniture may not stand in reaches. */
 const DOOR_HALF = 0.85;
 const DOOR_LANE = 2.6;
+/** ...and the same idea for the doorways INSIDE a building. A partition's gap
+ *  is the only way through to the room behind it, so nothing with a footprint
+ *  may stand in it or in the stride either side — a body is 0.76 m across and
+ *  has to be able to turn as it comes through. */
+const GAP_LANE = 0.85;
 /** How much two pieces may share before it reads as one growing out of the
  *  other. Loose enough that a chair tucked under a table is still fine. */
 const FURNITURE_GAP = 0.12;
 
-/** Which house the shotgun is in: the blue clapboard one on the north side of
- *  Main St East, first lot inside the Eastgate gate. */
-const GUN_HOUSE = 'house01';
+/**
+ * THE TWO WEAPONS THAT ARE NOT IN THE STARTING LOADOUT.
+ *
+ * A run begins with a pistol and a bat, and the two shoulder weapons are out
+ * in the town in the houses they belonged to. That is the whole point of them
+ * being here rather than on the wheel: the first fifty kills are a pistol run,
+ * and each of these is a reward for going somewhere.
+ *
+ *   coachgun    the blue clapboard house on the north side of Main St East,
+ *               the first lot inside the Eastgate gate
+ *   Foundry Gun the yellow clapboard house on Beckon Row, the back lane
+ *               behind Main St — four streets further in
+ *
+ * Both are laid out in the SAME case by the same code (see weaponCase), so
+ * neither can end up clipped into a wall while the other is fine.
+ */
+export const WEAPON_CACHES = [
+  {
+    id: 'shotgun', house: 'house01', loose: 'shells',
+    prompt: 'Take the coachgun [E]',
+    ammo: { type: 'ammo_shotgun', amount: 16, label: 'Shotgun shells' },
+    found: 'A break-action coachgun, still oiled, and sixteen shells loose in the case. Somebody kept this well.',
+  },
+  {
+    id: 'rifle', house: 'house11', loose: 'drums',
+    prompt: 'Take the Foundry Gun [E]',
+    ammo: { type: 'ammo_rifle', amount: 120, label: 'Rifle rounds' },
+    found: 'A Foundry Gun, cased on the boards with two full pan drums beside it. Whoever kept this was expecting company.',
+  },
+];
 
-/** Half-extents of the gun case's real footprint (case + folded lid + the
- *  shell box beside it), once the assembly is centred on it. */
-const FOOT_HX = 0.91, FOOT_HZ = 0.54;
+/** How far past the case's own footprint the pool of light around it reaches.
+ *  Every placement test is done on the LIT footprint rather than the solid
+ *  one, because a glow through a wall is as wrong as a lid through one. */
+const GLOW_PAD = 0.10;
+/** Half a partition wall plus the air a case has to leave off one. */
+const PART_BAND = 0.28;
 
 /** Canonical-frame transform for a door side. cw/cd are the canonical
  *  width (door wall) and depth; m maps canonical -> building-local coords. */
@@ -123,9 +158,10 @@ export class InteriorKit {
     this._bucket = new THREE.Group();
     this._room = [];          // footprints already down in THIS building
     fn.call(this, built);
-    // The one thing in the town that is placed by NAME rather than by use: the
-    // coachgun is in a particular house, on purpose (see gunCache).
-    if (built.spec.name === GUN_HOUSE) this._placeGunCache(built);
+    // The two things in the town placed by NAME rather than by use: the
+    // shoulder weapons, each in a particular house (see WEAPON_CACHES).
+    const cache = WEAPON_CACHES.find((c) => c.house === built.spec.name);
+    if (cache) this._placeWeaponCache(built, cache);
     mergeStatic(this._bucket);
     this.w.group.add(this._bucket);
     this.populated.push(built.spec.name);
@@ -172,6 +208,9 @@ export class InteriorKit {
       const overlapsX = Math.abs(lx - doorX) < fx + DOOR_HALF;
       const overlapsZ = lz + fz > c.cd / 2 - lane && lz - fz < c.cd / 2;
       if (overlapsX && overlapsZ) return null;
+      // ...and the same for the doorways INSIDE the building, which the entry
+      // lane above knows nothing about.
+      if (!this._clearOfDoorways(spec, c, lx, lz, opts.yaw ?? 0, foot)) return null;
     }
     const collide = opts.collide === undefined ? maker.collide : opts.collide;
     const baseY = spec.y + 0.12 + (opts.lift ?? 0);
@@ -227,6 +266,43 @@ export class InteriorKit {
     }
     if (opts.spawn) this.w.spawnPoints.push({ x: p.x, z: p.z, zone: spec.zone, indoor: true });
     return g;
+  }
+
+  /**
+   * Is this footprint clear of the building's INTERIOR doorways?
+   *
+   * The front door has been guarded since the beginning; the doorway through
+   * to the bedroom had not been, and it is the one that matters more — walk
+   * into a house and the way on is a 1.2 m gap in one wall, so anything
+   * standing in it seals off half the building for the player, the horde and
+   * the pathfinder alike. It happened for a reason that no reviewer could see
+   * in the layout: partitions are stated ONCE per plan and their gap always
+   * falls in the same quarter of the canonical frame, while the furniture plan
+   * MIRRORS for one variant in three. Half the houses in the town therefore
+   * swung a writing desk across their own bedroom door.
+   *
+   * Partitions live in the building-local frame, so the footprint is taken
+   * there to meet them: the door's own quarter turn rides on top of the
+   * piece's yaw, and a quarter turn swaps the footprint's two half-extents.
+   */
+  _clearOfDoorways(spec, c, lx, lz, yaw, foot) {
+    const parts = spec.partitions;
+    if (!parts || !parts.length) return true;
+    const a = yaw + c.yaw;
+    const q = Math.round(a / (Math.PI / 2));
+    const turned = Math.abs(a - q * (Math.PI / 2)) < 0.2 && Math.abs(q) % 2 === 1;
+    const [hx, hz] = turned ? [foot[2], foot[0]] : [foot[0], foot[2]];
+    const [mx, mz] = c.m(lx, lz);
+    for (const p of parts) {
+      if (!(p.gapW > 0)) continue;
+      const gap = p.gapAt ?? (p.from + p.to) / 2, half = p.gapW / 2;
+      const r = p.axis === 'x'
+        ? { minX: gap - half, maxX: gap + half, minZ: p.at - GAP_LANE, maxZ: p.at + GAP_LANE }
+        : { minX: p.at - GAP_LANE, maxX: p.at + GAP_LANE, minZ: gap - half, maxZ: gap + half };
+      if (Math.min(mx + hx, r.maxX) > Math.max(mx - hx, r.minX)
+        && Math.min(mz + hz, r.maxZ) > Math.max(mz - hz, r.minZ)) return false;
+    }
+    return true;
   }
 
   /** Does this footprint intersect anything already placed in this room?
@@ -1684,10 +1760,18 @@ export class InteriorKit {
     // Against the BEDROOM WALL facing the room, not against the side wall: the
     // side wall is the television's, and a writing desk half a metre from a
     // television set is a writing desk growing out of a television set.
-    const bw = m * (-hw + 1.6), bz = -hd + 3.5;
-    if (v === 0) this._put(b, this.shelf(1.5), bw, bz);
-    if (v === 1) this._put(b, this.desk(), bw, bz, { loot: [0, 0.9] });
-    if (v === 2) this._put(b, this.shelf(1.3, false), bw, bz);
+    //
+    // Which END of that wall, though, is not the plan's to choose. The gap
+    // through to the bedroom is always in the +x quarter of the canonical
+    // frame while this plan mirrors, so the mirrored variant put this piece
+    // squarely in the bedroom doorway. Offer the mirrored end first and the
+    // other end second: _put refuses a placement that would stand in a
+    // doorway, so it lands on whichever end of the wall is actually free.
+    const bz = -hd + 3.5;
+    const backPiece = v === 1 ? this.desk() : this.shelf(v === 0 ? 1.5 : 1.3, v === 0);
+    for (const bx of [m * (-hw + 1.6), -m * (-hw + 1.6)]) {
+      if (this._put(b, backPiece, bx, bz, v === 1 ? { loot: [0, 0.9] } : {})) break;
+    }
     this._papers(b, tx + 0.8, tz + 1.0, 3);
     if ((s.derelict ?? 0) > 0.45) this._stain(b, m * 0.4, -hd + 2.2, 1.4);
   }
@@ -1695,22 +1779,29 @@ export class InteriorKit {
   /**
    * THE GUN CASE.
    *
-   * The coachgun is not in the player's hands at the start of a run any more;
-   * it is here, in its owner's house, in the case they kept it in. That is the
-   * whole point of moving it: the first fifty kills are a pistol run, and the
-   * reward for opening Eastgate is a real weapon lying where a real weapon
-   * would be lying.
+   * Neither shoulder weapon is in the player's hands at the start of a run any
+   * more; each one is in its owner's house, in the case they kept it in. That
+   * is the whole point of moving them: the first fifty kills are a pistol run,
+   * and what opening a district buys you is a real weapon lying where a real
+   * weapon would be lying.
+   *
+   * ONE case builds BOTH, because two hand-built cases is two sets of numbers
+   * to get wrong and only one of them ever gets looked at. The gun goes in
+   * first, the case is sized around the bounding box it actually occupies once
+   * laid flat, the footprint is measured off the finished assembly rather than
+   * assumed, and the pool of light is cut to that footprint. Everything
+   * downstream — the collider, the wall clearance, the doorway test — is that
+   * one measurement, so a longer weapon gets a longer case instead of a lid
+   * through the plaster.
    *
    * It is built from the SAME 3D model the first-person view uses, so what you
    * pick up off the floor is what appears in your hands a second later — not a
-   * sprite of a gun and then a different gun. The case is open, lined, and set
-   * flat on the floorboards against a wall, so nothing about it can clip into
-   * geometry: the model lies INSIDE a box whose footprint is its own collider.
+   * sprite of a gun and then a different gun.
    *
    * `live` keeps it out of the room's merge, because it has to be able to
    * disappear when it is taken (and come back when a run restarts).
    */
-  gunCache() {
+  weaponCase(cfg) {
     const root = new THREE.Group();
     const g = new THREE.Group();
     root.add(g);
@@ -1719,7 +1810,18 @@ export class InteriorKit {
     const brass = this._mat('gunCaseBrass', () => new THREE.MeshLambertMaterial({ color: 0xa98b3c }));
     const card = this._mat('shellBox', () => new THREE.MeshLambertMaterial({ color: 0x8c3a2c }));
     const box = (w, h, d, m) => new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m);
-    const CW = 1.28, CD = 0.42, CH = 0.16;   // the case: long, shallow, flat
+
+    // The gun first, laid on its side with the barrel along the case, so the
+    // case can be built to fit what is actually in it.
+    const gun = buildWeaponModel(cfg.id).group;
+    gun.rotation.set(0, Math.PI / 2, Math.PI / 2);
+    gun.updateMatrixWorld(true);
+    const bb = new THREE.Box3().setFromObject(gun);
+    const CH = 0.16;                                  // the case is shallow
+    const CW = Math.max(1.28, bb.max.x - bb.min.x + 0.22);
+    const CD = Math.max(0.42, bb.max.z - bb.min.z + 0.16);
+    gun.position.set(
+      -(bb.min.x + bb.max.x) / 2, CH + 0.03 - bb.min.y, -(bb.min.z + bb.max.z) / 2);
 
     // the case shell, its lining, and the lid folded back flat behind it
     const base = box(CW, CH, CD, wood);
@@ -1740,40 +1842,71 @@ export class InteriorKit {
     const catchPlate = box(0.12, 0.05, 0.04, brass);
     catchPlate.position.set(0, CH * 0.55, CD / 2 + 0.01);
     g.add(catchPlate);
-
-    // ...and the gun in it, lying on its side in the lining
-    const model = buildWeaponModel('shotgun');
-    const gun = model.group;
-    gun.rotation.set(0, Math.PI / 2, Math.PI / 2);   // barrel along the case, laid flat
-    gun.position.set(0.06, CH + 0.05, 0);
-    gun.scale.setScalar(1.0);
     g.add(gun);
 
-    // the shells that were left with it, in their torn box
-    const shellBox = box(0.19, 0.1, 0.13, card);
-    shellBox.position.set(-CW / 2 - 0.16, 0.05, 0.02);
-    shellBox.rotation.y = 0.3;
-    g.add(shellBox);
-    for (let i = 0; i < 4; i++) {
-      const sh = new THREE.Mesh(new THREE.CylinderGeometry(0.011, 0.011, 0.065, 7), card);
-      sh.rotation.set(Math.PI / 2, 0, i * 0.7);
-      sh.position.set(-CW / 2 - 0.34 + i * 0.05, 0.012, -0.1 + i * 0.06);
-      g.add(sh);
+    // ...and what was left with it, in its torn box beside the case: loose
+    // shells for the coachgun, two pan drums for the Foundry Gun.
+    const kit = box(0.19, 0.1, 0.13, card);
+    kit.position.set(-CW / 2 - 0.16, 0.05, 0.02);
+    kit.rotation.y = 0.3;
+    g.add(kit);
+    if (cfg.loose === 'drums') {
+      for (let i = 0; i < 2; i++) {
+        const drum = new THREE.Mesh(new THREE.CylinderGeometry(0.085, 0.085, 0.048, 14), brass);
+        drum.rotation.z = Math.PI / 2;
+        drum.position.set(-CW / 2 - 0.30 + i * 0.06, 0.085, -0.08 + i * 0.1);
+        g.add(drum);
+      }
+    } else {
+      for (let i = 0; i < 4; i++) {
+        const sh = new THREE.Mesh(new THREE.CylinderGeometry(0.011, 0.011, 0.065, 7), card);
+        sh.rotation.set(Math.PI / 2, 0, i * 0.7);
+        sh.position.set(-CW / 2 - 0.34 + i * 0.05, 0.012, -0.1 + i * 0.06);
+        g.add(sh);
+      }
     }
+
+    /**
+     * THE FOOTPRINT, MEASURED.
+     *
+     * The case is NOT symmetric about the point it is built around: the lid
+     * folds back a whole case-depth behind it and the box of ammunition lies
+     * off its left end, so the assembly runs a good deal further in -x and -z
+     * than in +x and +z. A collider centred on the build origin therefore
+     * described a box the case was not in, and a spot that looked clear by it
+     * put the lid inside the bedroom partition.
+     *
+     * So the real extremes are worked out here and the assembly is shifted
+     * onto the middle of them. After this the anchor means what every
+     * placement test assumes it means — the centre of the thing — and the
+     * collider below is the real footprint plus a hand's width.
+     */
+    const minX = -CW / 2 - 0.36, maxX = CW / 2;
+    const minZ = -CD * 1.5 - 0.02, maxZ = CD / 2;
+    g.position.set(-(minX + maxX) / 2, 0, -(minZ + maxZ) / 2);
+    const foot = [(maxX - minX) / 2 + 0.09, CH, (maxZ - minZ) / 2 + 0.11];
+
     /**
      * ...and the thing that says it is a pickup.
      *
      * An open case on a floorboard in an unlit house is a prop. What separates
      * a prop from something the game wants you to walk up to is that it puts
-     * out LIGHT — so this one does: a warm disc lying over the case, a low
+     * out LIGHT — so this one does: a warm pool lying over the case, a low
      * shaft standing in it, four motes drifting up out of it and a small lamp
      * that actually lands on the boards around it, which is the part that
      * carries from the doorway. Deliberately slow and soft: this is a weapon
      * somebody left in its case, not a rune.
      *
-     * All of it is additive and depth-write-free so it never occludes the gun
-     * it is advertising, and it hangs off one node so taking the gun can
-     * switch the whole thing off in a line.
+     * The pool is an ELLIPSE cut to the case's own footprint rather than the
+     * disc it used to be. A disc is the wrong shape for a thing three times
+     * longer than it is deep, and the wrong shape here is not a cosmetic
+     * problem: the case stands against a wall, so every centimetre the light
+     * reached past the case's ends reached INTO the plaster, where it read
+     * from the next room as a glow coming through solid masonry.
+     *
+     * It hangs off the ROOT rather than off the case, so it is centred on the
+     * footprint every placement test is done with, and all of it is additive
+     * and depth-write-free so it never occludes the gun it is advertising.
      */
     const glow = new THREE.Group();
     glow.position.y = CH + 0.02;
@@ -1782,8 +1915,10 @@ export class InteriorKit {
       blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
     });
     const discMat = mat(0xffb44a, 0.20);
-    const disc = new THREE.Mesh(new THREE.CircleGeometry(0.78, 20), discMat);
+    const disc = new THREE.Mesh(new THREE.CircleGeometry(1, 24), discMat);
     disc.rotation.x = -Math.PI / 2;
+    // scale is applied before the rotation, so y here is the pool's depth in z
+    disc.scale.set(foot[0] + GLOW_PAD, foot[2] + GLOW_PAD, 1);
     disc.renderOrder = 3;
     glow.add(disc);
     // Small and faint: additive warm over a dark interior goes a very long
@@ -1791,7 +1926,7 @@ export class InteriorKit {
     // starts being a beacon.
     const shaftMat = mat(0xff9a2c, 0.05);
     const shaft = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.24, 0.40, 0.8, 14, 1, true), shaftMat);
+      new THREE.CylinderGeometry(0.24, Math.min(0.40, foot[2]), 0.8, 14, 1, true), shaftMat);
     shaft.position.y = 0.42;
     shaft.renderOrder = 3;
     glow.add(shaft);
@@ -1807,71 +1942,86 @@ export class InteriorKit {
     const lamp = new THREE.PointLight(0xffb04a, 1.3, 4.0, 2);
     lamp.position.y = 0.45;
     glow.add(lamp);
-    g.add(glow);
+    root.add(glow);
 
-    /**
-     * The case is NOT symmetric about the point it is built around: the lid
-     * folds back a whole case-depth behind it and the shells lie off its left
-     * end, so its true footprint runs x -0.98..+0.64 and z -0.65..+0.22 while
-     * its collider was centred on the origin. A placement that looked clear by
-     * the collider therefore buried the lid in the bedroom partition. Shifting
-     * the assembly onto the centre of its own footprint makes the anchor mean
-     * what every placement test assumes it means, and the collider below is
-     * then the real thing plus a hand's width.
-     */
-    g.position.set(0.17, 0, 0.215);
     return {
-      group: root, collide: [FOOT_HX, 0.16, FOOT_HZ], live: true, gun,
+      group: root, collide: foot, foot, live: true, gun, cfg,
       glow: { node: glow, discMat, shaftMat, motes, lamp },
     };
   }
 
   /**
-   * Put the case down somewhere it actually fits.
+   * Put the case down somewhere it actually fits — and somewhere you find it.
    *
-   * Every candidate lies ALONG a wall rather than across the room, with the
-   * open lid folding back into the floor space instead of into whatever is
-   * behind the case — a gun case left against a wall is how a gun case is
-   * left, and it is also the only orientation whose lid cannot end up inside
-   * masonry. Candidates are tried in order; _clearOfWalls rejects any that
-   * would put the footprint through an outer wall or through one of the
-   * house's interior partitions (the bedroom wall the case used to sit half
-   * inside), and _put rejects any that would land in the entry lane or inside
-   * a piece already in the room. The last resort is the middle of the floor,
-   * which is ugly and always legal.
+   * It used to go in the BEDROOM, behind the partition at the back of the
+   * house, which is the last room a player walks into and the one they walk
+   * into with a wall between them and the light. It goes in the FRONT ROOM
+   * now: the room the front door opens into, laid along the bedroom wall
+   * facing the way you came in, so the pool of light is the first thing in the
+   * house you see. The lid folds back INTO the room rather than into the wall
+   * behind it, which is both how a gun case is left and the only orientation
+   * whose lid cannot end up inside masonry.
+   *
+   * Candidates are tried in order and every one of them is offered as a LIT
+   * footprint — the case plus the pool of light around it — so a spot is only
+   * taken if the whole glow clears the walls, the partitions and the doorway
+   * through them. _put rejects anything that would stand in the entry lane, in
+   * an interior doorway or inside a piece already in the room. The last resort
+   * is the middle of the floor, which is ugly and always legal.
    */
-  _placeGunCache(built) {
+  _placeWeaponCache(built, cfg) {
     const c = this._canon(built.spec);
     const hw = c.cw / 2, hd = c.cd / 2;
-    const part = -hd + 3.1;                  // the bedroom wall (housePartitions)
-    const clear = 0.16 + FOOT_HZ + 0.2;      // half a wall + half the case + air
-    // [x, z, yaw] in the canonical frame. yaw 0 lays the case along X with the
-    // lid folding back toward -Z, yaw PI folds it back toward +Z.
-    const spots = [
-      [0.6, part - clear, 0],                // bedroom side of the bedroom wall
-      [-1.9, part - clear, 0],
-      [0.6, part + clear, Math.PI],          // main-room side of it
-      [-1.9, part + clear, Math.PI],
-      [0.6, -hd + 0.16 + FOOT_HZ + 0.2, Math.PI],   // under the far wall
-      [0, 0.4, 0],
-    ];
     // Built ONCE and offered to each spot in turn. _put rejects a placement
     // before it touches the group, so a refused attempt leaves the maker
     // untouched and reusable — and the alternative is assembling (and throwing
-    // away) up to eight copies of a weapon model at load time.
-    const maker = this.gunCache();
+    // away) up to six copies of a weapon model at load time.
+    const maker = this.weaponCase(cfg);
+    const lit = [maker.foot[0] + GLOW_PAD, maker.foot[2] + GLOW_PAD];
+    // half-extents of the lit footprint along canonical x and z, for a yaw
+    const ext = (yaw) => (Math.abs(Math.round(yaw / (Math.PI / 2))) % 2 ? [lit[1], lit[0]] : lit);
+    const part = -hd + 3.1;                  // the bedroom wall (housePartitions)
+    const AIR = 0.06;                        // a gap you can see between things
+    const [, dz] = ext(Math.PI), [sx] = ext(Math.PI / 2);
+    // [x, z, yaw] in the canonical frame. yaw PI lays the case along X with
+    // the lid folding back toward +Z — into the front room — and yaw 0 folds
+    // it back toward -Z. Standing off a partition by PART_BAND rather than by
+    // half its thickness is what _caseFits measures against, so a candidate
+    // written this way is a candidate that can actually be taken.
+    const spots = [
+      [0.6, part + PART_BAND + dz + AIR, Math.PI],       // front room, off the bedroom wall
+      [-1.4, part + PART_BAND + dz + AIR, Math.PI],
+      [-(hw - 0.3 - sx), hd - 2.6, -Math.PI / 2],        // ...or along a side wall
+      [hw - 0.3 - sx, hd - 2.6, Math.PI / 2],
+      [0.6, part - PART_BAND - dz - AIR, 0],             // ...or back in the bedroom
+      [-1.4, part - PART_BAND - dz - AIR, 0],
+    ];
+    // ...and if the room's own furniture has taken all six, walk the front
+    // room on a half-metre grid until something fits. A hand-written list of
+    // spots is a list of guesses about a floor plan that mirrors, resizes and
+    // rotates under it; the sweep is what makes "the weapon is in this house"
+    // true rather than likely, and a weapon that failed to place is a weapon
+    // the run can never find.
+    for (let lz = part + PART_BAND + dz + AIR; lz < hd - 1.0; lz += 0.5) {
+      for (let lx = -hw + 1.0; lx < hw - 1.0; lx += 0.5) spots.push([lx, lz, Math.PI]);
+    }
     for (const [lx, lz, yaw] of spots) {
-      if (!this._caseFits(built, lx, lz, yaw)) continue;
+      if (!this._caseFits(built, lx, lz, yaw, ext(yaw))) continue;
       const g = this._put(built, maker, lx, lz, { yaw });
       if (!g) continue;
-      this.w.registerGunCache(g, maker, built.spec);
+      this.w.registerWeaponCache(g, maker, built.spec);
       return true;
     }
+    this.rejects.push(`${cfg.id} case: nowhere in ${built.spec.name} fits it`);
     return false;
   }
 
   /**
-   * Is this canonical spot somewhere the gun case may actually go?
+   * Is this canonical spot somewhere the case may actually go?
+   *
+   * Measured on the LIT footprint (`half`), not the solid one: light through a
+   * wall reads exactly as wrong as a lid through one, and the pool around this
+   * case is wider than the case.
    *
    * Three ways it can fail. It can run through an OUTER WALL, which is a
    * bounds test in the canonical frame. It can run through an INTERIOR
@@ -1887,25 +2037,24 @@ export class InteriorKit {
    * not finish. Nothing else in the room can bury that point, because nothing
    * else in the room is placed by name — this case is.
    */
-  _caseFits(built, lx, lz, yaw) {
+  _caseFits(built, lx, lz, yaw, half) {
     const spec = built.spec;
     const c = this._canon(spec);
     // Two frames, two rotations: in the canonical frame the case is turned by
     // yaw alone, and in the building-local frame the door's own quarter turn
     // is on top of it.
     const quarters = (a) => Math.abs(Math.round(a / (Math.PI / 2))) % 2;
-    const [cx, cz] = quarters(yaw) ? [FOOT_HZ, FOOT_HX] : [FOOT_HX, FOOT_HZ];
+    const [cx, cz] = half;
     if (Math.abs(lx) + cx > c.cw / 2 - 0.24) return false;
     if (Math.abs(lz) + cz > c.cd / 2 - 0.24) return false;
-    const [hx, hz] = quarters(yaw + c.yaw) ? [FOOT_HZ, FOOT_HX] : [FOOT_HX, FOOT_HZ];
+    const [hx, hz] = quarters(c.yaw) ? [cz, cx] : [cx, cz];
     const [mx, mz] = c.m(lx, lz);
     for (const p of spec.partitions ?? []) {
       // The whole line counts, gap included: standing a case in the gap blocks
       // the only way through to the bedroom.
-      const band = 0.16 + 0.12;
       const a = p.axis === 'x'
-        ? { minX: p.from, maxX: p.to, minZ: p.at - band, maxZ: p.at + band }
-        : { minX: p.at - band, maxX: p.at + band, minZ: p.from, maxZ: p.to };
+        ? { minX: p.from, maxX: p.to, minZ: p.at - PART_BAND, maxZ: p.at + PART_BAND }
+        : { minX: p.at - PART_BAND, maxX: p.at + PART_BAND, minZ: p.from, maxZ: p.to };
       if (Math.min(mx + hx, a.maxX) > Math.max(mx - hx, a.minX)
         && Math.min(mz + hz, a.maxZ) > Math.max(mz - hz, a.minZ)) return false;
     }

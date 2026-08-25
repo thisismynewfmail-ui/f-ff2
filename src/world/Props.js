@@ -308,10 +308,34 @@ export class PropKit {
     }
 
     if (wrecked && kind !== 'bus') {
-      // stoved in and pushed off square, glass and all
-      cabG.scale.set(1, 0.78, 0.97);
-      cabG.rotation.z = 0.07;
-      cabG.position.y = -0.05;
+      /**
+       * STOVED IN, NOT SUNK.
+       *
+       * A crushed roof was a scale about the car's ORIGIN, which is on the
+       * road under the middle of it — so squashing the greenhouse to 78% did
+       * not lower the roof by a fifth of the greenhouse, it lowered it by a
+       * fifth of its height ABOVE THE TARMAC. On a saloon that is 0.33 m of
+       * travel onto a body whose beltline is only 0.44 m below the roof in the
+       * first place, and the whole cabin disappeared inside the hull: six
+       * millimetres of it left showing, and the drip rails — which hang off
+       * the BODY and never moved — left standing in the air over a car with no
+       * top on it. Sedans, cruisers and pickups all did it; the van, with a
+       * greenhouse nearly a metre tall, was the one that survived it, which is
+       * why it read as some cars and not others.
+       *
+       * So the crush is taken about the BELTLINE the greenhouse stands on: the
+       * matrix is composed so the point (0, belt) is exactly where it was
+       * before, and everything above it comes down onto it. The tilt is about
+       * the same point, so the cabin leans on its own base instead of sliding
+       * off the car. The drip rails and the cruiser's light bar are parented
+       * to the greenhouse below, so they come down with the roof they are
+       * screwed to.
+       */
+      const belt = V.cabin[0][1];
+      const sy = 0.62, tilt = 0.06;
+      cabG.scale.set(1, sy, 0.97);
+      cabG.rotation.z = tilt;
+      cabG.position.set(belt * sy * Math.sin(tilt), belt * (1 - sy * Math.cos(tilt)), 0);
     }
 
     /* --- shut lines and handles: the cheapest thing that says "doors" --- */
@@ -411,11 +435,13 @@ export class PropKit {
         g.add(w);
       }
     }
+    // Drip rails go on the GREENHOUSE, not on the body: they are screwed to
+    // the roof gutter, so a caved-in roof takes them down with it.
     if (V.rails) {
       for (const s of [-1, 1]) {
         const rail = new THREE.Mesh(new THREE.BoxGeometry(V.rails[2], 0.035, 0.045), shade);
         rail.position.set(V.rails[0], V.rails[1], s * (cabW / 2 - 0.02));
-        g.add(rail);
+        cabG.add(rail);
       }
     }
     // exhaust, low at one corner
@@ -488,13 +514,14 @@ export class PropKit {
     if (wrecked) g.rotation.z = 0.03 * drop;   // settled onto the flat corner
 
     if (kind === 'cruiser') {                  // light bar and door flashes
+      // ...and so is the light bar, for the same reason the drip rails are.
       const bar = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.09, cabW * 0.86), dark);
       bar.position.set(V.rails[0], V.rails[1] + 0.14, 0);
-      g.add(bar);
+      cabG.add(bar);
       for (const [ox, c] of [[-0.26, 0xb03028], [0.26, 0x2a58b0]]) {
         const dome = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.11, cabW * 0.42), this.colorMat(c));
         dome.position.set(V.rails[0] + ox, V.rails[1] + 0.23, 0);
-        g.add(dome);
+        cabG.add(dome);
       }
       for (const s of [-1, 1]) {
         const flash = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.34, 0.02), this.colorMat(0xdcdcd4));

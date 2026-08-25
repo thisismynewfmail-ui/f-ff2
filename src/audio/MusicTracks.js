@@ -168,184 +168,267 @@ export const TRACKS = {
   },
 
   /* ================= ZONE 1 — EASTGATE RESIDENTIAL =======================
-   * SOMEBODY'S STREET, AND SOMETHING IN IT.
+   * SOMEBODY'S STREET, AND SOMETHING WORKING ITS WAY UP IT.
    *
-   * The first pass was a lullaby: sixty-six to the minute, a whistle over a
-   * held sub, and the warmth of the dorian mode doing all the work. It read
-   * beautifully standing still on an empty pavement and it read like nothing
-   * at all with four fighters coming through the gardens — which is the state
-   * the player is actually in for most of the time they spend here.
+   * Eastgate is the district the player spends the most minutes of a run
+   * inside, and for two passes it was written as the place they walk through
+   * on the way somewhere: first a lullaby at sixty-six, then a walk at a
+   * hundred and ten. Neither of them is what is actually happening here. What
+   * is happening here is four fighters coming through the back gardens while
+   * you are trying to get a door open, and a score that ambles under that is a
+   * score the player stops hearing by wave three.
    *
-   * So the tempo is up to a hundred and ten and the motion has moved into the
-   * middle of the arrangement: a running eight-note figure on the plucked
-   * voice that never quite settles on the tonic, a bass that lands off the
-   * beat as often as on it, and a kit that drives from the hats rather than
-   * from the kick — a street being moved through, not a street being mourned.
+   * So this pass makes it MOVE. Three things do the work and none of them is
+   * volume:
    *
-   * The dorian sixth is still what makes it Eastgate, and the eerie half of
-   * the brief lives in what is AROUND the figure: a drone under everything, a
-   * whistle answering across the gardens on nobody's beat, and a glass tone
-   * that arrives late in the phrase where a resolution should be. It is a warm
-   * mode played by something that is not warm.
+   *  1. THE GRID IS TIGHTER. A hundred and twenty to the minute, a sixteenth-
+   *     note bass engine under a syncopated kick, a real backbeat on two and
+   *     four, and hats that never leave the bar alone. The old arrangement put
+   *     one event on most sixteenths of the bar; this one puts something on
+   *     nearly all of them, which is what energy is made of at a fixed level.
+   *  2. THE HARMONY MOVES EVERY BAR. i – i – bVII – IV, twice, with the last
+   *     bar turned onto the minor v so the eight bars lean back round into
+   *     themselves instead of stopping. i–bVII–IV is the dorian vamp — the
+   *     brightest thing the mode has — and putting a chord change on every
+   *     downbeat doubles the rate at which the loop tells you something new.
+   *  3. THE HOOK IS A HOOK. Eight notes to the bar on the plucked voice,
+   *     written out over the whole eight bars so it climbs across the middle
+   *     of the phrase and falls back through it, and it leans on the dorian
+   *     sixth — the one note that makes this mode this mode — at the top of
+   *     every arc. A horn answers its phrase ends an octave down.
    *
-   * Level-wise it is still the quietest of the six. It has to be: this is the
-   * track the player hears longest, and energy here is carried by MOVEMENT —
-   * the number of events per bar — rather than by gain, so it can drive
-   * without ever climbing over a gunshot or a voice line.
+   * And it is still EASTGATE, not an action film. The eerie half is what is
+   * around the hook rather than under it: a drone that never resolves, a
+   * whistle answering across the gardens on nobody's beat, a struck glass tone
+   * that arrives late in the phrase exactly where a cadence should have been,
+   * and a swell of wind through the middle of it. The mode is warm and the
+   * things playing it are not.
    *
-   * Tempo is deliberately 5:6 against Old Town's 132 and Downtown's 132, so a
-   * district change lands the two grids back in phase every six beats — well
-   * inside the two-and-a-bit seconds the director takes to cross-fade.     */
+   * It also still gets out of the way, and it is worth being precise about
+   * how, because "more energetic" and "not in the way" are usually the same
+   * argument. The energy is EVENTS PER BAR, not gain: this arrangement fires
+   * about two-thirds more notes a second than the last one and still measures
+   * a shade quieter than Old Town Square, which is the loudest thing in the
+   * game and the piece the player hears next door (tests/music.mjs holds both
+   * of those). Range does the rest: the engine and the pulse live below
+   * 200 Hz, the hook is a narrow band around 200-400, and everything over that
+   * is five notes of whistle and one struck tone a phrase — over 3 kHz there
+   * is 44 dB less of this than there is of the whole, which is the band the
+   * gunfire owns.
+   *
+   * TEMPO IS CHOSEN, NOT PICKED. A hundred and twenty against Old Town's and
+   * Downtown's hundred and thirty-two is exactly ten sixteenths to eleven, so
+   * the two grids come back into phase every 1.25 seconds — comfortably inside
+   * the 2.2-second cross-fade, which is why walking through a district gate
+   * never lands you between two beats.                                     */
   eastgate: {
-    name: 'PORCH LIGHT', bpm: 110, root: G1, scale: SCALES.dorian, bars: 8,
-    prog: [0, 0, 3, 3, 5, 5, 6, 4],
+    name: 'PORCH LIGHT', bpm: 120, root: G1, scale: SCALES.dorian, bars: 8,
+    prog: [0, 0, 6, 3, 0, 0, 6, 4],
     calm: {
-      drones: [{ semi: 0, gain: 0.026, cutoff: 130, sweep: 0.05 }],
+      drones: [{ semi: 0, gain: 0.028, cutoff: 130, sweep: 0.05 }],
       layers: [
-        // the pulse: on the one, then off it twice — a walk, not a march
-        { k: 'bass', voice: 'sub', oct: 0, gain: 0.134, dur: 0.26,
-          pat: 'x..x..x...x.x...' },
-        { k: 'bass', voice: 'reese', oct: 0, gain: 0.060, dur: 0.18,
-          pat: '....5.......3..5', opts: { cut: 300 } },
-        // the kit, driven from the hats. Kick on the one and the off-beat of
-        // three, so the bar leans forward instead of stamping.
-        { k: 'perc', gain: 0.096, kick: 'x.....x...x.....', snare: '....x.......x...',
-          hat: 'x.xx..x.x.xx..x.', open: '..............x.' },
-        { k: 'pad', voice: 'strings', oct: 1, gain: 0.043, every: 2, tones: [0, 2, 4],
-          opts: { bright: 0.95 } },
-        // THE FIGURE. Eight notes to the bar, never twice the same way round,
-        // and it leans on the dorian sixth every other phrase.
-        { k: 'seq', voice: 'pluck', oct: 1, gain: 0.053, notes: [
-          [0, 0, 2], [4, 0, 2], [6, 2, 2], [8, 3, 2], [12, 2, 2],
-          [16, 0, 2], [20, 0, 2], [22, 4, 2], [24, 3, 2], [28, 2, 2],
-          [32, 3, 2], [36, 3, 2], [38, 5, 2], [40, 4, 2], [44, 3, 2],
-          [48, 3, 2], [52, 2, 2], [54, 0, 2], [56, 2, 4],
-          [64, 4, 2], [68, 4, 2], [70, 6, 2], [72, 5, 2], [76, 4, 2],
-          [80, 4, 2], [84, 2, 2], [86, 4, 2], [88, 5, 4],
-          [96, 6, 2], [100, 5, 2], [102, 4, 2], [104, 2, 4],
-          [112, 4, 2], [116, 2, 2], [118, 0, 2], [120, 2, 6],
-        ], opts: { bright: 0.9 } },
-        // the call across the gardens: still the old whistle, now answering
-        // the figure rather than singing over it
-        { k: 'seq', voice: 'whistle', oct: 3, gain: 0.038, notes: [
-          [10, 4, 6], [26, 5, 6], [58, 2, 6], [74, 4, 8], [106, 5, 6], [120, 4, 8],
+        // THE ENGINE. A short filtered saw on ten of the sixteen sixteenths,
+        // opening onto the chord's fifth on the last one so the bar hands off
+        // to the next instead of stopping at it.
+        { k: 'bass', voice: 'reese', oct: 0, gain: 0.068, dur: 0.13,
+          pat: 'x.xx.xx.x.xx.x.5', opts: { cut: 320 } },
+        // ...and the weight under it: on the one, and then leaning forward
+        // off every beat after it. A walk that has started to hurry.
+        { k: 'bass', voice: 'sub', oct: 0, gain: 0.151, dur: 0.20,
+          pat: 'x..x..x.x..x..x.' },
+        // The kit, in the CALM mix — this district is not a rest between
+        // fights and its drums are not a reward for nearly dying. Kick
+        // syncopated, snare square on two and four, hats carrying the bar.
+        { k: 'perc', gain: 0.111, kick: 'x..x..x.x.....x.', snare: '....x.......x...',
+          hat: 'x.xxx.x.x.xxx...', open: '..............x.' },
+        { k: 'pad', voice: 'strings', oct: 1, gain: 0.043, every: 1, tones: [0, 2, 4],
+          opts: { bright: 1.05 } },
+        // THE HOOK. Eight notes a bar, arcing up through bars five and six and
+        // falling back through seven, and the dorian sixth sits at the top of
+        // every arc. The last note is held eight steps straight across the
+        // loop point, which is the reason there is no seam to hear there.
+        { k: 'seq', voice: 'pluck', oct: 2, gain: 0.059, notes: [
+          [0, 0, 2], [2, 2, 2], [4, 4, 2], [6, 2, 2], [8, 0, 2], [10, 4, 2], [12, 5, 2], [14, 4, 2],
+          [16, 0, 2], [18, 2, 2], [20, 4, 2], [22, 5, 2], [24, 4, 2], [26, 2, 2], [28, 0, 4],
+          [32, 6, 2], [34, 1, 2], [36, 3, 2], [38, 1, 2], [40, 6, 2], [42, 3, 2], [44, 4, 2], [46, 3, 2],
+          [48, 3, 2], [50, 5, 2], [52, 7, 2], [54, 5, 2], [56, 4, 4], [60, 3, 4],
+          [64, 4, 2], [66, 7, 2], [68, 6, 2], [70, 4, 2], [72, 2, 2], [74, 4, 2], [76, 5, 4],
+          [80, 7, 2], [82, 6, 2], [84, 5, 2], [86, 4, 2], [88, 2, 2], [90, 0, 2], [92, 2, 4],
+          [96, 6, 2], [98, 8, 2], [100, 7, 2], [102, 6, 2], [104, 3, 2], [106, 6, 2], [108, 4, 4],
+          [112, 4, 2], [114, 6, 2], [116, 1, 2], [118, 6, 2], [120, 4, 8],
+        ], opts: { bright: 1.0 } },
+        // the horn under it, answering each phrase end an octave down
+        { k: 'seq', voice: 'lead', oct: 1, gain: 0.040, notes: [
+          [28, 0, 4], [44, 6, 4], [60, 3, 4], [92, 2, 4], [108, 1, 4], [124, 4, 4],
+        ], opts: { cut: 900 } },
+        // the call across the gardens: off everybody's beat, on purpose
+        { k: 'seq', voice: 'whistle', oct: 3, gain: 0.040, notes: [
+          [11, 4, 6], [43, 1, 6], [75, 5, 8], [107, 3, 6], [123, 6, 6],
         ] },
-        // ...and the tone that arrives where a resolution should be
-        { k: 'sparse', voice: 'glass', oct: 2, gain: 0.036, bars: [3, 7], step: 12, dur: 2.6 },
-        { k: 'sparse', voice: 'swell', gain: 0.031, bars: [1, 5], step: 0, dur: 5.0,
+        // ...and the struck tone that arrives where the cadence should be
+        { k: 'sparse', voice: 'glass', oct: 2, gain: 0.040, bars: [3, 7], step: 13, dur: 2.4 },
+        { k: 'sparse', voice: 'swell', gain: 0.033, bars: [1, 5], step: 0, dur: 4.0,
           opts: { freq: 420, q: 0.6 } },
       ],
     },
+    /* The same street with the lights off. Same tempo, same bar grid, same
+     * eight-bar shape and the same hook contour — the only harmonic change is
+     * that the bright dorian bVII is replaced by the diminished chord a third
+     * under it, which shares two notes out of three with the tonic, so the
+     * cross-fade slides rather than lurching. Everything else is pressure:
+     * the engine fills in, the hats go to straight sixteenths, and the
+     * heartbeat comes in under it all. */
     danger: {
-      prog: [0, 0, 1, 1, 6, 6, 5, 4],
-      drones: [{ semi: -12, gain: 0.058, cutoff: 140, sweep: 0.09 },
-        { semi: 1, gain: 0.020, cutoff: 220, sweep: 0.15 }],
+      prog: [0, 0, 5, 3, 0, 0, 5, 4],
+      drones: [{ semi: -12, gain: 0.066, cutoff: 140, sweep: 0.09 },
+        { semi: 1, gain: 0.024, cutoff: 220, sweep: 0.15 }],
       layers: [
-        { k: 'pad', voice: 'strings', oct: 1, gain: 0.046, every: 1, tones: [0, 2, 4],
-          opts: { tremolo: 7.2, bright: 1.35 } },
-        { k: 'bass', voice: 'reese', oct: 0, gain: 0.112, dur: 0.16,
-          pat: 'x.x.xx.xx.x.xx.x', opts: { cut: 320 } },
-        { k: 'bass', voice: 'sub', oct: 0, gain: 0.100, dur: 0.30,
+        { k: 'pad', voice: 'strings', oct: 1, gain: 0.052, every: 1, tones: [0, 2, 4],
+          opts: { tremolo: 7.2, bright: 1.4 } },
+        { k: 'bass', voice: 'reese', oct: 0, gain: 0.130, dur: 0.13,
+          pat: 'xx.xxx.xxx.xxx.x', opts: { cut: 340 } },
+        { k: 'bass', voice: 'sub', oct: 0, gain: 0.116, dur: 0.26,
           pat: 'x...x...x...x...' },
-        { k: 'perc', gain: 0.098, kick: 'x..x..x.x..x..x.', snare: '....x.......x.x.',
+        { k: 'perc', gain: 0.116, kick: 'x..x..x.x..x..x.', snare: '....x.......x.x.',
           hat: 'xxxxxxxxxxxxxxxx' },
-        { k: 'perc', kind: 'heart', gain: 0.13, at: [0, 8] },
-        // the figure, cornered: the same shape with the sixth flattened out of
-        // it and the phrase ends bitten off
-        { k: 'seq', voice: 'lead', oct: 2, gain: 0.040, notes: [
-          [0, 0, 2], [2, 1, 2], [4, 0, 4], [12, 4, 4],
-          [32, 1, 2], [34, 0, 2], [36, 1, 4], [44, 5, 4],
-          [64, 6, 2], [66, 5, 2], [68, 4, 4], [76, 1, 4],
-          [96, 5, 2], [98, 4, 2], [100, 1, 4], [112, 0, 8],
+        { k: 'perc', kind: 'heart', gain: 0.153, at: [0, 8] },
+        // the hook, cornered: the same arc with the middle of every phrase
+        // bitten out of it and the diminished root left standing
+        { k: 'seq', voice: 'lead', oct: 2, gain: 0.047, notes: [
+          [0, 0, 2], [2, 2, 2], [4, 0, 4], [12, 4, 4],
+          [16, 2, 2], [18, 0, 2], [20, 4, 4], [28, 2, 4],
+          [32, 5, 2], [34, 2, 2], [36, 0, 4], [44, 5, 4],
+          [48, 3, 2], [50, 5, 2], [52, 7, 4], [60, 3, 4],
+          [64, 4, 2], [66, 2, 2], [68, 0, 4], [76, 4, 4],
+          [80, 2, 2], [82, 0, 2], [84, 4, 4], [92, 2, 4],
+          [96, 5, 2], [98, 2, 2], [100, 0, 4], [108, 5, 4],
+          [112, 4, 2], [114, 6, 2], [116, 4, 4], [120, 0, 8],
         ], opts: { cut: 1700 } },
       ],
     },
   },
 
   /* ================= ZONE 2 — DOWNTOWN ==================================
-   * HEIGHT, GLASS, AND NOTHING LIVING IN ANY OF IT.
+   * HEIGHT, GLASS, AND SOMETHING COMING DOWN THE CANYON BEHIND YOU.
    *
-   * Downtown is the district that makes you keep moving, and the first pass
-   * only half admitted it: eighty-eight to the minute with the kick on the one
-   * and the three is a walk through an office park. This is a canyon with
-   * nothing alive in it and something coming down it behind you.
+   * Downtown was already the fastest thing in the game and it still read like
+   * an office park, because speed is not the same as drive: a four-to-the-
+   * floor kick with one bass note answering it is a metronome with an opinion.
+   * What was missing is MOTION — something that never stops moving underneath
+   * the beat — and the harmony sitting still for two bars at a time on top.
    *
-   * So the pulse is four to the floor at a hundred and thirty-two, with a
-   * filtered bass answering it on the OFF beat — the oldest trick there is for
-   * making a straight beat feel like it is being chased — and the backbeat is
-   * a piece of METAL rather than a snare, because everything in this district
-   * is a hard surface and the reverb of it is the district's own voice.
+   * Both are fixed here, and the district is still, measured, a shade quieter
+   * than Old Town Square next door — the energy is in the number of things
+   * happening, not in the level of them:
    *
-   * The eerie half is in the mode, not in the mix. Phrygian's flat second is a
-   * note that never sounds like it belongs, so the hook is built on the two
-   * notes either side of it and keeps falling back to the one it cannot leave;
-   * over the top, a glass tone answers each phrase from a long way up and
-   * never resolves anything. Nothing here is trying to be frightening. It is
-   * simply a place with a beat, and the beat does not stop.
+   *  1. THE MOTOR. A muted plucked arpeggio runs eighth notes through the
+   *     bar's own chord across two octaves, six notes cycling against an
+   *     eight-note bar so it never lands the same way twice — the oldest
+   *     chase-music trick there is, and it is kept down at 130-390 Hz where
+   *     nothing the player does lives. That layer alone is most of the
+   *     difference between this and the last pass.
+   *  2. A CADENCE ON THE LOOP POINT. i – i – bII – i, then bVI – bVI – bvii –
+   *     bII, and the last bar is the Neapolitan sitting a semitone over the
+   *     tonic it is about to fall onto. The strongest moment in the phrase is
+   *     therefore the JOIN, which is precisely the moment a loop is normally
+   *     weakest — the hook holds that flat second for a half-bar straight
+   *     across the wrap and resolves it into bar one.
+   *  3. A BAR THAT PUSHES. The kick takes the last sixteenth as a pickup, the
+   *     bass answers on the off-beats and shoves three sixteenths into the end
+   *     of every bar, and the struck scrap that stands in for a backbeat now
+   *     takes that pickup with them.
    *
-   * Kept out of the player's way by RANGE rather than by level: the pulse and
-   * the bass live under 200 Hz, the hook sits in a narrow band around 500, and
-   * the top two octaves — where gunfire, voices and the horde live — are given
-   * over to a hat and one glass note a bar.                                */
+   * The eerie half is still in the MODE rather than in the mix. Phrygian's
+   * flat second is a note that never sounds like it belongs; the hook is built
+   * either side of it and keeps falling back onto a tonic it cannot leave, and
+   * a glass tone answers each phrase from thirty floors up on the two notes
+   * that resolve nothing. Nothing here is trying to frighten anybody. It is a
+   * place with a beat, and the beat does not stop.
+   *
+   * Kept out of the player's way by RANGE, as before: pulse and bass under
+   * 200 Hz, motor 130-390, hook 260-700, and the top two octaves — where
+   * gunfire, voices and the horde live — given over to a hat, one struck
+   * clank and one glass note a phrase. Over 3 kHz there is 35 dB less of this
+   * than there is of the whole (tests/music.mjs measures it).             */
   downtown: {
     name: 'GLASS AND CONCRETE', bpm: 132, root: C2, scale: SCALES.phrygian, bars: 8,
-    prog: [0, 0, 1, 1, 0, 0, 6, 5],
+    prog: [0, 0, 1, 0, 5, 5, 6, 1],
     calm: {
-      drones: [{ semi: 0, gain: 0.024, cutoff: 120, sweep: 0.05 }],
+      drones: [{ semi: 0, gain: 0.026, cutoff: 120, sweep: 0.05 }],
       layers: [
-        { k: 'bass', voice: 'sub', oct: -1, gain: 0.148, dur: 0.24,
-          pat: 'x...x...x...x...' },
-        // the off-beat answer: this is the layer that makes it move
-        { k: 'bass', voice: 'reese', oct: 0, gain: 0.070, dur: 0.14,
-          pat: '..x...x...x...xx', opts: { cut: 340 } },
-        // four to the floor, a hat on every off-beat, and a piece of the
-        // building on two and four
-        { k: 'perc', gain: 0.098, kick: 'x...x...x...x...',
-          hat: 'x.x.x.x.x.x.x.x.', open: '..............x.',
-          clank: '....x.......x...' },
-        { k: 'pad', voice: 'strings', oct: 1, gain: 0.041, every: 2, tones: [0, 2, 4],
+        { k: 'bass', voice: 'sub', oct: -1, gain: 0.165, dur: 0.22,
+          pat: 'x...x...x...x.x.' },
+        // the off-beat answer, with three sixteenths shoved into the end of
+        // the bar: this is the layer that makes a straight beat feel chased
+        { k: 'bass', voice: 'reese', oct: 0, gain: 0.073, dur: 0.13,
+          pat: '..x..xx..x..xxx.', opts: { cut: 340 } },
+        // four to the floor with a pickup on the last sixteenth, and a hat
+        // carrying the sixteenths in between
+        { k: 'perc', gain: 0.111, kick: 'x...x...x...x..x',
+          hat: 'x.xxx.x.x.xxx...', open: '..............x.' },
+        // the backbeat is a piece of the BUILDING, and it takes the pickup too
+        { k: 'perc', gain: 0.104, clank: '....x.......x..x' },
+        { k: 'pad', voice: 'strings', oct: 1, gain: 0.043, every: 1, tones: [0, 2, 4],
           opts: { bright: 1.25 } },
+        // THE MOTOR: the bar's own chord, two octaves of it, eight to the bar
+        // and six notes long so it walks out of phase with itself
+        { k: 'arp', voice: 'pluck', oct: 1, gain: 0.035, rate: 2, order: 'up',
+          dur: 0.14, span: 2, opts: { bright: 0.75 } },
         // THE HOOK: two notes either side of the flat second, falling back
-        // onto a tonic it cannot get away from
-        { k: 'seq', voice: 'lead', oct: 1, gain: 0.046, notes: [
-          [0, 0, 2], [2, 1, 2], [4, 0, 4], [10, 4, 2], [12, 3, 2], [14, 1, 2],
-          [16, 0, 2], [18, 1, 2], [20, 0, 4], [26, 5, 2], [28, 4, 2], [30, 3, 2],
-          [32, 0, 2], [34, 1, 2], [36, 0, 4], [42, 4, 2], [44, 3, 2], [46, 1, 2],
-          [48, 0, 2], [50, 1, 2], [52, 3, 2], [54, 4, 4], [60, 1, 4],
-          [64, 4, 2], [66, 5, 2], [68, 4, 4], [74, 1, 2], [76, 0, 4],
-          [80, 4, 2], [82, 5, 2], [84, 6, 4], [90, 5, 2], [92, 4, 4],
-          [96, 6, 2], [98, 5, 2], [100, 4, 2], [102, 1, 2], [104, 0, 6],
-          [112, 5, 2], [114, 4, 2], [116, 1, 2], [118, 0, 2], [120, 0, 8],
-        ], opts: { cut: 1300, wave: 'square' } },
+        // onto a tonic it cannot get away from, and ending the eight bars
+        // holding that flat second over the join
+        { k: 'seq', voice: 'lead', oct: 2, gain: 0.052, notes: [
+          [0, 0, 2], [2, 1, 2], [4, 0, 2], [6, 2, 2], [8, 4, 2], [10, 2, 2], [12, 1, 2], [14, 0, 2],
+          [16, 0, 2], [18, 1, 2], [20, 0, 2], [22, 4, 2], [24, 2, 2], [26, 1, 2], [28, 0, 4],
+          [32, 1, 2], [34, 3, 2], [36, 5, 2], [38, 3, 2], [40, 1, 2], [42, 5, 2], [44, 6, 2], [46, 5, 2],
+          [48, 4, 2], [50, 2, 2], [52, 1, 2], [54, 0, 4], [58, 1, 2], [60, 0, 4],
+          [64, 5, 2], [66, 7, 2], [68, 9, 2], [70, 7, 2], [72, 5, 2], [74, 2, 2], [76, 4, 4],
+          [80, 9, 2], [82, 7, 2], [84, 5, 2], [86, 4, 2], [88, 5, 2], [90, 7, 2], [92, 5, 4],
+          [96, 6, 2], [98, 8, 2], [100, 10, 2], [102, 8, 2], [104, 6, 2], [106, 3, 2], [108, 1, 4],
+          [112, 5, 2], [114, 3, 2], [116, 1, 2], [118, 0, 2], [120, 1, 8],
+        ], opts: { cut: 1500, wave: 'square' } },
         // ...and the answer from thirty floors up, resolving nothing
-        { k: 'seq', voice: 'glass', oct: 3, gain: 0.041, notes: [
-          [24, 6, 8], [56, 5, 8], [88, 1, 10], [118, 0, 10],
+        { k: 'seq', voice: 'glass', oct: 3, gain: 0.045, notes: [
+          [24, 6, 8], [56, 1, 8], [88, 5, 10], [118, 1, 10],
         ] },
-        { k: 'sparse', voice: 'static', gain: 0.029, bars: [3, 7], step: 12, dur: 0.35 },
+        { k: 'sparse', voice: 'static', gain: 0.033, bars: [3, 7], step: 14, dur: 0.35 },
       ],
     },
+    /* The canyon with the lights off. Same tempo, same grid, same motor, same
+     * hook shape — the bVI in the middle of the phrase goes diminished and the
+     * last two bars are both the Neapolitan, so the thing leaning over the
+     * loop point leans twice as long. The motor is deliberately KEPT: taking
+     * it out at low health would make the danger arrangement a different piece
+     * rather than the same one in the dark. */
     danger: {
-      prog: [0, 0, 1, 1, 1, 1, 6, 5],
-      drones: [{ semi: 1, gain: 0.045, cutoff: 190, sweep: 0.13 },
-        { semi: 0, gain: 0.028, cutoff: 150, sweep: 0.07 }],
+      prog: [0, 0, 1, 0, 4, 4, 1, 1],
+      drones: [{ semi: 1, gain: 0.052, cutoff: 190, sweep: 0.13 },
+        { semi: 0, gain: 0.031, cutoff: 150, sweep: 0.07 }],
       layers: [
-        { k: 'pad', voice: 'strings', oct: 1, gain: 0.042, every: 1, tones: [0, 1, 4],
+        { k: 'pad', voice: 'strings', oct: 1, gain: 0.047, every: 1, tones: [0, 1, 4],
           opts: { tremolo: 8.4, bright: 1.5 } },
-        { k: 'bass', voice: 'reese', oct: -1, gain: 0.122, dur: 0.14,
+        { k: 'bass', voice: 'reese', oct: -1, gain: 0.139, dur: 0.13,
           pat: 'x.x.xxx.x.x.x.xx' },
-        { k: 'perc', gain: 0.104, kick: 'x..xx...x...x.x.', snare: '....x.......x.x.',
+        { k: 'bass', voice: 'sub', oct: -1, gain: 0.113, dur: 0.22,
+          pat: 'x...x...x...x...' },
+        { k: 'perc', gain: 0.120, kick: 'x..xx...x...x.x.', snare: '....x.......x.x.',
           hat: 'xxxxxxxxxxxxxxxx', clank: '....x.......x...' },
-        { k: 'perc', kind: 'heart', gain: 0.12, at: [0, 8] },
-        { k: 'seq', voice: 'lead', oct: 2, gain: 0.042, notes: [
+        { k: 'perc', kind: 'heart', gain: 0.142, at: [0, 8] },
+        { k: 'arp', voice: 'pluck', oct: 1, gain: 0.031, rate: 2, order: 'up',
+          dur: 0.12, span: 2, opts: { bright: 0.6 } },
+        { k: 'seq', voice: 'lead', oct: 2, gain: 0.050, notes: [
           [0, 1, 2], [2, 0, 2], [4, 1, 4], [12, 4, 4],
-          [32, 1, 2], [34, 0, 2], [36, 1, 4], [44, 5, 4],
-          [64, 5, 2], [66, 4, 2], [68, 1, 4], [76, 0, 4],
-          [96, 6, 2], [98, 5, 2], [100, 4, 4], [112, 1, 4], [120, 0, 8],
-        ], opts: { cut: 2200 } },
+          [16, 0, 2], [18, 1, 2], [20, 0, 4], [28, 1, 4],
+          [32, 1, 2], [34, 3, 2], [36, 1, 4], [44, 5, 4],
+          [48, 4, 2], [50, 2, 2], [52, 1, 4], [60, 0, 4],
+          [64, 4, 2], [66, 6, 2], [68, 8, 4], [76, 6, 4],
+          [80, 8, 2], [82, 6, 2], [84, 4, 4], [92, 1, 4],
+          [96, 5, 2], [98, 3, 2], [100, 1, 4], [108, 5, 4],
+          [112, 3, 2], [114, 1, 2], [116, 0, 4], [120, 1, 8],
+        ], opts: { cut: 2100 } },
       ],
     },
   },
-
   /* ================= ZONE 3 — HOLLOW PARK ===============================
    * Open ground under old trees. Almost no rhythm at all: a choir, a whistle
    * a long way off, and bells that arrive on nothing in particular. The most

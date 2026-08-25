@@ -135,6 +135,9 @@ export class World {
 
     this.spawnPoints = [];   // {x, z, zone, indoor}
     this.lootPoints = [];    // {x, z, zone}
+    // The shoulder weapons lying out in the town, by weapon id — see
+    // registerWeaponCache and interiors/WEAPON_CACHES.
+    this.weaponCaches = new Map();
     this.surfaces = [];      // {minX,maxX,minZ,maxZ, surface}
     this.interactables = []; // {x, z, y, radius, prompt, onInteract, enabled}
     this.shootables = [];    // {x, y, z, r, onHit, active} — sphere bullet targets
@@ -1140,15 +1143,19 @@ export class World {
   }
 
   /**
-   * The gun case, once the interiors have found a spot for it.
+   * A weapon case, once the interiors have found a spot for it.
    *
    * World owns the interaction (Interiors builds furniture; it does not run
-   * gameplay), and it owns the RESET, so a new run puts the coachgun back in
-   * its case in the blue house instead of leaving the case empty and the
-   * weapon still in the player's hands.
+   * gameplay), and it owns the RESET, so a new run puts each shoulder weapon
+   * back in its case in its own house instead of leaving the case empty and
+   * the weapon still in the player's hands.
+   *
+   * Keyed by weapon id, because there are two of them now and a single slot is
+   * how you end up with the second one silently overwriting the first.
    */
-  registerGunCache(node, maker, spec) {
+  registerWeaponCache(node, maker, spec) {
     const p = node.position;
+    const cfg = maker.cfg;
     // The glow is a moving part, so it goes on the town's own animation pass
     // rather than being driven from here (see Anomalies: kind 'pickupGlow').
     if (maker.glow) {
@@ -1157,49 +1164,47 @@ export class World {
         motes: maker.glow.motes, lamp: maker.glow.lamp,
       });
     }
-    this.gunCache = {
-      node, gun: maker.gun, glow: maker.glow?.node, taken: false,
-      prompt: this.addInteractable({
-        x: p.x, z: p.z, y: p.y, radius: 1.9,
-        prompt: 'Take the coachgun [E]',
-        enabled: () => !this.gunCache.taken,
-        onInteract: () => this._takeGun(),
-      }),
-      where: spec.name,
+    const cache = {
+      cfg, node, gun: maker.gun, glow: maker.glow?.node, taken: false, where: spec.name,
     };
+    cache.prompt = this.addInteractable({
+      x: p.x, z: p.z, y: p.y, radius: 1.9,
+      prompt: cfg.prompt,
+      enabled: () => !cache.taken,
+      onInteract: () => this._takeWeapon(cfg.id),
+    });
+    this.weaponCaches.set(cfg.id, cache);
   }
 
-  _takeGun() {
-    const c = this.gunCache;
+  _takeWeapon(id) {
+    const c = this.weaponCaches.get(id);
     if (!c || c.taken) return;
     c.taken = true;
     if (c.gun) c.gun.visible = false;
     if (c.glow) c.glow.visible = false;
-    this.events.emit('weapon:unlock', { id: 'shotgun' });
+    this.events.emit('weapon:unlock', { id });
     // What was in the box with it. Two magazines' worth and no more — the
-    // point of the coachgun is that you have to go and find shells for it.
-    this.events.emit('pickup', { type: 'ammo_shotgun', amount: 16, label: 'Shotgun shells' });
-    this.events.emit('subtitle', {
-      text: 'A break-action coachgun, still oiled, and sixteen shells loose in the case. Somebody kept this well.',
-    });
+    // point of a found weapon is that you have to go and feed it.
+    this.events.emit('pickup', c.cfg.ammo);
+    this.events.emit('subtitle', { text: c.cfg.found });
   }
 
-  /** Mark it already taken (a resumed run that had already found it). */
-  emptyGunCache() {
-    const c = this.gunCache;
+  /** Mark one already taken (a resumed run that had already found it). */
+  emptyWeaponCache(id) {
+    const c = this.weaponCaches.get(id);
     if (!c) return;
     c.taken = true;
     if (c.gun) c.gun.visible = false;
     if (c.glow) c.glow.visible = false;
   }
 
-  /** Put it back in its case — a new run starts without it again. */
-  resetGunCache() {
-    const c = this.gunCache;
-    if (!c) return;
-    c.taken = false;
-    if (c.gun) c.gun.visible = true;
-    if (c.glow) c.glow.visible = true;
+  /** Put them all back in their cases — a new run starts without them again. */
+  resetWeaponCaches() {
+    for (const c of this.weaponCaches.values()) {
+      c.taken = false;
+      if (c.gun) c.gun.visible = true;
+      if (c.glow) c.glow.visible = true;
+    }
   }
 
   /**
@@ -1533,10 +1538,17 @@ export class World {
     for (const [x, z] of [[94, 24], [140, 58], [70, 84]]) this._prop(P.utilityPole(), x, z);
     // The filling station at the district gate, where you come in from the plaza.
     this._gasStationAt(P, ...GAS_STATIONS[0]);
-    // Cars left where they stopped. The two on Main St are the cover you use
-    // on the way in; the third has been on the verge long enough to be planted.
+    // Cars left where they stopped. The one on Main St is the cover you use on
+    // the way in; the other has been on the verge long enough to be planted.
+    //
+    // There used to be a third, at (92, -7.5). That is the strip of grass
+    // between the blue house's east wall and its neighbour's garden — the way
+    // round the back of the first lot inside the district gate, and the route
+    // a player takes the first time they come up Main St and want off it. A
+    // four-and-a-half-metre saloon lying across a three-metre gap is a wall,
+    // not cover, so it is gone: the gap is a way through again.
     const rng = mulberry32(11);
-    for (const [x, z, yaw] of [[92, -7.5], [166, 12.5, 0.42], [131, -36.5, 1.55]]) {
+    for (const [x, z, yaw] of [[166, 12.5, 0.42], [131, -36.5, 1.55]]) {
       this._prop(P.wreckedCar([0x5a3b34, 0x39465e, 0x4c5548][Math.floor(rng() * 3)]), x, z, { yaw: yaw ?? 0.1 });
     }
     // Nature is taking the junctions back first: every intersection has a

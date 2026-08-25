@@ -3,8 +3,8 @@ import * as THREE from '../../lib/three.module.js';
 /**
  * Day/night sky.
  *
- * Drives a slow eight-minute cycle — five minutes of daylight, three of night
- * — that colours the sky + fog, swings a sun and a moon across the dome (the
+ * Drives a fourteen-minute cycle — ten minutes of daylight, four of night —
+ * that colours the sky + fog, swings a sun and a moon across the dome (the
  * scene's single directional light follows whichever is up, warm by day and
  * cool by night), and drifts a handful of chunky clouds overhead.
  *
@@ -30,9 +30,21 @@ import * as THREE from '../../lib/three.module.js';
  * horizon and the rest is squeezed into its half-turn below, which buys an
  * asymmetric cycle without touching a single curve that reads off elevation
  * (light colour, fog, cloud emissive, the cockroach's day/night brain).
+ *
+ * The split is deliberately lopsided — two and a half minutes of daylight for
+ * every minute of dark. A town you have to fight through is a town you should
+ * mostly be able to SEE, and night is the exception you wait out rather than
+ * the half of the run you play blind in.
+ *
+ * The sun therefore crosses the sky at one steady rate by day and a faster
+ * steady rate by night, and the tower clock — which reads the sun's angle, not
+ * the cycle clock — does the same: its hands sweep evenly through the daylight
+ * hours, change pace once as the sun touches the horizon, and sweep evenly
+ * again through the night. Never a jump, because sunAngle is continuous
+ * everywhere; the only thing that changes at dawn and dusk is how fast.
  */
-const DAY_LENGTH = 300;    // seconds the sun spends above the horizon — 5 min
-const NIGHT_LENGTH = 180;  // ...and below it — 3 min
+const DAY_LENGTH = 600;    // seconds the sun spends above the horizon — 10 min
+const NIGHT_LENGTH = 240;  // ...and below it — 4 min
 const CYCLE = DAY_LENGTH + NIGHT_LENGTH;
 const DAY_FRAC = DAY_LENGTH / CYCLE;
 const START_PHASE = DAY_FRAC * 0.35;  // begin mid-morning: sun + clouds at once

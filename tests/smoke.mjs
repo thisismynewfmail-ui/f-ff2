@@ -430,6 +430,51 @@ const fx = await page.evaluate(async () => {
   g.devConsole.execute('time 12'); g.sky.update(0.001, cam.position); const noon = g.sky.isDay;
   out.sky = dayOn && nightOn && midnight && noon && g.sky.clouds.length === 9;
 
+  // 4b. ...and the day is MUCH longer than the night, in real seconds.
+  // Walked one second at a time through a whole cycle rather than read off a
+  // constant, so what is measured is what a player actually gets.
+  {
+    g.sky.setPhase(0);
+    let up = 0, down = 0;
+    for (let i = 0; i < 4000; i++) {
+      g.sky.update(1, cam.position);
+      if (g.sky.isDay) up++; else down++;
+      if (i > 10 && g.sky.phase < 0.002 && up + down > 100) break;
+    }
+    out.dayLen = up; out.nightLen = down;
+  }
+
+  // 4c. THE TOWER CLOCK. It reads the SUN, not the cycle clock, and the two
+  // run at different rates now — so the only way to know the hands are
+  // telling the truth is to set a time, look at the sky, and then look at the
+  // dial. Also walked forward a step at a time to catch a hand that JUMPS:
+  // the pace is allowed to change at dawn and dusk, the position is not.
+  {
+    const err = [];
+    for (const h of [0, 3, 6, 9, 12, 15, 18, 21]) {
+      g.devConsole.execute(`time ${h}`);
+      g.world._updateClock();
+      const hand = -g.world.clockHands.hour.rotation.z / (Math.PI * 2) * 12;
+      const off = Math.abs(((hand - (h % 12) + 18) % 12) - 6);
+      if (off > 0.02) err.push(`${h}h -> hand at ${hand.toFixed(2)}`);
+    }
+    // A whole cycle in tenth-of-a-second steps. The minute hand's fastest
+    // legal step is a full turn in twenty seconds = 1.8 degrees a tick, so
+    // anything much over that is a hand teleporting rather than sweeping.
+    const DT = 0.1;
+    g.sky.setPhase(0);
+    let prev = null, worst = 0;
+    for (let i = 0; i < 9000; i++) {
+      g.sky.update(DT, cam.position);
+      g.world._updateClock();
+      const a = g.world.clockHands.minute.rotation.z;
+      // shortest way round, so the once-per-hour wrap is not counted as a jump
+      if (prev !== null) worst = Math.max(worst, Math.abs(((a - prev + Math.PI * 3) % (Math.PI * 2)) - Math.PI));
+      prev = a;
+    }
+    out.clockErr = err; out.clockJump = worst;
+  }
+
   // 5. Cockroach: exists, flees the player a short distance, day/night modes.
   const roach = g.cockroach;
   out.roachExists = !!roach && !!roach.mesh;
@@ -477,6 +522,13 @@ check('barriers unlock at 50 and 150 kills', fx.barriers);
 check('console "kill" command adds kills', fx.killCmd);
 check('inventory: Tab store/open/freeze/close + mouse', fx.inventory);
 check('day/night sky toggles day and night', fx.sky);
+check('the day is much longer than the night',
+  fx.dayLen >= 560 && fx.dayLen <= 640 && fx.nightLen >= 210 && fx.nightLen <= 270,
+  `${fx.dayLen}s of daylight to ${fx.nightLen}s of dark (${(fx.dayLen / fx.nightLen).toFixed(2)}:1)`);
+check('the tower clock agrees with the sun at every hour', fx.clockErr.length === 0,
+  fx.clockErr.join(', '));
+check('and its hands never jump, only change pace',
+  fx.clockJump < 0.05, `worst step ${(fx.clockJump * 180 / Math.PI).toFixed(2)}° in a tenth of a second`);
 check('cockroach exists in the world', fx.roachExists);
 check('cockroach flees the player a short distance', fx.roachFlees);
 check('cockroach hides by day, roams by night', fx.roachDayNight);
@@ -2040,9 +2092,10 @@ check('a key can only be in one place, and no action is left unbound',
   + ` cleared jump's last key ${binds.clearedLast}`);
 
 /* a weapon you have not found leaves an EMPTY bay, not a preview          */
-// TWO weapons start a run unfound: the coachgun, which is in a case in the
-// blue house on Main St East, and the Alien Blaster, which is out at the
-// crash site. A dimmed silhouette of either sitting in its bay from the first
+// THREE weapons start a run unfound: the coachgun, in a case in the blue
+// house on Main St East; the Foundry Gun, in another one in the yellow house
+// on Beckon Row; and the Alien Blaster, which is out at the crash site. A
+// dimmed silhouette of any of them sitting in its bay from the first
 // frame of a run tells the player a weapon is out there and roughly what it
 // looks like, which is exactly the thing a find must not do — so a locked bay
 // shows the bay number and nothing else, in both the persistent ARMS grid and
