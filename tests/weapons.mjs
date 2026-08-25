@@ -555,9 +555,18 @@ check('menu sits at screen top centre', menu.centred && menu.nearTop);
 
 // The number-key path is edge-triggered off a real keydown, so press an actual
 // key rather than poking the input state — that is the path a player uses.
+//
+// And press a bay the run has actually FOUND. A locked bay is deliberately
+// inert on its number key — that is the whole point of a weapon being out in
+// the town rather than on the wheel — so a hard-coded digit here is a test
+// that breaks the day a weapon moves into a case in somebody's house.
+const slotKey = await page.evaluate(() => {
+  const g = window.__game;
+  return 'Digit' + (g.weapons.weapons.findIndex((_, i) => g.weapons.has(i)) + 1);
+});
 await page.evaluate(() => window.__game.hud.hideWeaponMenu());
 await page.waitForFunction(() => parseFloat(getComputedStyle(document.getElementById('weapon-menu')).opacity) < 0.05, null, { timeout: 5000 });
-await page.keyboard.press('Digit3');
+await page.keyboard.press(slotKey);
 const afterKey = await page.evaluate(async () => {
   const el = document.getElementById('weapon-menu');
   const t0 = performance.now();
@@ -568,7 +577,7 @@ const afterKey = await page.evaluate(async () => {
   }
   return parseFloat(getComputedStyle(el).opacity);
 });
-check('menu opens on a number-key slot press', afterKey > 0.9, `opacity ${afterKey}`);
+check('menu opens on a number-key slot press', afterKey > 0.9, `${slotKey} -> opacity ${afterKey}`);
 check('menu opens on mouse wheel', menu.afterWheel > 0.9, `opacity ${menu.afterWheel} (was ${menu.afterHide} hidden)`);
 check('menu auto-hides after inactivity', menu.afterIdle < 0.05, `opacity ${menu.afterIdle}`);
 check('menu hides immediately when the player fires', menu.afterFire < 0.05, `opacity ${menu.afterFire}`);

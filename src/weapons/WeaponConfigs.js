@@ -47,7 +47,7 @@ export const WEAPON_CONFIGS = [
   {
     // NOT IN THE STARTING LOADOUT. The coachgun is somebody's — it is in the
     // blue house on Main St East, in the case they kept it in (see
-    // Interiors.gunCache), which means the second district is where the run
+    // Interiors.weaponCase), which means the second district is where the run
     // stops being a pistol run. `locked` keeps the bay empty, off the wheel
     // and off the number keys until 'weapon:unlock' says otherwise.
     id: 'shotgun',
@@ -80,18 +80,29 @@ export const WEAPON_CONFIGS = [
     alt: { mode: 'double', shells: 2, pellets: 18, fireInterval: 0.62, spread: 8.0, kickMul: 1.6, knockbackMul: 1.7, sound: 'shotgunDouble', noise: 70 },
   },
   {
+    // ALSO NOT IN THE STARTING LOADOUT, and for the same reason the coachgun
+    // is not. A machine gun handed out on the title screen is the whole of the
+    // early game solved before it starts; found four streets into Eastgate, in
+    // the yellow clapboard house on Beckon Row, it is the thing that changes
+    // what a wave feels like. It comes out of the case with a full drum and
+    // two spares beside it — exactly the ammunition a run used to begin with,
+    // so finding it puts the player where they used to start rather than
+    // ahead of it.
     id: 'rifle',
     name: 'ASSAULT RIFLE',
     flavor: 'FOUNDRY GUN',
     fireMode: 'AUTO',
     tacticalReload: 0.75,
     slot: 3,
+    locked: true,
     melee: false,
     damage: 10,
     pellets: 1,
     pierce: 1,
     magSize: 60,        // doubled from the standard 30-round box
-    reserveStart: 120,
+    // Found with what was in the case, not with a quartermaster behind it:
+    // the two spare drums arrive as a pickup when the case is opened.
+    reserveStart: 0,
     fireInterval: 0.095,
     auto: true,
     reloadTime: 1.9,

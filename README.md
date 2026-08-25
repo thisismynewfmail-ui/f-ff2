@@ -198,7 +198,7 @@ firing sound and a distinct right-mouse secondary action:
 | --- | --- | --- | --- |
 | 1 | Mainspring Auto (pistol) | industrial blowback machine pistol built to reference art — exposed coil mainspring wound round the barrel visibly compresses and rebounds as the bolt cycles, the open-flanked magazine empties round by round as you shoot, case + mag eject | **Hair-trigger** — rapid auto fire, less damage per round |
 | 2 | Crane Coachgun (**not in the starting loadout**) | modern over-under that **breaks UPWARD** — barrels crane skyward, twin hulls eject over the shoulder, two fresh shells seat, action snaps home. It is in its owner's case in the blue clapboard house on Main St East — the first fifty kills are a pistol run, and opening Eastgate is what buys you a shoulder weapon | **Both barrels** — twin blast, two shells, big knockback |
-| 3 | Foundry Gun (rifle) | Lewis-pattern steam machine gun; flank pan drum ratchets a round per shot, charging handle reciprocates, live pressure valve, drum swap reload | **3-round burst** — tight grouping |
+| 3 | Foundry Gun (rifle, **not in the starting loadout**) | Lewis-pattern steam machine gun; flank pan drum ratchets a round per shot, charging handle reciprocates, live pressure valve, drum swap reload. Cased in the yellow clapboard house on Beckon Row, four streets into Eastgate, with two spare drums beside it — a machine gun handed out on the title screen is the early game solved before it starts | **3-round burst** — tight grouping |
 | 4 | Meridian Long Rifle (sniper) | precision **bolt-action** — full lift/draw/eject/close cycle each shot, glowing telescope reticle, rangefinder drum, en-bloc clip reload | **Scope** — telescopic zoom |
 | 5 | Ironshod Slugger (melee) | ironclad club; swings alternate forehand / backhand horizontal cuts | **Heavy swing** — charged overhead slam, wider arc, more knockback |
 | 6 | Alien Blaster (**locked**) | recovered artefact — blue energy bolts that punch through two bodies, no reserve and no reload; the cell refills itself, faster the emptier it is, and the emitter vanes spin up while it does. Not on the wheel until you find it — see the scarecrow | **Overcharge** — four cells at once, heavier bolt, deeper pierce |
@@ -221,22 +221,34 @@ between them mid-phrase without a smear, a pitch bend or a dropped beat:
   sixteenth-note bass under a four-on-the-floor kick, a hammered minor
   ostinato and a horn answering it every other bar. It is the track heard
   first, longest and on every restart, and what it is about is a horde coming
-  up four roads at once, not a town somebody has already lost. Eastgate is a
-  street being moved through rather than mourned — a running eight-note figure
-  on a plucked voice over a bass that lands off the beat as often as on it,
-  with the dorian sixth still doing the warmth and a drone, an answering
-  whistle and a glass tone arriving where a resolution should be doing the
-  unease. Downtown is a canyon with something coming down it: four to the floor
-  at 132, a filtered bass answering on the off-beat, a piece of the BUILDING
-  for a backbeat instead of a snare, and a phrygian hook built either side of
-  the flat second that keeps falling back onto a tonic it cannot leave. Neither
-  is any louder than it was — both carry their energy in events per bar rather
-  than in gain, which is how they drive without climbing over a gunshot.
+  up four roads at once, not a town somebody has already lost. **Eastgate** is
+  a street being fought up rather than walked down: 120 to the minute, a
+  sixteenth-note engine under a syncopated kick and a backbeat, a chord change
+  on every downbeat through the dorian i–♭VII–IV vamp, and a hook of eight
+  notes a bar that arcs up through the middle of the phrase and leans on the
+  dorian sixth at the top of every arc, with a horn answering it an octave
+  down. **Downtown** is a canyon with something coming down it: four to the
+  floor at 132 with a pickup on the last sixteenth, a filtered bass shoving
+  three more into the end of every bar, a piece of the BUILDING for a backbeat
+  instead of a snare, a muted plucked arpeggio running eighths through the
+  bar's own chord two octaves wide — six notes cycling against an eight-note
+  bar, so it never lands the same way twice — and a phrygian hook that ends the
+  eight bars holding the flat second straight across the loop join and
+  resolving it into bar one, which makes the JOIN the strongest moment in the
+  phrase instead of the weakest. The eerie half of both is in the mode and in
+  what surrounds the hook — a drone, a whistle across the gardens on nobody's
+  beat, a struck glass tone arriving where a cadence should have been — rather
+  than in the mix. Neither is louder than the square: they carry their energy
+  in events per bar, and both sit a shade UNDER Old Town with everything above
+  3 kHz rolled off, which is how they drive without climbing over a gunshot.
   Hollow Park
   is a choir and a whistle and almost no rhythm at all; Southside is struck
   scrap over a pumping bass; Chapel Ridge is an organ, a choir and a bell with
   no drums anywhere in the calm mix. Changing district is a real cross-fade —
-  both pieces keep playing and keep being scheduled for the length of it.
+  both pieces keep playing and keep being scheduled for the length of it, and
+  the tempos are chosen so the districts that carry a beat share a grid (120
+  against 132 is ten sixteenths to eleven: the two come back into phase every
+  1.25 s, well inside the 2.2 s fade).
 - **How close to dead you are picks the version.** Below 45% health the mix
   slides to the danger arrangement of whatever you were already listening to:
   tremolo strings, a driving bass, a **heartbeat** that beats faster and harder
@@ -456,18 +468,22 @@ There is deliberately no command that touches the kill counter — the
 - **Cockroach:** an AI-test critter on the same stack. It skitters and wanders,
   **hides inside buildings by day**, **roams outdoors at night**, and **darts
   away from the player** — but only a very short distance before settling.
-- **Sky & day/night:** a slow **eight-minute cycle — five minutes of daylight,
-  three of night** — colours the sky and fog, swings a sun and
+- **Sky & day/night:** a **fourteen-minute cycle — ten minutes of daylight,
+  four of night** — colours the sky and fog, swings a sun and
   moon across the dome (the light warms by day and cools to moonlight at
   night), and drifts a handful of clouds overhead. The sun, moon and clouds are
   real low-poly, flat-shaded **3D geometry** (not sprites), depth-tested so the
   town's rooftops and walls correctly occlude them instead of bleeding through.
-  Day and night are deliberately NOT the same length, so the cycle clock is
+  Day and night are deliberately NOT the same length — a town you have to fight
+  through is a town you should mostly be able to see — so the cycle clock is
   warped before it becomes a sun angle rather than the sun riding a plain sine
   (which would always split the cycle in half); the clock tower in Old Town
   Square and `time <0-24>` in the dev console both read the sun's angle, so
-  they agree with what is actually in the sky. The cockroach reads day/night
-  from it.
+  they agree with what is actually in the sky. That is also why the tower
+  clock's hands sweep evenly through the daylight hours and then change pace
+  once, smoothly, as the sun touches the horizon: twelve clock-hours of day
+  take ten real minutes and twelve of night take four, and the hands are
+  telling you the truth about both. The cockroach reads day/night from it.
 - **Inventory (Tab):** a themed satchel for quest items such as keys. Opening
   frees the mouse for the UI and freezes the world; Tab (or a click outside the
   panel) closes it and
@@ -1414,6 +1430,7 @@ node tests/world.mjs
 node tests/npc-behavior.mjs
 node tests/weapons.mjs
 node tests/shop.mjs
+node tests/music.mjs
 node tests/smoke.mjs [--screens]
 ```
 
@@ -1437,12 +1454,33 @@ afterwards, the Exploder still fuses and the Spitter still kites and aims, and
 `cullBlindSeconds` culls a permanently blind zombie when set and leaves it alone
 when not.
 
+`music.mjs` hands the real `MusicDirector` an `OfflineAudioContext`, schedules
+every arrangement of every track note for note against it through the score's
+own bus, and measures the samples that come out — because everything the score
+claims about itself is invisible in the data. It holds the music to: nothing
+non-finite and nothing clipped; **no clicks anywhere** (no sample jumps by more
+than a fraction of full scale in one frame, which is what "every voice opens
+and closes on a ramp" means when you measure it); **the eight bars coming round
+exactly as they went out** — two consecutive passes are the same signal to
+within a thousandth, so nothing drifts, accumulates or walks out of phase with
+itself; a loop point that carries signal and is no steeper than the body of the
+track; **almost nothing above 3 kHz**, the band the effects bus owns; no
+district louder than the district next to it and no danger arrangement that
+jumps in level when the mix slides onto it; calm and danger sharing a root,
+tempo and bar grid; every district that carries a beat sharing a sixteenth grid
+with the others inside one cross-fade; and no quarter-second hole in either of
+the two districts written to drive.
+
 `world.mjs` audits the built town for the structural mistakes that are
 invisible in a code review and obvious the moment you walk into them: buildings
 that hang over a slope or sink into one, footprints that overlap, anything
-parked in a doorway or standing inside a building, two vehicles on the same
+parked in a doorway or standing inside a building — the front door AND the
+doorways between rooms, which is the pair a mirrored floor plan gets wrong by
+swinging a writing desk across its own bedroom door — two vehicles on the same
 ground, neighbours sharing a wall texture, weathering that isn't actually
-spatial, unfurnished interiors, alleys too narrow to path down, spawn points on
+spatial, unfurnished interiors, a found weapon that failed to place or landed
+with its case's lid or its pool of light inside a wall, alleys too narrow to
+path down, spawn points on
 blocked ground, roads floating over or cutting into the ground (sampled inside
 each triangle, since the vertices sit on the terrain by construction and only
 the middle of a long span misbehaves), a pond floating over its own bed, and

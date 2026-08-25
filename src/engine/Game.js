@@ -510,11 +510,12 @@ export class Game {
     this.waves.restartAtWave(1);
     // Refill the guns to the starting loadout and bank it as the new checkpoint.
     // The pristine loadout is a PISTOL loadout: anything found out in the town
-    // — the coachgun in the blue house, the blaster at the crash site — goes
-    // back where it was found, so a new run really is a new run.
+    // — the coachgun in the blue house, the Foundry Gun in the yellow one, the
+    // blaster at the crash site — goes back where it was found, so a new run
+    // really is a new run.
     this.weapons.resetUnlocked();
     this.weapons.restoreAmmo(this._pristineAmmo);
-    this.world.resetGunCache();
+    this.world.resetWeaponCaches();
     // ...and the sighting has not happened yet either.
     this.world.flyby?.reset();
     // An empty purse, no hardware in the field, and the vendor's shelves full
@@ -560,9 +561,9 @@ export class Game {
       // without the coachgun the player walked into Eastgate to get would be
       // taking it off them for the crime of saving.
       this.weapons.restoreUnlocked(s.weaponsFound);
-      // ...and the case it came out of stays empty, so a resumed run does not
-      // find a second one lying in the blue house.
-      if (s.weaponsFound?.includes('shotgun')) this.world.emptyGunCache();
+      // ...and every case one came out of stays empty, so a resumed run does
+      // not find a second copy lying in the house it was already taken from.
+      for (const id of s.weaponsFound ?? []) this.world.emptyWeaponCache(id);
       this.sentries.restore(s.sentries);
       this.companions.restore(s.companion);
       this._arcadePaid = new Set((s.arcade?.paid || []).filter((id) => MACHINE_IDS.includes(id)));

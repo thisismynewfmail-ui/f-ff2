@@ -137,6 +137,109 @@ const r = await page.evaluate(async () => {
     }
   }
 
+  // --- 3b. the doorways INSIDE a building are clear too --------------------
+  // The front door has been guarded here since the beginning; the gap through
+  // to the next room had not been, and it is the one that shuts a player,
+  // the horde and the pathfinder out of half a house. Same geometry the
+  // placement guard uses: the aperture, plus the stride either side of it.
+  const GAP_LANE = 0.85;
+  const l2w = (spec, lx, lz) => {
+    const rot = spec.rot || 0;
+    let wx = lx, wz = lz;
+    if (rot === 90) { wx = lz; wz = -lx; }
+    else if (rot === 180) { wx = -lx; wz = -lz; }
+    else if (rot === 270) { wx = -lz; wz = lx; }
+    return { x: spec.x + wx, z: spec.z + wz };
+  };
+  const doorways = [];
+  for (const spec of w.buildingSpecs) {
+    for (const p of spec.partitions ?? []) {
+      if (!(p.gapW > 0)) continue;
+      const gap = p.gapAt ?? (p.from + p.to) / 2, half = p.gapW / 2;
+      const corners = p.axis === 'x'
+        ? [[gap - half, p.at - GAP_LANE], [gap + half, p.at + GAP_LANE]]
+        : [[p.at - GAP_LANE, gap - half], [p.at + GAP_LANE, gap + half]];
+      const A = l2w(spec, ...corners[0]), B = l2w(spec, ...corners[1]);
+      doorways.push({
+        name: spec.name,
+        minX: Math.min(A.x, B.x), maxX: Math.max(A.x, B.x),
+        minZ: Math.min(A.z, B.z), maxZ: Math.max(A.z, B.z),
+      });
+    }
+  }
+  out.doorways = doorways.length;
+  out.blockedGaps = [];
+  for (const d of doorways) {
+    for (const b of w.collision.boxes) {
+      if (!b.active || (b.tag !== 'furniture' && b.tag !== 'prop')) continue;
+      const ox = Math.min(b.maxX, d.maxX) - Math.max(b.minX, d.minX);
+      const oz = Math.min(b.maxZ, d.maxZ) - Math.max(b.minZ, d.minZ);
+      if (ox > 0.02 && oz > 0.02) {
+        out.blockedGaps.push(`${d.name} by ${ox.toFixed(2)}x${oz.toFixed(2)}m`);
+        break;
+      }
+    }
+  }
+
+  // --- 3c. the weapons that are out in the town ---------------------------
+  // Neither shoulder weapon is in the starting loadout: each is in a case in
+  // a named house, which is three ways to go wrong at once. It can fail to
+  // place at all (a weapon the run can never find); it can place with the
+  // folded lid or the pool of light around it INSIDE a wall; or it can land
+  // behind the partition instead of in the room the front door opens into,
+  // which is where the player is actually looking.
+  const { WEAPON_CACHES } = await import('/src/world/Interiors.js');
+  const THREE0 = await import('/lib/three.module.js');
+  out.caches = [];
+  for (const cfg of WEAPON_CACHES) {
+    const c = w.weaponCaches.get(cfg.id);
+    if (!c) { out.caches.push({ id: cfg.id, missing: true }); continue; }
+    const spec = w.buildingSpecs.find((b) => b.name === cfg.house);
+    // The whole lit assembly, glow included — that is what must be in the room.
+    // Measured to the INNER face of the shell, not to the footprint line: the
+    // wall has thickness, and a pool of light half inside the plaster is
+    // exactly the fault this is here to catch.
+    const bb = new THREE0.Box3().setFromObject(c.node);
+    const WALL_IN = 0.24;
+    const inset = (v, lo, hi) => Math.min(v - lo, hi - v);
+    const clearOfShell = Math.min(
+      inset(bb.min.x, spec.x - spec.w / 2 + WALL_IN, spec.x + spec.w / 2 - WALL_IN),
+      inset(bb.max.x, spec.x - spec.w / 2 + WALL_IN, spec.x + spec.w / 2 - WALL_IN),
+      inset(bb.min.z, spec.z - spec.d / 2 + WALL_IN, spec.z + spec.d / 2 - WALL_IN),
+      inset(bb.max.z, spec.z - spec.d / 2 + WALL_IN, spec.z + spec.d / 2 - WALL_IN));
+    // ...and off every partition line in the building, gap included.
+    let clearOfParts = 99;
+    for (const p of spec.partitions ?? []) {
+      const A = l2w(spec, ...(p.axis === 'x' ? [p.from, p.at] : [p.at, p.from]));
+      const B = l2w(spec, ...(p.axis === 'x' ? [p.to, p.at] : [p.at, p.to]));
+      const line = {
+        minX: Math.min(A.x, B.x), maxX: Math.max(A.x, B.x),
+        minZ: Math.min(A.z, B.z), maxZ: Math.max(A.z, B.z),
+      };
+      const gapX = Math.max(line.minX - bb.max.x, bb.min.x - line.maxX);
+      const gapZ = Math.max(line.minZ - bb.max.z, bb.min.z - line.maxZ);
+      clearOfParts = Math.min(clearOfParts, Math.max(gapX, gapZ));
+    }
+    // Which room is it in? The partition runs across the far end, so "in
+    // front of it" is the side the front door is on.
+    const door = w.built.get(cfg.house)?.doorWorld;
+    let frontRoom = true;
+    for (const p of spec.partitions ?? []) {
+      const A = l2w(spec, ...(p.axis === 'x' ? [p.from, p.at] : [p.at, p.from]));
+      const B = l2w(spec, ...(p.axis === 'x' ? [p.to, p.at] : [p.at, p.to]));
+      const along = Math.abs(B.x - A.x) > Math.abs(B.z - A.z) ? 'z' : 'x';
+      const at = along === 'z' ? A.z : A.x;
+      const mid = along === 'z' ? (bb.min.z + bb.max.z) / 2 : (bb.min.x + bb.max.x) / 2;
+      const doorSide = along === 'z' ? door.z : door.x;
+      if (Math.sign(mid - at) !== Math.sign(doorSide - at)) frontRoom = false;
+    }
+    out.caches.push({
+      id: cfg.id, house: cfg.house, frontRoom,
+      shell: +clearOfShell.toFixed(3), part: +clearOfParts.toFixed(3),
+      size: `${(bb.max.x - bb.min.x).toFixed(2)}x${(bb.max.z - bb.min.z).toFixed(2)}`,
+    });
+  }
+
   // --- 4/5. materials + weathering ----------------------------------------
   let adjacentSame = 0;
   for (let i = 0; i < specs.length; i++) {
@@ -700,6 +803,14 @@ check('every building meets the ground', r.floating.length === 0, r.floating.sli
 check('no building is buried in the terrain', r.sunken.length === 0, r.sunken.slice(0, 4).join(', '));
 check('no building footprints overlap', r.overlaps.length === 0, r.overlaps.slice(0, 4).join(', '));
 check('every doorway has a clear approach', r.blockedDoors.length === 0, r.blockedDoors.slice(0, 5).join(', '));
+check('nothing stands in a doorway INSIDE a building', r.blockedGaps.length === 0,
+  `${r.blockedGaps.length} of ${r.doorways} interior doorways blocked: ` + r.blockedGaps.slice(0, 6).join(', '));
+check('both found weapons are lying in their houses, in the room you walk into',
+  r.caches.length === 2 && r.caches.every((c) => !c.missing && c.frontRoom),
+  r.caches.map((c) => `${c.id}: ${c.missing ? 'NOT PLACED' : `${c.house}, front room ${c.frontRoom}`}`).join(' | '));
+check('no case has its lid or its glow inside a wall',
+  r.caches.every((c) => !c.missing && c.shell > 0.05 && c.part > 0.05),
+  r.caches.map((c) => `${c.id} ${c.size}m — ${c.shell}m off the shell, ${c.part}m off the partition`).join(' | '));
 check('no adjacent buildings share a wall texture', r.adjacentSame === 0, `${r.adjacentSame} clashes`);
 check('walls draw from a wide texture set', r.wallTextures >= 14, `${r.wallTextures} distinct`);
 check('roofs draw from a wide texture set', r.roofTextures >= 6, `${r.roofTextures} distinct`);

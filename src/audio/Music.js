@@ -14,10 +14,10 @@ import { TRACKS, ZONE_TRACKS } from './MusicTracks.js';
  *
  *  2. PLAYS THE RIGHT VERSION OF IT. Every track exists as a `calm` and a
  *     `danger` arrangement built on the same root, tempo and bar grid (see
- *     MusicTracks.js). Below 25% health the mix slides to `danger`; patch
- *     yourself back up past 32% and it slides back. The hysteresis is the
- *     point — a score that flickers between two arrangements while you sit on
- *     exactly a quarter health is worse than either of them.
+ *     MusicTracks.js). Below 45% health the mix slides to `danger`; patch
+ *     yourself back up past 53% and it slides back (LOW_ENTER / LOW_EXIT). The
+ *     hysteresis is the point — a score that flickers between two arrangements
+ *     while you sit on exactly the threshold is worse than either of them.
  *
  *  3. STAYS OUT OF THE WAY. The whole score runs about 14 dB under the
  *     effects bus, everything above 3 kHz is rolled off so it never competes
@@ -51,6 +51,10 @@ const VFADE = 1.15;          // seconds, calm <-> danger
 const LOW_ENTER = 0.45;      // health fraction that turns the lights off...
 const LOW_EXIT = 0.53;       // ...and the one that turns them back on
 const AUDIBLE = 0.002;       // below this a variant stops being scheduled
+// Nothing ever ramps TO zero: an exponential ramp cannot reach it, and asking
+// one to is what produces the click at the end of a fade. Everything decays to
+// here and is then cut.
+const SILENT = 0.0001;
 
 /** Scale degree (any integer, negative or past the octave) -> semitones. */
 function degree(scale, d) {
@@ -348,8 +352,16 @@ export class MusicDirector {
     }
   }
 
-  /** Start or stop a variant's continuous voices as it becomes (in)audible. */
-  _drones(slot, key, on) {
+  /**
+   * Start or stop a variant's continuous voices as it becomes (in)audible.
+   *
+   * Stopping is a RAMP, not a stop. A drone is a held sawtooth pair through a
+   * resonant filter, so cutting its oscillators dead leaves a step of whatever
+   * the waveform happened to be sitting at — which is a click, and a click is
+   * the one thing a background score is not allowed to make. It is faded to
+   * silence first and stopped after.
+   */
+  _drones(slot, key, on, fade = 0.05) {
     const v = slot.variants[key];
     const specs = v.arr.drones;
     if (!specs || !specs.length) return;
@@ -359,17 +371,40 @@ export class MusicDirector {
         v.gain, hz(slot.spec.root, d.semi), when, d.gain,
         { cutoff: d.cutoff, sweep: d.sweep }));
     } else if (!on && v.drones) {
-      const at = this.ctx.currentTime + 0.05;
-      for (const d of v.drones) { d.gain.gain.cancelScheduledValues(at); d.stop(at); }
+      const at = this.ctx.currentTime;
+      for (const d of v.drones) {
+        const g = d.gain.gain;
+        g.cancelScheduledValues(at);
+        g.setValueAtTime(Math.max(SILENT, g.value), at);
+        g.exponentialRampToValueAtTime(SILENT, at + fade);
+        d.stop(at + fade + 0.02);
+      }
       v.drones = null;
     }
   }
 
+  /**
+   * Take a slot off the air.
+   *
+   * Usually it is already inaudible by the time this runs — a fade ends and
+   * the slot is dropped. But not always: walk through two district gates
+   * inside one cross-fade and the oldest of three live tracks is dropped
+   * outright, mid-note, at whatever level it had reached. Setting a live gain
+   * straight to zero there is a step in the waveform on every voice at once,
+   * so the slot is ramped out over a tenth of a second and disconnected after
+   * the ramp rather than during it.
+   */
   _kill(slot) {
-    for (const key of Object.keys(slot.variants)) this._drones(slot, key, false);
-    const at = this.ctx.currentTime + 0.1;
-    try { slot.out.gain.cancelScheduledValues(at); slot.out.gain.setValueAtTime(0, at); } catch { /* closed */ }
-    setTimeout(() => { try { slot.out.disconnect(); } catch { /* gone */ } }, 400);
+    const at = this.ctx.currentTime;
+    const OUT = 0.12;
+    try {
+      const g = slot.out.gain;
+      g.cancelScheduledValues(at);
+      g.setValueAtTime(Math.max(SILENT, g.value), at);
+      g.exponentialRampToValueAtTime(SILENT, at + OUT);
+    } catch { /* closed */ }
+    for (const key of Object.keys(slot.variants)) this._drones(slot, key, false, OUT);
+    setTimeout(() => { try { slot.out.disconnect(); } catch { /* gone */ } }, (OUT + 0.3) * 1000);
   }
 }
 
