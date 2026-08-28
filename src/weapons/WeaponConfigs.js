@@ -6,6 +6,17 @@
  * magazine, spread, sounds and the alt-fire behaviour are all read from the
  * config; the 3D model + animation rig lives in WeaponModels.js keyed by id.
  *
+ * There is deliberately NO slot number here. A weapon's bay is not a property
+ * of the weapon, it is a property of the RUN: bays are handed out in the order
+ * the player finds things, so the same two weapons produce a different rack
+ * depending on which one you walked into first (see WeaponManager). A number
+ * written down here would be a promise this file cannot keep.
+ *
+ * `locked` is the other half of that: a locked weapon is not in the run yet.
+ * It holds no bay, cannot be selected, and its place in the rack reads empty
+ * until a 'weapon:unlock' says otherwise. Four of the six start locked —
+ * three are cased out in the town and one is at the crash site.
+ *
  * spread is in degrees (cone half-angle-ish), range in metres, noise is the
  * radius in which zombies hear the shot.
  *
@@ -23,7 +34,6 @@ export const WEAPON_CONFIGS = [
     flavor: 'MAINSPRING AUTO',
     fireMode: 'SEMI',
     tacticalReload: 0.72, // quick-tap when the mag isn't empty
-    slot: 1,
     melee: false,
     damage: 12,
     pellets: 1,
@@ -54,7 +64,6 @@ export const WEAPON_CONFIGS = [
     name: 'SHOTGUN',
     flavor: 'CRANE COACHGUN',
     fireMode: 'BREAK',
-    slot: 2,
     locked: true,
     melee: false,
     damage: 10,
@@ -93,7 +102,6 @@ export const WEAPON_CONFIGS = [
     flavor: 'FOUNDRY GUN',
     fireMode: 'AUTO',
     tacticalReload: 0.75,
-    slot: 3,
     locked: true,
     melee: false,
     damage: 10,
@@ -119,17 +127,24 @@ export const WEAPON_CONFIGS = [
     alt: { mode: 'burst', count: 3, burstSpacing: 0.06, fireInterval: 0.5, spread: 0.7, damageMul: 1.15, sound: 'rifleBurst', noise: 50 },
   },
   {
+    // NOT IN THE STARTING LOADOUT EITHER, and of the three it is the one that
+    // most obviously should not be: a rifle that one-shots everything in the
+    // game including the Tank is not a sidearm, it is the answer to a problem
+    // the player has not met yet. It is in the filling station out on the
+    // Southside Industrial road, in the same case the other two are in, with
+    // three clips beside it — which is the ammunition a run used to open with.
     id: 'sniper',
     name: 'SNIPER RIFLE',
     flavor: 'MERIDIAN LONG RIFLE',
     fireMode: 'BOLT',
-    slot: 4,
+    locked: true,
     melee: false,
     damage: 5000, // one-shots every enemy (the toughest, the Tank, has 220 HP)
     pellets: 1,
     pierce: 3, // punches through a line of them
     magSize: 5,
-    reserveStart: 15,
+    // Found with what was in the case, not with a quartermaster behind it.
+    reserveStart: 0,
     fireInterval: 1.35,
     auto: false,
     reloadTime: 2.6,
@@ -149,7 +164,6 @@ export const WEAPON_CONFIGS = [
     name: 'BASEBALL BAT',
     flavor: 'IRONSHOD SLUGGER',
     fireMode: 'MELEE',
-    slot: 5,
     melee: true,
     damage: 34,
     range: 2.4,
@@ -173,7 +187,6 @@ export const WEAPON_CONFIGS = [
     name: 'ALIEN BLASTER',
     flavor: 'RECOVERED ARTEFACT',
     fireMode: 'CELL',
-    slot: 6,
     locked: true,
     melee: false,
     damage: 58,

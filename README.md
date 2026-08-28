@@ -194,14 +194,34 @@ They sit rotated to face mostly forward — muzzle near the crosshair — while
 still showing their worked left flank. Each has its own layered synthesised
 firing sound and a distinct right-mouse secondary action:
 
-| Slot | Weapon | Action | Secondary (RMB) |
+The numbers in this table are the order the weapons are **written**, not the
+bays they occupy: a run opens with the pistol and the bat in bays 1 and 2 and
+four empty bays after them, and **each bay is filled by the Nth thing you
+find**. Walk into the Downtown arcade before the blue house in Eastgate and
+the Foundry Gun is 3 and the coachgun is 4. The rack is a list of what you own,
+in the order you got it — never a table with holes reserved in it for weapons
+you may never see. The order rides with a save, because it is what the number
+keys are.
+
+| # | Weapon | Action | Secondary (RMB) |
 | --- | --- | --- | --- |
 | 1 | Mainspring Auto (pistol) | industrial blowback machine pistol built to reference art — exposed coil mainspring wound round the barrel visibly compresses and rebounds as the bolt cycles, the open-flanked magazine empties round by round as you shoot, case + mag eject | **Hair-trigger** — rapid auto fire, less damage per round |
 | 2 | Crane Coachgun (**not in the starting loadout**) | modern over-under that **breaks UPWARD** — barrels crane skyward, twin hulls eject over the shoulder, two fresh shells seat, action snaps home. It is in its owner's case in the blue clapboard house on Main St East — the first fifty kills are a pistol run, and opening Eastgate is what buys you a shoulder weapon | **Both barrels** — twin blast, two shells, big knockback |
-| 3 | Foundry Gun (rifle, **not in the starting loadout**) | Lewis-pattern steam machine gun; flank pan drum ratchets a round per shot, charging handle reciprocates, live pressure valve, drum swap reload. Cased in the yellow clapboard house on Beckon Row, four streets into Eastgate, with two spare drums beside it — a machine gun handed out on the title screen is the early game solved before it starts | **3-round burst** — tight grouping |
-| 4 | Meridian Long Rifle (sniper) | precision **bolt-action** — full lift/draw/eject/close cycle each shot, glowing telescope reticle, rangefinder drum, en-bloc clip reload | **Scope** — telescopic zoom |
+| 3 | Foundry Gun (rifle, **not in the starting loadout**) | Lewis-pattern steam machine gun; flank pan drum ratchets a round per shot, charging handle reciprocates, live pressure valve, drum swap reload. Cased on the floor of the Downtown arcade with two spare drums beside it — a machine gun handed out on the title screen is the early game solved before it starts | **3-round burst** — tight grouping |
+| 4 | Meridian Long Rifle (sniper, **not in the starting loadout**) | precision **bolt-action** — full lift/draw/eject/close cycle each shot, glowing telescope reticle, rangefinder drum, en-bloc clip reload. Cased on the floor of the filling station out on the Southside Industrial road with three clips beside it — a rifle that one-shots everything in the game including the Tank is not a sidearm | **Scope** — telescopic zoom |
 | 5 | Ironshod Slugger (melee) | ironclad club; swings alternate forehand / backhand horizontal cuts | **Heavy swing** — charged overhead slam, wider arc, more knockback |
 | 6 | Alien Blaster (**locked**) | recovered artefact — blue energy bolts that punch through two bodies, no reserve and no reload; the cell refills itself, faster the emptier it is, and the emitter vanes spin up while it does. Not on the wheel until you find it — see the scarecrow | **Overcharge** — four cells at once, heavier bolt, deeper pierce |
+
+Each of the three is in the same case, and each case is lit the same way:
+**embers**, not a glow. There used to be a painted ellipse lying on the boards
+and a translucent cone standing in it, and both are the same mistake — a flat
+surface pretending to be light, with an edge where light has none and a
+silhouette that turns a hint into a beacon. It is now thirty sparks lifting out
+of the lining on their own clocks, curling inward as they climb and going out
+before the top of their run (one `THREE.Points` cloud, one draw call, per-spark
+brightness in the vertex colours), over a single small point light that
+actually lands on the floor. A single ember is at the edge of visible; the
+effect is what thirty of them do together.
 
 ## Soundtrack and voices
 
@@ -598,9 +618,12 @@ There is deliberately no command that touches the kill counter — the
   the lamps light in sequence and the flaps drop. Each instrument says its
   thing ONCE: there is no stencilled title over the case, no stamp, no
   property-of notice under it, and no green caption row beneath each bay
-  restating in words the number the instrument is already showing. A red hold
-  lamp on a rule is the whole header — the frozen game behind the case is the
-  rest of the message. The one figure that was not on an instrument, the
+  restating in words the number the instrument is already showing. There is no
+  hold lamp on the header either any more — a red light blinking once a second
+  forever is the loudest thing on the panel, on the one screen a player opens
+  to make things STOP moving, and the frozen game behind the case already says
+  what it was saying. A rule under the screws is the whole header. The one
+  figure that was not on an instrument, the
   wave's cleared-of-quota, moved onto the tube bank. Each of the four
   actions has its own mechanism — RESUME wipes green across, SAVE RUN runs
   punched tape over its face, SETTINGS turns a driver slot, QUIT lifts hazard
@@ -1479,7 +1502,7 @@ doorways between rooms, which is the pair a mirrored floor plan gets wrong by
 swinging a writing desk across its own bedroom door — two vehicles on the same
 ground, neighbours sharing a wall texture, weathering that isn't actually
 spatial, unfurnished interiors, a found weapon that failed to place or landed
-with its case's lid or its pool of light inside a wall, alleys too narrow to
+with its case's lid or its cloud of embers inside a wall, alleys too narrow to
 path down, spawn points on
 blocked ground, roads floating over or cutting into the ground (sampled inside
 each triangle, since the vertices sit on the terrain by construction and only

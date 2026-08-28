@@ -608,12 +608,12 @@ export class HUD {
     c.style.backgroundImage = `url(${this._tex.bar})`;
     for (const k of ['tl', 'tr', 'bl', 'br']) this._el('div', null, c, 'screw ' + k);
 
-    // A hold lamp and a rule, and no words. The panel used to be topped with a
-    // stencilled title and a SYSTEM HOLD stamp, and tailed with a property-of
-    // notice; all three told you what the blinking red lamp and the frozen game
-    // behind the case already say.
-    const head = this._el('div', null, c, 'pause-head');
-    this._el('div', null, head, 'pause-lamp');
+    // A rule, and nothing on it. The panel used to be topped with a stencilled
+    // title, a SYSTEM HOLD stamp and a blinking red lamp, and tailed with a
+    // property-of notice; every one of them told you what the frozen game
+    // behind the case already says, and the lamp did it once a second forever
+    // on a screen the player opened to STOP things moving.
+    this._el('div', null, c, 'pause-head');
 
     const bays = this._el('div', 'pause-stats', c, 'pause-bays');
     this.pauseParts = {
@@ -1414,20 +1414,32 @@ export class HUD {
     this.weaponCharge.classList.toggle('cell', !!cur.energy && !cur.reloading);
 
     // --- console: ARMS grid (persistent 6-slot armoury) ---
+    //
+    // The bays are numbered, not assigned: a bay is the Nth thing the run
+    // owns, so its OCCUPANT changes as weapons are found (see
+    // WeaponManager.hudState). The chassis is therefore built once and empty,
+    // and each bay redraws its silhouette only when the thing standing in it
+    // actually changes — a canvas redraw every frame for six bays is a real
+    // cost for a picture that changes twice a run.
     if (!this.armsSlots.length) {
-      d.weapons.forEach((w) => {
+      d.weapons.forEach((w, i) => {
         const slot = this._el('div', null, this.armsGrid, 'arms-slot');
-        const key = this._el('div', null, slot, 'arms-key'); key.textContent = w.slot;
+        const key = this._el('div', null, slot, 'arms-key'); key.textContent = i + 1;
         const cv = document.createElement('canvas'); cv.width = 44; cv.height = 22; cv.className = 'arms-icon';
-        this._drawGlyph(cv, w.id, '#b9a24a'); slot.appendChild(cv);
+        slot.appendChild(cv);
         const rsv = this._el('div', null, slot, 'arms-rsv');
-        this.armsSlots.push({ slot, rsv });
+        this.armsSlots.push({ slot, rsv, cv, shown: undefined });
       });
     }
     d.weapons.forEach((w, i) => {
       const s = this.armsSlots[i];
-      // A bay for a weapon the run has not found yet reads EMPTY — no glyph,
-      // no counter, just the slot number. Finding it fills the bay in.
+      if (s.shown !== w.id) {
+        s.shown = w.id;
+        if (w.id) this._drawGlyph(s.cv, w.id, '#b9a24a');
+        else s.cv.getContext('2d').clearRect(0, 0, s.cv.width, s.cv.height);
+      }
+      // A bay the run has not filled yet reads EMPTY — no glyph, no counter,
+      // just the bay number. Finding a weapon fills the next one in.
       s.slot.classList.toggle('empty', !!w.locked);
       s.slot.classList.toggle('active', w.active && !w.locked);
       s.slot.classList.toggle('dry', !w.locked && w.mag === 0 && w.reserve === 0 && w.id !== 'bat');
@@ -1490,23 +1502,28 @@ export class HUD {
       ? (d.wave.n === 0 ? 'THEY ARE COMING · ' : 'RESPITE · ') + Math.ceil(d.wave.respiteLeft) + 's'
       : 'HOLD THE LINE';
 
-    // --- fly-in ARMORY names (built once) ---
+    // --- fly-in ARMORY names (chassis built once, occupants redrawn on change) ---
     if (!this.slotEls.length) {
-      for (const w of d.weapons) {
+      d.weapons.forEach((w, i) => {
         const slot = this._el('div', null, this.menuSlots, 'wm-slot');
         const cv = document.createElement('canvas'); cv.width = 64; cv.height = 34;
-        cv.className = 'wm-glyph'; this._drawGlyph(cv, w.id, '#e0b840');
-        const key = this._el('div', null, slot, 'wm-key'); key.textContent = w.slot;
+        cv.className = 'wm-glyph';
+        const key = this._el('div', null, slot, 'wm-key'); key.textContent = i + 1;
         slot.appendChild(cv);
-        this._el('div', null, slot, 'wm-name').textContent = w.flavor || w.name;
+        this._el('div', null, slot, 'wm-name');
         this._el('div', null, slot, 'wm-ammo');
-        this.slotEls.push(slot);
-      }
+        this.slotEls.push({ slot, cv, shown: undefined });
+      });
     }
     d.weapons.forEach((w, i) => {
-      const slot = this.slotEls[i];
-      // Same rule as the ARMS grid: an unfound weapon is a blank rack, not a
-      // preview of what is coming.
+      const { slot, cv } = this.slotEls[i];
+      if (this.slotEls[i].shown !== w.id) {
+        this.slotEls[i].shown = w.id;
+        if (w.id) this._drawGlyph(cv, w.id, '#e0b840');
+        else cv.getContext('2d').clearRect(0, 0, cv.width, cv.height);
+      }
+      // Same rule as the ARMS grid: a bay nothing has been found for yet is a
+      // blank rack, not a preview of what is coming.
       slot.classList.toggle('empty', !!w.locked);
       slot.classList.toggle('active', w.active && !w.locked);
       slot.classList.toggle('dry', !w.locked && w.mag === 0 && w.reserve === 0 && w.id !== 'bat');

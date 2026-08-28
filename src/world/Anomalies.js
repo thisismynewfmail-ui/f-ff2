@@ -362,24 +362,48 @@ export class Anomalies {
             });
           }
         } else if (a.kind === 'pickupGlow') {
-          // Something worth walking over to. The disc breathes on a slow beat
-          // with a faster one riding it (so it never settles into a sine you
-          // can predict), the shaft breathes against it rather than with it,
-          // and the motes climb out of the case and fade at the top of their
-          // own run. Nothing here is fast: a pickup marker that pulses at
-          // combat speed reads as a hazard.
+          /**
+           * Something worth walking over to, made of embers.
+           *
+           * Each one runs its own clock from the lining to the top of its own
+           * rise and starts again, and because every clock has a different
+           * rate and a different phase the cloud never repeats and never
+           * pulses: what you see is a warm thing on a dark floor rather than
+           * a marker blinking at you. Two things shape a run — the spark
+           * curls INWARD as it climbs, so the column narrows into a wisp
+           * instead of standing up like a cylinder, and it dies well before
+           * the top of its own arc, so the cloud has no ceiling either.
+           *
+           * The brightness is written into the vertex colours rather than the
+           * material, which is the only way one additive Points cloud can
+           * have two dozen independent fades in one draw call.
+           *
+           * The lamp — the one real light here — breathes on a slow beat with
+           * a faster one riding it so it never settles into a sine. Nothing
+           * is quick: a pickup marker that moves at combat speed reads as a
+           * hazard.
+           */
           const beat = 0.62 + Math.sin(time * 1.35 + a.phase) * 0.26
             + Math.sin(time * 3.1 + a.phase * 1.7) * 0.12;
-          a.discMat.opacity = 0.10 + beat * 0.15;
-          a.shaftMat.opacity = 0.028 + (1.24 - beat) * 0.042;
-          a.node.rotation.y += dt * 0.25;
-          if (a.lamp) a.lamp.intensity = 0.8 + beat * 1.0;
-          for (const m of a.motes) {
-            const k = ((time * 0.34 + m.phase) % 1);
-            m.mesh.position.y = m.baseY + k * 1.05;
-            m.mesh.material.opacity = Math.min(1, k * 5) * (1 - k) * 0.7;
-            m.mesh.rotation.y = -a.node.rotation.y;   // always face out of the spin
+          if (a.lamp) a.lamp.intensity = 0.62 + beat * 0.72;
+          const [sx, sz] = a.spread;
+          for (let i = 0; i < a.seeds.length; i++) {
+            const m = a.seeds[i];
+            const k = (time * m.speed + m.phase) % 1;
+            const o = i * 3;
+            const pull = 1 - k * 0.62;            // curls in as it goes up
+            const drift = m.curl * k * 0.16;
+            a.pos[o] = m.ax * sx * pull + Math.sin(drift) * 0.09;
+            a.pos[o + 1] = 0.01 + k * m.rise;
+            a.pos[o + 2] = m.az * sz * pull + Math.cos(drift) * 0.09 - 0.09;
+            // in over the first tenth of the run, out over the last two thirds
+            const f = Math.min(1, k * 9) * (1 - k) ** 1.6 * m.warm * (0.55 + beat * 0.45);
+            a.col[o] = f;
+            a.col[o + 1] = f * 0.72;
+            a.col[o + 2] = f * 0.34;
           }
+          a.embers.geometry.attributes.position.needsUpdate = true;
+          a.embers.geometry.attributes.color.needsUpdate = true;
         } else if (a.kind === 'wellwater') {
           // The sheet swells on a slow beat, and the drips off the rope land
           // in it: each ring grows from nothing to the shaft wall and fades as
