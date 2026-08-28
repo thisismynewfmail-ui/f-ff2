@@ -337,16 +337,16 @@ export class Scarecrow {
 
     // ---- the scar. Opaque burnt ground, not a translucent smear over grass:
     //      a stain you can see through is a stain nobody notices from the air.
-    const burn = (sx, sz, sizeX, sizeZ, yaw, shade, lift = 0.055) => {
+    //      The quads overlap each other heavily, so they go on the town's
+    //      ground stack like any other draped surface rather than all sitting
+    //      at one height: a dozen coplanar quads shimmer exactly the way the
+    //      junctions did. See World._drapeLevel.
+    const burn = (sx, sz, sizeX, sizeZ, yaw, shade) => {
       const mat = new THREE.MeshLambertMaterial({
         map: w.texLib.tiled('dirt', Math.max(1, sizeX / 3), Math.max(1, sizeZ / 3)),
         color: shade,
       });
-      const q = w.terrain.makeDecal(x + sx, z + sz, sizeX, sizeZ, yaw, mat, lift);
-      q.renderOrder = 1;
-      w.group.add(q);
-      w.groundMeshes.push({ kind: 'decal:crashScar', mesh: q });
-      return q;
+      return w.dropDecal('decal:crashScar', x + sx, z + sz, sizeX, sizeZ, yaw, mat);
     };
     // The burn is built as a drift of overlapping quads at odd angles rather
     // than one big rectangle. A rectangle of scorched earth is a rectangle no
@@ -371,7 +371,7 @@ export class Scarecrow {
       [1.5, 0, 4.8, 6, 0, 0x453c33], [7, 0.4, 4.0, 7, 0.05, 0x54493d],
       [13, 0.2, 3.0, 7, -0.06, 0x635646], [19, -0.4, 1.9, 6, 0.09, 0x736450],
     ]) {
-      burn(...along(t, o), wide, len, ENTRY + turn, shade, 0.07);
+      burn(...along(t, o), wide, len, ENTRY + turn, shade);
     }
     // the ragged outer edge, where it is scorch rather than bare earth
     for (const [t, o, size] of [[-4, -5, 13], [6, 6, 12], [16, -5, 11], [24, 4, 9]]) {

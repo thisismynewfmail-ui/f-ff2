@@ -270,7 +270,10 @@ export class InteriorKit {
     (maker.live ? this.w.group : this._bucket).add(g);
     if (box) {
       this._room.push(box);
-      this.w.collision.addBoxCentered(p.x, baseY + box.hy, p.z,
+      // The id comes back so a piece that can LEAVE — the weapon cases, which
+      // pack themselves away once you have taken what was in them — can take
+      // its collider with it instead of leaving a box you walk into.
+      g.userData.colliderId = this.w.collision.addBoxCentered(p.x, baseY + box.hy, p.z,
         (box.maxX - box.minX) / 2, box.hy, (box.maxZ - box.minZ) / 2, 'furniture');
     }
     if (opts.loot) {
@@ -1876,14 +1879,37 @@ export class InteriorKit {
     const lining = box(CW - 0.08, 0.02, CD - 0.08, baize);
     lining.position.y = CH - 0.01;
     g.add(base, lining);
+    /**
+     * THE LID IS ON A REAL HINGE.
+     *
+     * It used to be two loose slabs lying on the boards behind the case,
+     * placed where an open lid looks like it should be — which is fine until
+     * something has to CLOSE it, and then there is no hinge to close it about
+     * and no way to make the shut lid land on the rim.
+     *
+     * So the lid hangs off a pivot on the back rim, and the offsets below are
+     * solved rather than eyeballed: a rigid half-turn about this axis takes
+     * the lid from exactly where it has always rested — flat on the floor
+     * behind the case, lining upward — to exactly on top of the shell with the
+     * lining face down inside it. Nothing about the case at rest changed; what
+     * changed is that the rest pose is now one end of an arc.
+     *
+     * (H = (0, CH/2 + 0.025, -CD/2 - 0.01) with the lid at local
+     *  (0, CH/2, CD/2 + 0.01) is the unique solution of "closed at 0 rad,
+     *  today's open pose at -PI".)
+     */
+    const lidPivot = new THREE.Group();
+    lidPivot.position.set(0, CH / 2 + 0.025, -CD / 2 - 0.01);
+    lidPivot.rotation.x = -Math.PI;
     const lid = box(CW, 0.05, CD, wood);
-    lid.position.set(0, 0.025, -CD - 0.02);
+    lid.position.set(0, CH / 2, CD / 2 + 0.01);
     const lidFelt = box(CW - 0.08, 0.02, CD - 0.08, baize);
-    lidFelt.position.set(0, 0.055, -CD - 0.02);
-    g.add(lid, lidFelt);
-    for (const sx of [-CW / 2 + 0.16, CW / 2 - 0.16]) {   // hinges and a catch
+    lidFelt.position.set(0, CH / 2 - 0.03, CD / 2 + 0.01);
+    lidPivot.add(lid, lidFelt);
+    g.add(lidPivot);
+    for (const sx of [-CW / 2 + 0.16, CW / 2 - 0.16]) {   // the hinge barrel
       const h = box(0.1, 0.03, 0.06, brass);
-      h.position.set(sx, CH - 0.02, -CD / 2 - 0.01);
+      h.position.set(sx, CH / 2 + 0.025, -CD / 2 - 0.01);
       g.add(h);
     }
     const catchPlate = box(0.12, 0.05, 0.04, brass);
@@ -2031,7 +2057,7 @@ export class InteriorKit {
     root.add(glow);
 
     return {
-      group: root, collide: foot, foot, live: true, gun, cfg,
+      group: root, collide: foot, foot, live: true, gun, lidPivot, cfg,
       glow: { node: glow, embers, pos, col, seeds, spread, lamp },
     };
   }

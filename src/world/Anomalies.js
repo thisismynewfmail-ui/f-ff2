@@ -76,10 +76,8 @@ export class Anomalies {
   _openGrave() {
     const x = -207, z = -188;
     const y = this.w.terrain.heightAt(x, z);
-    const pit = this.w.terrain.makeDecal(x, z, 1.3, 2.3, 0.06,
-      new THREE.MeshLambertMaterial({ color: 0x08080a }), 0.07);
-    pit.renderOrder = 2;
-    this.w.group.add(pit);
+    this.w.dropDecal('decal:grave', x, z, 1.3, 2.3, 0.06,
+      new THREE.MeshLambertMaterial({ color: 0x08080a }));
     const mound = this.w.kit.box(1.1, 0.5, 1.9, 'dirt');
     mound.position.set(x + 1.4, y + 0.2, z + 0.2);
     mound.rotation.y = 0.15;
@@ -385,7 +383,12 @@ export class Anomalies {
            */
           const beat = 0.62 + Math.sin(time * 1.35 + a.phase) * 0.26
             + Math.sin(time * 3.1 + a.phase * 1.7) * 0.12;
-          if (a.lamp) a.lamp.intensity = 0.62 + beat * 0.72;
+          // `fade` is written by the case as it packs itself away (see
+          // World._updateWeaponCases): the light leaves WITH the thing it was
+          // lighting rather than being switched off under it.
+          const fade = a.fade ?? 1;
+          if (a.lamp) a.lamp.intensity = (0.62 + beat * 0.72) * fade;
+          if (fade <= 0) continue;
           const [sx, sz] = a.spread;
           for (let i = 0; i < a.seeds.length; i++) {
             const m = a.seeds[i];
@@ -397,7 +400,7 @@ export class Anomalies {
             a.pos[o + 1] = 0.01 + k * m.rise;
             a.pos[o + 2] = m.az * sz * pull + Math.cos(drift) * 0.09 - 0.09;
             // in over the first tenth of the run, out over the last two thirds
-            const f = Math.min(1, k * 9) * (1 - k) ** 1.6 * m.warm * (0.55 + beat * 0.45);
+            const f = Math.min(1, k * 9) * (1 - k) ** 1.6 * m.warm * (0.55 + beat * 0.45) * fade;
             a.col[o] = f;
             a.col[o + 1] = f * 0.72;
             a.col[o + 2] = f * 0.34;

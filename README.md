@@ -223,6 +223,19 @@ brightness in the vertex colours), over a single small point light that
 actually lands on the floor. A single ember is at the edge of visible; the
 effect is what thirty of them do together.
 
+**And the case packs itself away once you take the gun.** Not a fade: a case
+that dissolves reads as an object being deleted, which is exactly what it is
+and exactly what you don't want it to look like. It is four beats in a second
+and a half, and they deliberately overlap — the gun lifts out of the lining,
+turns over and shrinks away to nothing; the embers rise with it and go out, so
+the light leaves with the thing that was lit; the lid falls through its hinge
+arc on an ease that has it moving fastest at the end, meets the rim and
+**rebounds twice**, damped, the way a heavy lid actually does; and the shut
+case tips slightly and sinks through the floor. Each beat starts before the one
+before it has finished, so it reads as one motion rather than four. The collider
+goes the moment you take the gun, so you can walk through the animation, and
+`resetWeaponCaches()` puts every case back for a new run.
+
 ## Soundtrack and voices
 
 Every note in this game is synthesised at run time by the same WebAudio
@@ -747,16 +760,37 @@ There is deliberately no command that touches the kill counter — the
 - **Terrain:** a real heightfield — the chapel hill climbs 16 m, the park
   drops into a ravine, steep slopes slow you down. Roads, plazas and ground
   decals are **draped**: the waypoints are a road's shape, not its resolution,
-  so every centreline is resampled at a metre and subdivided across its width,
-  and it samples `meshHeightAt` — the *rendered* ground — rather than the
-  analytic height function the ground mesh only approximates. The **pond** is a real
-  basin: a terrain pad sunk into the ravine floor, with the water built as a
-  sheet clipped to it — a quad is emitted only where all four corners are
-  genuinely below the water line, so the shoreline follows the ground exactly
-  and can never float. Its level is taken from the ground that *surrounds* the
-  basin rather than from its own floor, which is the property that stops the
-  surface reading as standing proud of the bank it meets. Two sheets drift
-  across each other at different scales to give it movement.
+  so every centreline is resampled at 0.8 m and subdivided across its width at
+  the same step, and it samples `meshHeightAt` — the *rendered* ground — rather
+  than the analytic height function the ground mesh only approximates.
+- **The ground stack (`World._drapeLevel`).** Every one of those drapes used to
+  be laid at one height above the terrain, so two of them crossing produced two
+  sets of triangles at bit-identical depths and the pixel went to whichever the
+  renderer sorted first that frame — which, for opaque geometry, is by distance
+  from the camera. That is what made the junctions shimmer as you walked
+  through them, and it was not a pair of surfaces but a pile: a measurement of
+  the built town found 349 overlapping drapes and **twelve** road surfaces
+  stacked at one point with zero separation between any of them. Each drape is
+  now given a **level** — the lowest not already used by anything it actually
+  overlaps, which is a graph colouring and needs a dozen levels for the whole
+  town — and the level fixes its height (6 mm a level, which is measured: it is
+  more than the worst disagreement two ribbons have where they chord the same
+  curved ground from different sample points, and small enough that the lip at
+  the edge is invisible), its draw order, and a polygon offset that biases the
+  depth alone so the stack survives out at the fog wall where 6 mm is less than
+  one depth step. Levels are **banded** by class, so a plaza cannot colour its
+  way on top of a road it happens to be built after; stains and crosswalks
+  write no depth and so aren't coloured at all — they simply take the level
+  above whatever they are painted on and ride up with it. The suite samples
+  every overlapping pair of drapes on the built town and fails if any of the
+  2439 probes finds the higher one at or below the lower.
+- **The pond** is a real basin: a terrain pad sunk into the ravine floor, with
+  the water built as a sheet clipped to it — a quad is emitted only where all
+  four corners are genuinely below the water line, so the shoreline follows the
+  ground exactly and can never float. Its level is taken from the ground that
+  *surrounds* the basin rather than from its own floor, which is the property
+  that stops the surface reading as standing proud of the bank it meets. Two
+  sheets drift across each other at different scales to give it movement.
 - **The world barrier (`src/world/Boundary.js`):** the map is ringed by a
   terrain-following **stone rampart** — battered plinth, buttresses, a
   crenellated parapet, octagonal corner bastions, and a **bricked-up
