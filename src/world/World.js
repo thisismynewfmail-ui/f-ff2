@@ -88,6 +88,43 @@ function grassMember(x, z, r, e) {
 // deliberately tucked against something aren't refused.
 const PROP_CLEARANCE = 0.12;
 
+/* --- the ground stack (see _drapeLevel) ------------------------------- *
+ * Level 0 sits where a plaza used to sit and level 8 where a road used to,
+ * so the town's surfaces come out at the heights they have always had; the
+ * levels above each of those are the room a crossing drape has to climb into.
+ * The bands are what stops a plaza colouring its way ON TOP of a road it
+ * happens to be built after. */
+const DRAPE_BASE = 0.05;                                 // metres, level 0
+const DRAPE_STEP = 0.006;                                // ...per level
+const DRAPE_BANDS = { patch: [0, 7], road: [8, 31] };    // [first, last] level
+/* A stain rides this much clear of the surface it is painted on, on top of
+ * its level. It writes no depth, so the clearance costs nothing and buys
+ * the headroom a big quad needs where it chords rough ground: a 3 m slab
+ * decal out by the east barrier crosses five centimetres of terrain
+ * between its own corners, and at a level's 6 mm it would be half buried. */
+const DECAL_CLEAR = 0.05;
+
+/** Do any two of these footprints share ground? */
+function overlaps(as, bs) {
+  return as.some((a) => bs.some((b) =>
+    Math.min(a.maxX, b.maxX) > Math.max(a.minX, b.minX)
+    && Math.min(a.maxZ, b.maxZ) > Math.max(a.minZ, b.minZ)));
+}
+
+/** The upright footprint of a quad laid flat and turned by `yaw`. */
+function decalRect(x, z, sizeX, sizeZ, yaw) {
+  const c = Math.abs(Math.cos(yaw)), s = Math.abs(Math.sin(yaw));
+  const hx = (sizeX / 2) * c + (sizeZ / 2) * s;
+  const hz = (sizeX / 2) * s + (sizeZ / 2) * c;
+  return { minX: x - hx, maxX: x + hx, minZ: z - hz, maxZ: z + hz };
+}
+
+/* Seconds, from the moment the gun is taken. The beats OVERLAP on purpose —
+ * see World._updateWeaponCases. */
+const CASE_PACK = {
+  gun: [0, 0.32], glow: [0, 0.5], lid: [0.1, 0.68], sink: [0.78, 1.5], done: 1.5,
+};
+
 /** Which material-set family a building's function draws from. */
 const FAMILY_FOR_USE = {
   house: 'house', hollow: 'house', apartment: 'block',
@@ -156,7 +193,8 @@ export class World {
     this.ropeSwings = [];        // pivots that keep an arc nobody started
     this.waterSurfaces = [];     // {mat, u, v} — the pond's own sheets
     this.uvDrifts = [];          // {mat, u, v} — any other surface that crawls
-    this.groundMeshes = [];      // {kind, mesh} — everything draped on the ground
+    this.groundMeshes = [];      // {kind, mesh, level, rects, soft} — see _drapeLevel
+    this.drapeOverflow = 0;      // drapes that ran their level band out
     this.alarmCars = [];         // {x, y, z, lights[]} — shootable car alarms
     this.phoneBoothPos = null;
     // One registry for every small prop that moves. Entries are ticked by
@@ -376,6 +414,7 @@ export class World {
     this.scarecrow.update(dt, time, cameraPos);
     this.tradingPost?.update(dt, time);
     this.flyby?.update(dt);
+    this._updateWeaponCases(dt);
     this._updateClock();
   }
 
@@ -978,25 +1017,112 @@ export class World {
     }
   }
 
-  _road(points, tex, width, surface = 'road') {
-    const mat = new THREE.MeshLambertMaterial({ map: this.texLib.tiled(tex, 1, 1) });
-    const mesh = this.terrain.makeRibbon(points, width, mat);
-    this.group.add(mesh);
-    this.groundMeshes.push({ kind: 'road:' + tex, mesh });
-    for (let i = 1; i < points.length; i++) {
-      const [x1, z1] = points[i - 1], [x2, z2] = points[i];
-      this.addSurface(Math.min(x1, x2) - width / 2, Math.min(z1, z2) - width / 2,
-        Math.max(x1, x2) + width / 2, Math.max(z1, z2) + width / 2, surface);
+  /**
+   * THE GROUND IS A STACK, AND IT HAS TO BE ORDERED.
+   *
+   * Every road, path, plaza and forecourt in the town is a separate surface
+   * DRAPED on the same terrain, and every one of them was draped at the same
+   * height above it. Two of them crossing therefore produced two sets of
+   * triangles at bit-identical depths, and which one a pixel showed was
+   * decided by whatever order the renderer happened to sort them in that
+   * frame — which, for opaque geometry, is by distance from the camera. So it
+   * changed as you walked. That is the shimmer: not one road drawn badly, but
+   * two drawn equally well in the same place.
+   *
+   * It is worse than a pair, too. A measurement of the built town found 349
+   * overlapping drapes and, at the crossroads on the corporate row, TWELVE
+   * road surfaces stacked at one point with zero separation between any of
+   * them.
+   *
+   * So the stack is levelled. Each drape is given a LEVEL — the lowest one not
+   * already used by anything it actually overlaps, which is a graph colouring
+   * and needs only a handful of levels even at the worst junction — and the
+   * level decides three things at once:
+   *
+   *   1. how high it drapes: 6 mm per level. That number is measured, not
+   *      chosen — it is comfortably more than the worst disagreement two
+   *      ribbons have where they chord the same curved ground from different
+   *      sample points (see Terrain.makeRibbon, which was refined until that
+   *      figure came down to under 4 mm), and small enough that the lip at
+   *      the edge of a high level is invisible. A drape only reaches a high
+   *      level where it is surrounded by other drapes, so the lip it makes is
+   *      against another road rather than against grass.
+   *   2. its render order, so the painter's order is fixed rather than
+   *      whatever the camera's position makes it this frame. This alone
+   *      settles an exact tie, because the depth test passes on equality and
+   *      the later draw wins.
+   *   3. a polygon offset, which biases the DEPTH ONLY — no geometry moves —
+   *      by a whole number of depth-buffer steps whatever the distance. Depth
+   *      resolution falls off with the square of the distance, so out past
+   *      forty metres six millimetres is less than one step and the geometry
+   *      alone stops deciding; two steps per level is what carries the stack
+   *      the rest of the way to the fog wall.
+   *
+   * Levels are banded by class so the classes cannot invert: a plaza is
+   * ground and a road runs OVER it, so patches colour into the low band and
+   * roads into the high one whatever order the town is built in.
+   */
+  _drapeLevel(band, rects) {
+    const [lo, hi] = DRAPE_BANDS[band];
+    const taken = new Set();
+    for (const d of this.groundMeshes) {
+      if (!d.rects || d.soft) continue;   // soft drapes write no depth to fight over
+      if (overlaps(rects, d.rects)) taken.add(d.level);
     }
+    let level = lo;
+    while (level < hi && taken.has(level)) level++;
+    if (taken.has(level)) this.drapeOverflow++;   // the band ran out — see the test
+    return level;
+  }
+
+  /** The top of the stack over `rects`: the highest level anything that writes
+   *  depth has claimed there, or -1 over open ground. What goes ON TOP of the
+   *  ground — a crosswalk, an oil stain — asks this rather than colouring,
+   *  because it writes no depth of its own and so cannot be fought over. */
+  _drapeCeil(rects) {
+    let top = -1;
+    for (const d of this.groundMeshes) {
+      if (!d.rects || d.soft || d.level === undefined) continue;
+      if (d.level > top && overlaps(rects, d.rects)) top = d.level;
+    }
+    return top;
+  }
+
+  /** Put a drape on the ground at its level, and record what it covers so the
+   *  next one can colour against it. */
+  _drape(kind, level, rects, mesh, mat, soft = false) {
+    mat.polygonOffset = true;
+    mat.polygonOffsetFactor = -1;
+    mat.polygonOffsetUnits = -2 * (1 + level);
+    mesh.renderOrder = 1 + level;
+    this.group.add(mesh);
+    this.groundMeshes.push({ kind, mesh, level, rects, soft });
     return mesh;
   }
 
+  _road(points, tex, width, surface = 'road') {
+    const rects = [];
+    for (let i = 1; i < points.length; i++) {
+      const [x1, z1] = points[i - 1], [x2, z2] = points[i];
+      rects.push({
+        minX: Math.min(x1, x2) - width / 2, maxX: Math.max(x1, x2) + width / 2,
+        minZ: Math.min(z1, z2) - width / 2, maxZ: Math.max(z1, z2) + width / 2,
+      });
+    }
+    const level = this._drapeLevel('road', rects);
+    const mat = new THREE.MeshLambertMaterial({ map: this.texLib.tiled(tex, 1, 1) });
+    const mesh = this.terrain.makeRibbon(points, width, mat, DRAPE_BASE + level * DRAPE_STEP);
+    for (const r of rects) this.addSurface(r.minX, r.minZ, r.maxX, r.maxZ, surface);
+    return this._drape('road:' + tex, level, rects, mesh, mat);
+  }
+
   _patch(x, z, hx, hz, tex, surface, repeat = 8) {
+    const rects = [{ minX: x - hx, maxX: x + hx, minZ: z - hz, maxZ: z + hz }];
+    const level = this._drapeLevel('patch', rects);
     const mat = new THREE.MeshLambertMaterial({ map: this.texLib.tiled(tex, repeat, repeat) });
-    const mesh = this.terrain.makePatch(x, z, hx, hz, mat);
-    this.group.add(mesh);
-    this.groundMeshes.push({ kind: 'patch:' + tex, mesh });
+    const mesh = this.terrain.makePatch(x, z, hx, hz, mat, DRAPE_BASE + level * DRAPE_STEP);
     if (surface) this.addSurface(x - hx, z - hz, x + hx, z + hz, surface);
+    this._drape('patch:' + tex, level, rects, mesh, mat);
   }
 
   _roads() {
@@ -1067,16 +1193,40 @@ export class World {
     this._patch(200, -150, 3, 3, 'dirt', 'dirt', 3);           // windmill pad
   }
 
+  /**
+   * A stain, a crosswalk, a manhole: a translucent quad that lies ON whatever
+   * is already there. It writes no depth, so it never has to be coloured
+   * against its neighbours — two stains in the same place are just two stains.
+   * It does have to clear the thing underneath it, though, and that thing is
+   * no longer at a fixed height: a crosswalk is painted on a road that may be
+   * four levels up at a junction. So a decal takes the level above the top of
+   * the stack it covers, and rides up with it.
+   */
   _decal(tex, x, z, size, yaw = 0, tint = null, sizeZ = size) {
+    const rects = [decalRect(x, z, size, sizeZ, yaw)];
+    const level = Math.min(DRAPE_BANDS.road[1], this._drapeCeil(rects) + 1);
     const mat = new THREE.MeshLambertMaterial({
       map: this.texLib.get(tex), transparent: true, depthWrite: false,
       ...(tint ? { color: tint } : {}),
     });
-    const q = this.terrain.makeDecal(x, z, size, sizeZ, yaw, mat);
-    q.renderOrder = 2;
-    this.group.add(q);
-    this.groundMeshes.push({ kind: 'decal:' + tex, mesh: q });
-    return q;
+    const lift = DRAPE_BASE + level * DRAPE_STEP + DECAL_CLEAR;
+    const q = this.terrain.makeDecal(x, z, size, sizeZ, yaw, mat, lift);
+    return this._drape('decal:' + tex, level, rects, q, mat, true);
+  }
+
+  /**
+   * ...and the opaque version, for set pieces that burn or break the ground
+   * rather than staining it. This one DOES write depth, so it is coloured
+   * into the stack like a plaza: the crash scar is a dozen overlapping quads,
+   * and a dozen overlapping quads at one height is the same shimmer the roads
+   * had. Public because the set pieces build themselves (see Scarecrow).
+   */
+  dropDecal(kind, x, z, sizeX, sizeZ, yaw, mat, band = 'patch') {
+    const rects = [decalRect(x, z, sizeX, sizeZ, yaw)];
+    const level = this._drapeLevel(band, rects);
+    const q = this.terrain.makeDecal(x, z, sizeX, sizeZ, yaw, mat,
+      DRAPE_BASE + level * DRAPE_STEP);
+    return this._drape(kind, level, rects, q, mat);
   }
 
   /**
@@ -1158,14 +1308,25 @@ export class World {
     const cfg = maker.cfg;
     // The glow is a moving part, so it goes on the town's own animation pass
     // rather than being driven from here (see Anomalies: kind 'pickupGlow').
+    let glowAnim = null;
     if (maker.glow) {
-      this._animate(maker.glow.node, 'pickupGlow', p.x, p.z, {
+      glowAnim = this._animate(maker.glow.node, 'pickupGlow', p.x, p.z, {
         embers: maker.glow.embers, pos: maker.glow.pos, col: maker.glow.col,
         seeds: maker.glow.seeds, spread: maker.glow.spread, lamp: maker.glow.lamp,
       });
     }
     const cache = {
-      cfg, node, gun: maker.gun, glow: maker.glow?.node, taken: false, where: spec.name,
+      cfg, node, gun: maker.gun, lid: maker.lidPivot, glow: maker.glow?.node,
+      glowAnim, colliderId: node.userData.colliderId, taken: false, t: -1,
+      where: spec.name,
+      // Where everything sits before the case packs itself away, so a new run
+      // can put it all back exactly (see resetWeaponCaches).
+      rest: {
+        y: node.position.y,
+        gunY: maker.gun ? maker.gun.position.y : 0,
+        gunRoll: maker.gun ? maker.gun.rotation.z : 0,
+        glowY: maker.glow ? maker.glow.node.position.y : 0,
+      },
     };
     cache.prompt = this.addInteractable({
       x: p.x, z: p.z, y: p.y, radius: 1.9,
@@ -1180,8 +1341,11 @@ export class World {
     const c = this.weaponCaches.get(id);
     if (!c || c.taken) return;
     c.taken = true;
-    if (c.gun) c.gun.visible = false;
-    if (c.glow) c.glow.visible = false;
+    c.t = 0;                              // the case starts packing itself away
+    // The collider goes NOW, not at the end of the animation: the case is no
+    // longer something the player has any reason to walk into, and a box you
+    // bounce off while watching it leave is worse than no animation at all.
+    if (c.colliderId) this.collision.remove(c.colliderId);
     this.events.emit('weapon:unlock', { id });
     // What was in the box with it. Two magazines' worth and no more — the
     // point of a found weapon is that you have to go and feed it.
@@ -1189,21 +1353,118 @@ export class World {
     this.events.emit('subtitle', { text: c.cfg.found });
   }
 
-  /** Mark one already taken (a resumed run that had already found it). */
+  /**
+   * THE CASE PACKS ITSELF AWAY.
+   *
+   * Taking the gun used to switch the gun and the glow off and leave the case
+   * standing open on the floorboards for the rest of the run — an empty box
+   * with a light that had gone out, which reads as something the game forgot
+   * about rather than something that happened.
+   *
+   * It leaves now, in four beats that overlap rather than queue, because a
+   * sequence of separate moves reads as a cutscene and a sequence that bleeds
+   * into itself reads as one action:
+   *
+   *   the gun     lifts out of the lining, turns in the air and shrinks away
+   *               over a third of a second — it is going to your hands, and
+   *               the hands it is going to are already raising it
+   *   the embers  lift with it and go out, so the light leaves with the thing
+   *               that was lit rather than being switched off
+   *   the lid     swings up off the boards and over onto the rim on a real
+   *               hinge, fast at first and easing into the shut, then two
+   *               small damped rebounds — a lid that stops dead has no weight
+   *   the case    drops through the floor under its own acceleration, tipping
+   *               as it goes, and is gone
+   *
+   * All of it is transform-only. The case's four materials are SHARED between
+   * all three cases in the town (they are the same case), so fading one out
+   * by its opacity would fade the other two with it — which is exactly the
+   * kind of bug a shared material cache invites. Nothing here touches a
+   * material: the case sinks below floorboards that are already drawn, and
+   * opaque geometry hides it for nothing.
+   */
+  _updateWeaponCases(dt) {
+    const CLAMP = (v) => Math.max(0, Math.min(1, v));
+    for (const c of this.weaponCaches.values()) {
+      if (c.t < 0 || c.t >= CASE_PACK.done) continue;
+      c.t += dt;
+      const t = c.t;
+
+      // --- the gun, out of the lining and away
+      if (c.gun) {
+        const k = CLAMP((t - CASE_PACK.gun[0]) / (CASE_PACK.gun[1] - CASE_PACK.gun[0]));
+        c.gun.position.y = c.rest.gunY + 0.30 * (1 - (1 - k) * (1 - k));
+        c.gun.rotation.z = c.rest.gunRoll + 1.1 * k * k;
+        c.gun.scale.setScalar(Math.max(0.0001, 1 - k * k));
+        if (k >= 1) c.gun.visible = false;
+      }
+
+      // --- the embers, lifting away and going out
+      if (c.glowAnim) {
+        const k = CLAMP((t - CASE_PACK.glow[0]) / (CASE_PACK.glow[1] - CASE_PACK.glow[0]));
+        c.glowAnim.fade = 1 - k;
+        if (c.glow) c.glow.position.y = c.rest.glowY + 0.55 * k * k;
+        if (k >= 1 && c.glow) c.glow.visible = false;
+      }
+
+      // --- the lid, up off the boards and shut
+      if (c.lid) {
+        const k = CLAMP((t - CASE_PACK.lid[0]) / (CASE_PACK.lid[1] - CASE_PACK.lid[0]));
+        if (k < 0.78) {
+          // most of the arc, easing into the shut rather than out of the open
+          c.lid.rotation.x = -Math.PI * Math.pow(1 - k / 0.78, 2.2);
+        } else {
+          // ...and two damped rebounds, both of which OPEN it a little: a
+          // bounce the other way would drive the lid down through the shell
+          const u = (k - 0.78) / 0.22;
+          c.lid.rotation.x = -0.13 * Math.abs(Math.sin(u * Math.PI * 2)) * (1 - u);
+        }
+      }
+
+      // --- and the case itself, through the floor
+      const k = CLAMP((t - CASE_PACK.sink[0]) / (CASE_PACK.sink[1] - CASE_PACK.sink[0]));
+      c.node.position.y = c.rest.y - 0.75 * k * k;
+      c.node.rotation.z = 0.16 * k * k;
+      if (c.t >= CASE_PACK.done) this._settleWeaponCase(c, true);
+    }
+  }
+
+  /** Snap a case to one end of its animation: gone, or back as it was. */
+  _settleWeaponCase(c, gone) {
+    c.t = gone ? CASE_PACK.done : -1;
+    c.node.visible = !gone;
+    c.node.position.y = c.rest.y;
+    c.node.rotation.z = 0;
+    if (c.gun) {
+      c.gun.visible = !gone;
+      c.gun.position.y = c.rest.gunY;
+      c.gun.rotation.z = c.rest.gunRoll;
+      c.gun.scale.setScalar(1);
+    }
+    if (c.lid) c.lid.rotation.x = -Math.PI;
+    if (c.glow) {
+      c.glow.visible = !gone;
+      c.glow.position.y = c.rest.glowY;
+    }
+    if (c.glowAnim) c.glowAnim.fade = gone ? 0 : 1;
+  }
+
+  /** Mark one already taken (a resumed run that had already found it): it is
+   *  simply not there, with none of the animation that put it away. */
   emptyWeaponCache(id) {
     const c = this.weaponCaches.get(id);
-    if (!c) return;
+    if (!c || c.taken) return;
     c.taken = true;
-    if (c.gun) c.gun.visible = false;
-    if (c.glow) c.glow.visible = false;
+    if (c.colliderId) this.collision.remove(c.colliderId);
+    this._settleWeaponCase(c, true);
   }
 
   /** Put them all back in their cases — a new run starts without them again. */
   resetWeaponCaches() {
     for (const c of this.weaponCaches.values()) {
+      if (c.taken && c.colliderId) this.collision.restore(c.colliderId);
       c.taken = false;
-      if (c.gun) c.gun.visible = true;
-      if (c.glow) c.glow.visible = true;
+      this._settleWeaponCase(c, false);
     }
   }
 

@@ -381,6 +381,78 @@ const r = await page.evaluate(async () => {
   }
   out.trespass = [...trespass];
 
+  // --- 11c. ...and the drapes are strictly stacked where they overlap ------
+  //
+  // Two ground surfaces at the same height in the same place is z-fighting,
+  // and the town is full of places where two of them ARE in the same place:
+  // every junction, every road across a plaza, every path over a forecourt.
+  // Each drape carries a level, and the level is supposed to mean something —
+  // so for every overlapping pair, sample the overlap and require the higher
+  // level to be strictly above the lower one at every point where both are
+  // present. Sampling rather than reasoning, because the two disagree by a
+  // fraction of a millimetre wherever they chord the same curved ground from
+  // different points, and that disagreement is the thing the level step has
+  // to beat.
+  {
+    const THREE1 = await import('/lib/three.module.js');
+    const gm = (w.groundMeshes || []).filter((d) => d.rects && d.level !== undefined);
+    const ray = new THREE1.Raycaster();
+    ray.far = 300;
+    const down = new THREE1.Vector3(0, -1, 0);
+    const from = new THREE1.Vector3();
+    const topY = (mesh, x, z) => {
+      from.set(x, 90, z);
+      ray.set(from, down);
+      const h = ray.intersectObject(mesh, false);
+      return h.length ? h[0].point.y : null;
+    };
+    let pairs = 0, tested = 0, worst = Infinity, at = '', inverted = [], tied = [];
+    const meets = (a, b) => a.rects.some((ra) => b.rects.some((rb) =>
+      Math.min(ra.maxX, rb.maxX) > Math.max(ra.minX, rb.minX)
+      && Math.min(ra.maxZ, rb.maxZ) > Math.max(ra.minZ, rb.minZ)));
+    for (let i = 0; i < gm.length; i++) {
+      for (let j = i + 1; j < gm.length; j++) {
+        const a = gm[i], b = gm[j];
+        if (a.level === b.level) {
+          // Two drapes on one level must not overlap at all — unless neither
+          // writes depth, in which case there is nothing to fight over.
+          if (!a.soft && !b.soft && meets(a, b) && tied.length < 6) {
+            tied.push(`${a.kind}/${b.kind}@L${a.level}`);
+          }
+          continue;
+        }
+        const hi = a.level > b.level ? a : b, lo = a.level > b.level ? b : a;
+        for (const ra of a.rects) {
+          for (const rb of b.rects) {
+            const minX = Math.max(ra.minX, rb.minX), maxX = Math.min(ra.maxX, rb.maxX);
+            const minZ = Math.max(ra.minZ, rb.minZ), maxZ = Math.min(ra.maxZ, rb.maxZ);
+            if (maxX <= minX || maxZ <= minZ) continue;
+            pairs++;
+            for (let u = 1; u <= 3; u++) {
+              for (let v = 1; v <= 3; v++) {
+                const x = minX + (maxX - minX) * (u / 4), z = minZ + (maxZ - minZ) * (v / 4);
+                const yh = topY(hi.mesh, x, z), yl = topY(lo.mesh, x, z);
+                if (yh === null || yl === null) continue;
+                tested++;
+                const gap = yh - yl;
+                if (gap < worst) { worst = gap; at = `${hi.kind}(L${hi.level})/${lo.kind}(L${lo.level})@${x.toFixed(0)},${z.toFixed(0)}`; }
+                if (gap <= 0 && inverted.length < 6) inverted.push(`${hi.kind}/${lo.kind}@${x.toFixed(0)},${z.toFixed(0)} ${gap.toExponential(1)}`);
+              }
+            }
+          }
+        }
+      }
+    }
+    out.stack = {
+      drapes: gm.length, pairs, tested, inverted, tied,
+      soft: gm.filter((d) => d.soft).length, overflow: w.drapeOverflow,
+      worst: Number.isFinite(worst) ? worst : null, at,
+      levels: [...new Set(gm.map((d) => d.level))].sort((p, q) => p - q),
+      ordered: gm.every((d) => d.mesh.renderOrder === 1 + d.level
+        && d.mesh.material.polygonOffset === true),
+    };
+  }
+
   // --- 11b. everything draped on the ground actually lies on it
   //
   // Roads, plazas and decals are built from waypoints and rectangles, and the
@@ -837,6 +909,18 @@ check('ground surfaces cover enough of the town', r.drape.meshes >= 60 && r.drap
   `${r.drape.meshes} meshes, ${r.drape.tris} triangles`);
 check('no road or plaza floats over the ground', r.drape.worstUp <= 0.35,
   `${r.drape.worstUp.toFixed(2)}m at ${r.drape.upAt}`);
+check('every ground drape is on its own level, in a fixed draw order',
+  r.stack.ordered && r.stack.levels.length >= 4
+  && r.stack.tied.length === 0 && r.stack.overflow === 0,
+  r.stack.tied.length ? `${r.stack.tied.length} tied: ${r.stack.tied.join(', ')}`
+    : r.stack.overflow ? `${r.stack.overflow} drapes ran their band out`
+      : `${r.stack.drapes} drapes (${r.stack.soft} of them stains) over levels`
+        + ` ${r.stack.levels.join(',')}, ${r.stack.pairs} overlapping regions`);
+check('no two ground drapes fight for the same pixel',
+  r.stack.inverted.length === 0 && r.stack.worst > 0.0004,
+  r.stack.inverted.length
+    ? `${r.stack.inverted.length} inverted: ${r.stack.inverted.join(', ')}`
+    : `tightest of ${r.stack.tested} samples is ${(r.stack.worst * 1000).toFixed(2)} mm at ${r.stack.at}`);
 check('no road or plaza cuts into the ground', r.drape.worstDown >= -0.15,
   `${r.drape.worstDown.toFixed(2)}m at ${r.drape.downAt}`);
 check('no facade band shows through an interior wall', r.innerKerb.length === 0, r.innerKerb.slice(0, 5).join(', '));

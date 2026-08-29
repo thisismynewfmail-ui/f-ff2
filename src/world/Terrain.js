@@ -273,8 +273,20 @@ export class Terrain {
    * Each station is also subdivided ACROSS its width, not just at the two
    * edges: a road crossing a slope sideways is otherwise a chord over the
    * hill, and its crown floats however finely the length is sampled.
+   *
+   * HOW FINELY, THOUGH, IS SET BY THE JUNCTIONS RATHER THAN BY THE HILLS.
+   * Two roads crossing at right angles chord the same curved ground in
+   * different directions and at different spacings, so they disagree in the
+   * middle of the crossing by however much the ground bends between their
+   * samples — and where the terrain is being pulled flat under a building pad
+   * it bends fast. At the old 1.0 m along and 1.5 m across, two ribbons over
+   * the filling station's pad blend disagreed by nearly two centimetres,
+   * which is far more than the millimetre or two a drape stack can be
+   * separated by without roads visibly floating. Sampling at 0.8 m in both
+   * directions takes that to under four millimetres, which is a step a stack
+   * can afford — see World._drapeLevel.
    */
-  makeRibbon(points, width, material, lift = 0.06, step = 1.0) {
+  makeRibbon(points, width, material, lift = 0.06, step = 0.8) {
     // resample the centreline
     const line = [];
     for (let i = 1; i < points.length; i++) {
@@ -285,7 +297,7 @@ export class Terrain {
         line.push([x0 + (x1 - x0) * t, z0 + (z1 - z0) * t]);
       }
     }
-    const across = Math.max(2, Math.round(width / 1.5));  // spans across the width
+    const across = Math.max(2, Math.round(width / 0.8));  // spans across the width
     const perStation = across + 1;
     const positions = [], uvs = [], indices = [];
     let dist = 0;
@@ -323,9 +335,9 @@ export class Terrain {
    * Subdivided to the same fixed step as a ribbon, capped so the big
    * industrial yard does not turn into fifty thousand triangles.
    */
-  makePatch(x, z, hx, hz, material, lift = 0.05, step = 1.5) {
-    const nx = Math.max(2, Math.min(64, Math.ceil((hx * 2) / step)));
-    const nz = Math.max(2, Math.min(64, Math.ceil((hz * 2) / step)));
+  makePatch(x, z, hx, hz, material, lift = 0.05, step = 1.2) {
+    const nx = Math.max(2, Math.min(96, Math.ceil((hx * 2) / step)));
+    const nz = Math.max(2, Math.min(96, Math.ceil((hz * 2) / step)));
     const geo = new THREE.PlaneGeometry(hx * 2, hz * 2, nx, nz);
     geo.rotateX(-Math.PI / 2);
     const pos = geo.attributes.position;
