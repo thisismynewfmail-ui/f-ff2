@@ -149,8 +149,14 @@ export class MusicDirector {
       const beat = this.ctx.createGain();
       beat.gain.value = 1;
       beat.connect(gain);
-      slot.variants[key] = { arr, gain, beat, drones: null, level: 0 };
+      slot.variants[key] = { key, arr, gain, beat, drones: null, level: 0 };
     }
+    // The same two variants, as a plain array. `pump` walks them sixteen times
+    // a bar and `update` once a frame, and Object.entries builds a fresh array
+    // of fresh two-element arrays every time it is asked — a few hundred
+    // throwaway allocations a second, for a list that is decided here and never
+    // changes again.
+    slot.variantList = Object.values(slot.variants);
     this.slots.push(slot);
     // Two tracks is a cross-fade; three is a pile-up. If the player runs
     // through two gates inside one fade, the oldest is dropped outright.
@@ -217,11 +223,11 @@ export class MusicDirector {
       s.out.gain.setTargetAtTime(s.level * s.level * (2 - s.level * s.level), now, 0.03);
       if (s.fade < 0 && s.level <= 0.0005) { this._kill(s); this.slots.splice(i, 1); continue; }
       const beat = 0.42 + 0.58 * this.intensity;
-      for (const [key, v] of Object.entries(s.variants)) {
-        v.level = key === 'danger' ? dan : cal;
+      for (const v of s.variantList) {
+        v.level = v.key === 'danger' ? dan : cal;
         v.gain.gain.setTargetAtTime(v.level, now, 0.03);
         v.beat.gain.setTargetAtTime(beat, now, 0.06);
-        this._drones(s, key, v.level * s.level > AUDIBLE);
+        this._drones(s, v.key, v.level * s.level > AUDIBLE);
       }
     }
   }
@@ -257,7 +263,7 @@ export class MusicDirector {
   }
 
   _step(slot, step, when) {
-    for (const [key, v] of Object.entries(slot.variants)) {
+    for (const v of slot.variantList) {
       if (v.level * slot.level <= AUDIBLE) continue;   // silent: don't build it
       const arr = v.arr;
       for (const layer of arr.layers || []) this._layer(slot, arr, layer, v, step, when);

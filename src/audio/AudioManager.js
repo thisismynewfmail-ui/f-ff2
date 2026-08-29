@@ -25,6 +25,63 @@ import { ENEMY_VOICES, voiceKeyFor } from './EnemyVoices.js';
  *  work, and the whole point is that ten metres and thirty sound different. */
 const VOICE_REF = 7;
 
+/* ============================ THE VOICE GOVERNOR ============================
+ *
+ * Every sound in this game is BUILT: a gunshot is five or six little graphs of
+ * oscillators, filters and gains, made from nothing, played once and thrown
+ * away. That is what gives the town its voice, and it is also the one thing
+ * that can take the voice away — WebAudio renders the whole live graph inside
+ * a real-time callback, so the cost of a sound is not paid when it is fired,
+ * it is paid every 128 frames for as long as it is sounding. Nothing in the
+ * design stops fifteen fighters, four sentries, a wall coming down and a
+ * magazine of rifle fire from all being resident at the same instant, and when
+ * the render thread misses its deadline the hardware gets silence: the audio
+ * does not get quieter, it CUTS OUT, and the main thread stalls behind it.
+ *
+ * Three rules keep the graph inside its budget, and none of them changes what
+ * anything sounds like when there is room:
+ *
+ *   AUDIBLE. A layer scheduled below this gain is not a quiet layer, it is an
+ *   inaudible one — it costs a full node chain to contribute nothing. The
+ *   recipes are full of detail layers at 0.02 that are already scaled by
+ *   distance before they get here, so a blast across the map used to build
+ *   thirty graphs nobody could hear.
+ *
+ *   THE CAP. Past VOICE_CAP simultaneous one-shots the mix is already denser
+ *   than anyone can pick anything out of, so new layers have to clear a rising
+ *   loudness floor to get in. The floors are set so the LEAD of every sound
+ *   still fires — a gunshot's body is 0.4-0.6, an explosion's 0.5, a voice's
+ *   0.5 — and it is the trailing detail (the brass tick, the third echo, the
+ *   ring-off) that stands down. That is the correct thing to lose: the shot is
+ *   gameplay, the ring-off is decoration.
+ *
+ *   THE RACK. Panning is per-sound but it is never automated, so there is no
+ *   reason for a hundred sounds to own a hundred panner nodes. They share one
+ *   rack of seventeen, cut as they are called for and quantised to a sixteenth
+ *   of the stereo field — far finer than anyone localises. That takes a node
+ *   off every sound in the game, gives dead centre (which is most of them:
+ *   every weapon, every footstep, every chime) no panner at all, and leaves
+ *   the render thread a bounded number of them however loud the street gets.
+ */
+/** Below this a scheduled layer cannot be heard; it is not built. */
+const AUDIBLE = 0.0025;
+/** One-shot voices past which new layers must earn their slot. */
+const VOICE_CAP = 44;
+/** ...and the ceiling nothing gets past, however loud. */
+const VOICE_MAX = 132;
+/** Panner rack resolution: pan is rounded to 1/PAN_STEPS of a side. */
+const PAN_STEPS = 8;
+/** How much lead the audio clock actually needs. A layer booked further out
+ *  than this is not booked yet — see THE DRIP. */
+const SCHEDULE_AHEAD = 0.14;
+/** Ceiling on layers waiting in the drip queue. */
+const DEFER_MAX = 640;
+/** Fighters who may be mid-sentence at once. Speech is by far the most
+ *  expensive voice in the game (a formant synth is a dozen nodes and four live
+ *  sources), and a street where five people talk over each other is a street
+ *  where you understand none of them, so the cap costs nothing legible. */
+const SPEECH_CAP = 4;
+
 export class AudioManager {
   constructor(events) {
     this.events = events;
@@ -44,6 +101,15 @@ export class AudioManager {
     this._lastByState = new Map();
     this._lineSeq = new Map();
     this._noiseBuf = null;
+    // The governor's books: the context-time at which each live one-shot frees
+    // its slot, and the same for speech. Times only — no node references — so
+    // holding the ledger can never be what keeps a graph alive.
+    this._live = [];
+    this._speechEnds = [];
+    // THE DRIP: [dueTime, build, dueTime, build, ...] — layers whose moment has
+    // not come round yet. See _defer.
+    this._deferred = [];
+    this._panRack = null;
     this.moanIntensity = 0;
     this._moanTimer = 1;
     this._whisperTimer = 30;
@@ -173,7 +239,20 @@ export class AudioManager {
     if (this.ctx) { this.ctx.resume?.(); return; }
     const AC = window.AudioContext || window.webkitAudioContext;
     if (!AC) return;
-    this.ctx = new AC();
+    /**
+     * 'balanced', not the default 'interactive'.
+     *
+     * The hint picks the size of the buffer the render thread has to fill
+     * before the deadline. 'interactive' asks for the smallest one the device
+     * will give, which is the right answer for a metronome and the wrong one
+     * for this: a town's worth of synthesised voices is a heavy render, and a
+     * heavy render into a tiny buffer is exactly the shape of a dropout — one
+     * overrun and the hardware is handed silence. 'balanced' roughly doubles
+     * the deadline for something on the order of ten milliseconds of extra
+     * latency, which is a quarter of a frame and below the threshold at which
+     * a gunshot stops feeling like it belongs to the trigger pull.
+     */
+    try { this.ctx = new AC({ latencyHint: 'balanced' }); } catch { this.ctx = new AC(); }
     this.master = this.ctx.createGain();
     this.master.gain.value = this.sfxVolume;
     // A bus compressor gives every gunshot its punch and keeps the loudest
@@ -198,6 +277,12 @@ export class AudioManager {
     const d = this._noiseBuf.getChannelData(0);
     for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
     this.speech = new SpeechSynth(this.ctx, this._noiseBuf);
+    // The shared panner rack (see THE VOICE GOVERNOR). Rungs are cut the first
+    // time a sound needs one and then stand for the life of the context; dead
+    // centre is the bus itself, so the great majority of the game's sounds —
+    // every weapon, every footstep, every chime — never touch a panner at all.
+    this._panRack = new Array(PAN_STEPS * 2 + 1).fill(null);
+    this._panRack[PAN_STEPS] = this.master;
     try {
       this.music = new MusicDirector(this.ctx, this.musicOut);
       if (this._musicOn && this._track) this.music.play(this._track, { fade: 1.2 });
@@ -239,40 +324,155 @@ export class AudioManager {
 
   get t() { return this.ctx.currentTime; }
 
+  /* ================================ THE DRIP ================================
+   *
+   * A wall coming down is not one sound, it is sixty-six of them laid end to
+   * end across five seconds: the breach, the charges walking its length, the
+   * bed underneath, masonry coming off it the whole way, and the impact when
+   * it lands. Every one of those used to be BUILT on the single frame the wall
+   * broke — two hundred-odd nodes constructed back to back while the renderer
+   * waited its turn — and then most of them sat in the graph doing nothing for
+   * seconds before their scheduled moment arrived. That is the hitch the
+   * player hears as "the sound lagged the game when it started": not the sound
+   * playing, the sound being made.
+   *
+   * Nothing about the timing needs it to happen then. Every layer is booked at
+   * an ABSOLUTE time on the audio clock, so a layer due in three seconds is
+   * identical whether its nodes were created now or two hundred milliseconds
+   * before it speaks — and the audio clock is the one clock in this program a
+   * dropped frame cannot move. So anything further out than the scheduler's
+   * lead is put on a queue and built a frame or two ahead of when it is due.
+   *
+   * The demolition becomes a handful of nodes on the frame of the blast and a
+   * steady trickle after it, the reload choreography stops arriving as a lump,
+   * and — because the governor now judges each layer at the moment it is
+   * actually built — a wall that comes down in the middle of a firefight lays
+   * down only the parts of itself the mix still has room for.
+   */
+
+  /** Put a layer on the drip. `build(when)` is called with a fresh offset once
+   *  its moment is close enough to hand to the scheduler. */
+  _defer(at, build) {
+    const q = this._deferred;
+    if (q.length >= DEFER_MAX * 2) return;
+    q.push(at, build);
+  }
+
+  /** Build everything on the drip that is now within the scheduler's lead. */
+  _drainDeferred(now) {
+    const q = this._deferred;
+    if (!q.length) return;
+    let n = 0;
+    for (let i = 0; i < q.length; i += 2) {
+      const at = q[i];
+      if (at - now <= SCHEDULE_AHEAD) { q[i + 1](Math.max(0, at - now)); continue; }
+      q[n++] = at;
+      q[n++] = q[i + 1];
+    }
+    q.length = n;
+  }
+
+  /**
+   * How many one-shot voices are still sounding, sweeping the finished ones out
+   * of the ledger on the way past. The ledger holds numbers, not nodes, so this
+   * is a walk over a small array of doubles — cheaper than the single node
+   * allocation it is deciding about.
+   */
+  _voiceLoad(now) {
+    const live = this._live;
+    let n = 0;
+    for (let i = 0; i < live.length; i++) if (live[i] > now) live[n++] = live[i];
+    live.length = n;
+    return n;
+  }
+
+  /**
+   * Ask the governor for a slot (see THE VOICE GOVERNOR above).
+   *
+   * @param gain    the layer's peak level, already scaled by distance
+   * @param endsAt  context time at which it stops sounding
+   * @returns whether it is worth building
+   */
+  _claim(gain, endsAt, now) {
+    if (!(gain > AUDIBLE)) return false;
+    const n = this._voiceLoad(now);
+    if (n >= VOICE_CAP) {
+      if (n >= VOICE_MAX) return false;
+      // A rising floor rather than a wall: the lead of every sound still
+      // fires, the trailing detail stands down until the mix has room again.
+      const floor = n >= VOICE_CAP * 2 ? 0.20 : n >= VOICE_CAP * 1.5 ? 0.08 : 0.03;
+      if (gain < floor) return false;
+    }
+    this._live.push(endsAt);
+    return true;
+  }
+
+  /**
+   * The node a sound at this pan should feed: a rung of the shared panner rack,
+   * or the bus itself for anything close enough to centre that a panner would
+   * only be a node doing nothing. See THE VOICE GOVERNOR.
+   */
+  _bus(pan) {
+    const rack = this._panRack;
+    if (!rack) return this.master;
+    const i = PAN_STEPS + Math.max(-PAN_STEPS, Math.min(PAN_STEPS,
+      Math.round((pan || 0) * PAN_STEPS)));
+    let p = rack[i];
+    if (!p) {
+      p = this.ctx.createStereoPanner();
+      p.pan.value = (i - PAN_STEPS) / PAN_STEPS;
+      p.connect(this.master);
+      rack[i] = p;
+    }
+    return p;
+  }
+
   _noise(dur, filterType, freq, q, gain, when = 0, pan = 0, freqEnd = null) {
-    if (!this.ctx) return;
-    const src = this.ctx.createBufferSource();
+    const ctx = this.ctx;
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    if (when > SCHEDULE_AHEAD) {   // not yet — see THE DRIP
+      this._defer(now + when, (w) => this._noise(dur, filterType, freq, q, gain, w, pan, freqEnd));
+      return;
+    }
+    const t0 = now + when;
+    if (!this._claim(gain, t0 + dur + 0.05, now)) return;
+    const src = ctx.createBufferSource();
     src.buffer = this._noiseBuf;
     src.loop = true;
-    const f = this.ctx.createBiquadFilter();
+    const f = ctx.createBiquadFilter();
     f.type = filterType;
-    f.frequency.setValueAtTime(freq, this.t + when);
-    if (freqEnd) f.frequency.exponentialRampToValueAtTime(freqEnd, this.t + when + dur);
+    f.frequency.setValueAtTime(freq, t0);
+    if (freqEnd) f.frequency.exponentialRampToValueAtTime(freqEnd, t0 + dur);
     f.Q.value = q;
-    const g = this.ctx.createGain();
-    g.gain.setValueAtTime(gain, this.t + when);
-    g.gain.exponentialRampToValueAtTime(0.001, this.t + when + dur);
-    const p = this.ctx.createStereoPanner();
-    p.pan.value = pan;
-    src.connect(f).connect(g).connect(p).connect(this.master);
-    src.start(this.t + when);
-    src.stop(this.t + when + dur + 0.05);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(gain, t0);
+    g.gain.exponentialRampToValueAtTime(0.001, t0 + dur);
+    src.connect(f).connect(g).connect(this._bus(pan));
+    src.start(t0);
+    src.stop(t0 + dur + 0.05);
   }
 
   _tone(type, freq, dur, gain, when = 0, pan = 0, freqEnd = null) {
-    if (!this.ctx) return;
-    const o = this.ctx.createOscillator();
+    const ctx = this.ctx;
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    if (when > SCHEDULE_AHEAD) {   // not yet — see THE DRIP
+      this._defer(now + when, (w) => this._tone(type, freq, dur, gain, w, pan, freqEnd));
+      return;
+    }
+    const t0 = now + when;
+    if (!this._claim(gain, t0 + dur + 0.05, now)) return;
+    const o = ctx.createOscillator();
     o.type = type;
-    o.frequency.setValueAtTime(freq, this.t + when);
-    if (freqEnd) o.frequency.exponentialRampToValueAtTime(Math.max(20, freqEnd), this.t + when + dur);
-    const g = this.ctx.createGain();
-    g.gain.setValueAtTime(gain, this.t + when);
-    g.gain.exponentialRampToValueAtTime(0.001, this.t + when + dur);
-    const p = this.ctx.createStereoPanner();
-    p.pan.value = pan;
-    o.connect(g).connect(p).connect(this.master);
-    o.start(this.t + when);
-    o.stop(this.t + when + dur + 0.05);
+    o.frequency.setValueAtTime(freq, t0);
+    if (freqEnd) o.frequency.exponentialRampToValueAtTime(Math.max(20, freqEnd), t0 + dur);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(gain, t0);
+    g.gain.exponentialRampToValueAtTime(0.001, t0 + dur);
+    o.connect(g).connect(this._bus(pan));
+    o.start(t0);
+    o.stop(t0 + dur + 0.05);
   }
 
   /**
@@ -564,6 +764,29 @@ export class AudioManager {
       idle: 6.0, prowl: 4.5, hurt: 1.3, chase: 1.1, spot: 1.0, attack: 1.5,
     }[state] ?? 0.35;
     if (now - (this._lastByState.get(state) ?? -99) < stateFloor) return;
+
+    /* --- HOW MANY PEOPLE MAY BE TALKING -----------------------------------
+     *
+     * A formant synthesiser is the most expensive thing in this mix by a wide
+     * margin — a dozen filters and four live sources per sentence, against
+     * three nodes for a gunshot layer — and a wave lands fifteen fighters on
+     * the same street. Without a ceiling the render thread went over its
+     * deadline and the whole town went silent for a beat, which is the exact
+     * failure the shouting was there to prevent.
+     *
+     * Four at once, and the fifth simply does not speak. Nothing legible is
+     * lost: five simultaneous voices through one blown cabinet speaker is not
+     * five lines, it is a noise. The state floors above already stagger the
+     * chatter, so in practice this only bites when a wave breaks — which is
+     * precisely when the mix cannot afford another sentence.
+     *
+     * Checked BEFORE the throttle is stamped, so a fighter who is turned away
+     * because the street is full has not also used up the town's window for
+     * that kind of line — the next one along says it instead.
+     */
+    const speaking = this._speechLoad(now);
+    if (speaking >= SPEECH_CAP) return;
+
     this._lastLine = now;
     this._lastByState.set(state, now);
 
@@ -615,26 +838,65 @@ export class AudioManager {
     // ground and the buildings taking their cut, which is what makes the far
     // end of the street sound like the far end of the street.
     const roll = Math.pow(VOICE_REF / (VOICE_REF + dist), 1.25);
-    const pan = this.ctx.createStereoPanner();
-    pan.pan.value = s.pan;
-    const air = this.ctx.createBiquadFilter();
-    air.type = 'lowpass';
-    air.frequency.value = 700 + 4300 * Math.pow(roll, 0.7);
-    air.Q.value = 0.7;
-    air.connect(pan).connect(this.master);
-    const len = this.speech.speak(air, line, {
+    const gain = 0.52 * (opts.gain ?? 1) * (0.04 + roll * 0.96);
+    if (gain <= AUDIBLE) return;
+
+    /* --- HOW MUCH OF THE SYNTHESISER TO BUILD ------------------------------
+     *
+     * Distance has already taken the top off the voice by the time it reaches
+     * the listener, so the parts of the machine that only live up there — the
+     * waveshaper's oversampling, the carrier hiss, and at the far rung the
+     * cabinet's ceiling and the third formant — are being computed in order to
+     * be filtered straight back out again. The rung drops them as the voice
+     * goes away and as the street fills up; what carries (the horn, the body
+     * under the glottal source) is on every rung. See Speech.speak.
+     *
+     * The one case that always gets the whole machine is the one that carries
+     * information: a fighter inside a dozen metres with nobody talking over
+     * him. That is the bomber's call, the shout behind you, the line the
+     * player is meant to act on.
+     */
+    const quality = (dist < 12 && speaking === 0) ? 2 : (dist < 32 && speaking < 3) ? 1 : 0;
+
+    // Distance's own low-pass. Above the synthesiser's own ceiling it is a
+    // filter that filters nothing, so a fighter at arm's length skips it and
+    // the line goes straight onto the shared panner rack.
+    const cut = 700 + 4300 * Math.pow(roll, 0.7);
+    const bus = this._bus(s.pan);
+    let dest = bus, air = null;
+    if (cut < 3600) {
+      air = this.ctx.createBiquadFilter();
+      air.type = 'lowpass';
+      air.frequency.value = cut;
+      air.Q.value = 0.7;
+      air.connect(bus);
+      dest = air;
+    }
+    const delay = dist / 343;
+    const len = this.speech.speak(dest, line, {
       f0,
-      gain: 0.52 * (opts.gain ?? 1) * (0.04 + roll * 0.96),
-      when: dist / 343,
+      gain,
+      when: delay,
       rate: cfg.rate * (0.94 + v * 0.12) * (opts.rate ?? 1),
       grit: cfg.grit,
       shout: opts.shout ?? ({ spot: 0.6, chase: 0.6, attack: 0.6, prowl: 0.42, idle: 0.08 }[state] ?? 0.15),
+      quality,
     });
+    this._speechEnds.push(now + delay + len + 0.2);
     // ...and take the chain down behind it. Speech disconnects its own end
-    // (see Speech.speak); these two nodes are this method's, they are made
-    // fresh for every line, and a run is thousands of lines long.
-    const gone = (dist / 343 + len + 0.4) * 1000;
-    setTimeout(() => { try { pan.disconnect(); air.disconnect(); } catch { /* gone */ } }, gone);
+    // (see Speech.speak); the air filter is this method's, it is made fresh
+    // for every line that needs one, and a run is thousands of lines long.
+    if (air) setTimeout(() => { try { air.disconnect(); } catch { /* gone */ } },
+      (delay + len + 0.4) * 1000);
+  }
+
+  /** Lines still being spoken, sweeping the finished ones out. See enemyLine. */
+  _speechLoad(now) {
+    const ends = this._speechEnds;
+    let n = 0;
+    for (let i = 0; i < ends.length; i++) if (ends[i] > now) ends[n++] = ends[i];
+    ends.length = n;
+    return n;
   }
 
   gurgle(pos) {
@@ -1662,6 +1924,10 @@ export class AudioManager {
    */
   update(dt, player, nearbyZombies, scene = null) {
     if (!this.ctx) return;
+    // Layers whose moment has come round (see THE DRIP). First thing in the
+    // frame, so a sound booked for three seconds' time is built with the
+    // scheduler's full lead in hand rather than against the deadline.
+    this._drainDeferred(this.ctx.currentTime);
     this.listener.x = player.position.x;
     this.listener.z = player.position.z;
     this.listener.yaw = player.yaw;

@@ -339,10 +339,46 @@ is a low-pass filter: the far end of a street takes the consonants out of a
 shout, so a line loses its top as it loses its level (4.5 kHz at arm's length,
 1.4 kHz at forty-five metres) and sounds moved away rather than turned down.
 And it arrives late, by the time sound takes to cross the ground. Each
-utterance is built on its own chain end to end — its own amplifier, its own
-filter, its own panner — because a shared one is a shared summing point, and
-the near fighter's shout coming back out of the distant one's speaker is
-exactly the cue this is meant to give.
+utterance is built on its own amplifier and its own filter, because a shared one
+is a shared summing point, and the near fighter's shout coming back out of the
+distant one's speaker is exactly the cue this is meant to give. (Panning is the
+one part that IS shared, and safely: pan is never automated, so the whole town
+pans through one rack of seventeen fixed positions a sixteenth of the field
+apart — finer than anyone localises — instead of a panner per sound.)
+
+**And all of it is on a budget, because a synthesised town can bankrupt the
+sound card.** Nothing here is a sample: a gunshot is half a dozen little graphs
+built from nothing, and WebAudio renders every live graph inside a real-time
+callback, so a sound's cost is paid every 128 sample frames for as long as it
+sounds. Fifteen fighters shouting, four sentries firing and a district gate
+coming down used to arrive together and put the render thread over its deadline
+— and a missed deadline is not a quieter game, it is the audio CUTTING OUT.
+Three rules in `src/audio/AudioManager.js` hold the line, and none of them
+changes what anything sounds like while there is room:
+
+- **Inaudible layers are not built.** The recipes are full of detail at 0.02
+  gain that distance has already scaled to nothing; a blast across the map was
+  building thirty graphs no one could hear.
+- **Past a live-voice cap, new layers clear a rising loudness floor.** The
+  floors are set so the LEAD of every sound still fires — the shot, the blast,
+  the shout — and it is the trailing decoration that stands down: the brass
+  tick, the third valley echo, the spring ring-off.
+- **A sound is built when it is due, not when it is fired.** Everything is
+  booked at absolute times on the audio clock, so a wall coming down — sixty-six
+  layers laid across five seconds — puts eighteen nodes on the frame it breaks
+  and trickles the rest in behind, instead of constructing the whole demolition
+  while the renderer waits its turn. That burst of construction was the hitch
+  players felt as "the sound lagged the game when it started".
+
+The voices get the same treatment from the other end: four fighters may be
+mid-sentence at once, and a line that is far away or one of several drops the
+parts of the synthesiser distance has already filtered out (the waveshaper's
+oversampling first, then the carrier hiss, then the cabinet's ceiling and the
+third formant). What carries — the horn, the body under the glottal source — is
+on every rung, and a fighter inside a dozen metres with nobody talking over him
+still gets the whole machine. Measured on a wave breaking, the effects bus
+renders 5x cheaper than it did; measured on an ordinary moment, it is the same
+mix to a tenth of a decibel (`tests/audio.mjs`).
 
 ## Dev console
 
@@ -1477,6 +1513,15 @@ cost across frames instead of spiking on one.
 Renders at 0.75 internal scale with nearest-neighbour upscaling — chunky
 and fast.
 
+The audio has a budget of its own — inaudible layers are never built, a live
+voice cap makes new layers earn their slot, panning goes through a shared rack,
+speech is capped and detail-scaled by distance, and every sound is constructed a
+frame or two before it is due rather than the instant it is fired (see
+**Soundtrack and voices**). The HUD is written the same way: the console is a
+hundred readouts repainted sixty times a second, almost none of which change
+that often, so every per-frame field compares before it touches the DOM and the
+style engine is only asked to recalculate when something actually moved.
+
 ## Tests
 
 ```
@@ -1488,6 +1533,7 @@ node tests/npc-behavior.mjs
 node tests/weapons.mjs
 node tests/shop.mjs
 node tests/music.mjs
+node tests/audio.mjs
 node tests/smoke.mjs [--screens]
 ```
 
@@ -1527,6 +1573,21 @@ jumps in level when the mix slides onto it; calm and danger sharing a root,
 tempo and bar grid; every district that carries a beat sharing a sixteenth grid
 with the others inside one cross-fade; and no quarter-second hole in either of
 the two districts written to drive.
+
+`audio.mjs` does the same to the OTHER bus — the one the guns, the voices and
+the demolitions go through — because what that bus claims about itself is a
+COST, and a cost is invisible in a code review right up until the sound cuts
+out. It hands the real `AudioManager` an `OfflineAudioContext`, feeds it real
+events off the real event bus and renders them, holding the effects bus to:
+an ordinary moment (one shot, one blast, one man shouting) still building every
+layer of itself and still measuring the same level, so the budgeting is never
+paid for out of the quiet case; a wall coming down putting a handful of nodes on
+the frame it breaks and still building the whole demolition behind that; and a
+wave breaking — fifteen fighters shouting, dying and being shot at at once —
+rendering in a small fraction of real time without the mix running away past its
+limiter or thinning out. Offline rendering runs the same DSP the live thread
+does, so the wall time it takes is a direct proxy for how close the live thread
+is to the deadline it must not miss.
 
 `world.mjs` audits the built town for the structural mistakes that are
 invisible in a code review and obvious the moment you walk into them: buildings
