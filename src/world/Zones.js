@@ -152,6 +152,7 @@ export class Zones {
       b.group.position.y = b.upY;
       b.group.rotation.z = 0;
       if (!b.group.parent) this.scene.add(b.group);
+      b.group.updateMatrixWorld(true);   // it moved; see World.settle
       // restore the collider + nav block it had while sealed
       this.collision.restore(b.colliderId);
       this.nav.blockBox(...b.navRect, true);
@@ -180,6 +181,7 @@ export class Zones {
       const k = Math.min(1, s.t);
       s.group.position.y = s.y0 - SINK_DEPTH * k * k;
       s.group.rotation.z = Math.sin(s.t * 23) * 0.01 * (1 - k); // shudder
+      s.group.updateMatrixWorld(true);   // it moves; see World.settle
       if (k >= 1) {
         s.group.parent?.remove(s.group);
         this.sinking.splice(i, 1);

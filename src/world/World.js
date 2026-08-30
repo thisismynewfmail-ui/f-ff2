@@ -121,6 +121,18 @@ function decalRect(x, z, sizeX, sizeZ, yaw) {
 
 /* Seconds, from the moment the gun is taken. The beats OVERLAP on purpose —
  * see World._updateWeaponCases. */
+/** How far a room is worth drawing from. A furnished interior is only ever
+ *  seen through the doorway or window of the building it is inside, from the
+ *  street that building stands on; past this it is several hundred draw calls
+ *  of chairs nobody can see. Set well outside any doorway sightline. */
+const INDOOR_FAR = 95;
+
+/** Slack on the hierarchical frustum test, in metres. The cached bounds are a
+ *  box's diagonal rather than a tight hull, but a couple of metres of margin
+ *  costs a handful of draw calls and buys certainty that nothing clips in at
+ *  the edge of the picture on a fast turn. */
+const FRUSTUM_MARGIN = 2.5;
+
 const CASE_PACK = {
   gun: [0, 0.32], glow: [0, 0.5], lid: [0.1, 0.68], sink: [0.78, 1.5], done: 1.5,
 };
@@ -302,7 +314,212 @@ export class World {
     this.scarecrow = new Scarecrow(this);
     // The sighting that sets the wreck up, fifteen seconds into wave five.
     this.flyby = new Flyby(this);
+    this.settle();
     return this;
+  }
+
+  /* ======================= THE TOWN DOES NOT MOVE ==========================
+   *
+   * Nine thousand meshes stand in this town and almost every one of them is
+   * nailed down: a wall, a kerb, a fence post, a chair in a room nobody is in.
+   * three.js does not know that. Every frame it walked the whole graph,
+   * recomposed a matrix out of position/quaternion/scale for each of eleven
+   * thousand nodes and multiplied it by its parent's — SEVEN MILLISECONDS a
+   * frame, measured, spent proving that a town which cannot move has not
+   * moved. That is twice what the entire game simulation costs.
+   *
+   * So the static half of the graph is settled ONCE, here, and then taken off
+   * the renderer's books: `matrixWorldAutoUpdate = false` on the town's root
+   * stops the per-frame descent at that one node. Everything under it keeps
+   * the world matrix it was built with, which is the correct one forever.
+   *
+   * What genuinely does move inside the town — a district wall sinking, the
+   * clock's hands, the wind in the planting, the crow, the cube, the vendor's
+   * awning — is registered as a MOVER and updated by hand each frame, which
+   * costs the size of those few subtrees instead of the size of the town.
+   * Everything that moves a lot (the horde, the player's weapon, pickups,
+   * effects, the sky) was never under here in the first place: those hang off
+   * the scene directly and are untouched by any of this.
+   *
+   * Adding something to the town after this point is fine — call `settled()`
+   * on it and it joins the static set at its final transform.
+   */
+  settle() {
+    this._movers = [];
+    this.group.updateMatrixWorld(true);
+    /**
+     * ...and this is the line that does it.
+     *
+     * `matrixWorldAutoUpdate = false` is the flag that LOOKS like it should:
+     * it does not do this job. In three.js r169 it only decides whether a node
+     * recomputes its OWN world matrix — the walk descends into every child
+     * regardless, and each of those children still recomposes its local matrix
+     * out of position/quaternion/scale on the way past. The walk is the cost,
+     * so the walk is what has to go.
+     *
+     * The town's root simply stops answering. Its subtree's world matrices are
+     * correct as of the line above and cannot become incorrect, because the
+     * only things under here that move are the movers, and they carry their
+     * own (see `mover` and `_stepMovers`).
+     */
+    this.group.updateMatrixWorld = () => {};
+    this.group.matrixWorldAutoUpdate = false;
+    // Cache each top-level piece's world bounds for the fog-wall cull below,
+    // and note whether it is fogged (a piece that ignores the fog must not be
+    // hidden by it — see cullToFog).
+    for (const child of this.group.children) this._bound(child);
+  }
+
+  /** Re-settle a subtree added to (or rebuilt inside) the town after build. */
+  settled(obj) {
+    // The prototype's, not the object's: the town's root no longer has one of
+    // its own (see settle), and this has to work for the root too.
+    THREE.Object3D.prototype.updateMatrixWorld.call(obj, true);
+    if (obj.parent === this.group) this._bound(obj);
+    return obj;
+  }
+
+  /**
+   * Register a subtree that animates. Its world matrices are refreshed every
+   * frame; nothing else in the town's is. Safe to call more than once.
+   */
+  mover(obj) {
+    if (!obj) return obj;
+    this._movers ??= [];
+    if (!this._movers.includes(obj)) this._movers.push(obj);
+    obj.userData.moves = true;   // and so never the fog cull's to hide
+    return obj;
+  }
+
+  /** Bring the movers' world matrices up to date. Called once a frame. */
+  _stepMovers() {
+    const m = this._movers;
+    if (!m) return;
+    for (let i = 0; i < m.length; i++) {
+      const o = m[i];
+      if (o.parent) o.updateMatrixWorld(true);
+    }
+  }
+
+  /** World-space bounds + fog eligibility for one top-level piece of town. */
+  _bound(child) {
+    const box = new THREE.Box3();
+    let fogged = true, any = false, lit = false;
+    child.traverse((o) => {
+      // A LIGHT IS NOT GEOMETRY, and hiding one is not the same as not drawing
+      // it: a lamp standing just outside the frame still lights the wall
+      // inside it, and a lamp past the fog wall still lights its own porch.
+      // Anything carrying one is exempt from both culls.
+      if (o.isLight) lit = true;
+      if (!o.isMesh || !o.geometry) return;
+      any = true;
+      const mats = Array.isArray(o.material) ? o.material : [o.material];
+      for (const mat of mats) if (mat && mat.fog === false) fogged = false;
+      if (!o.geometry.boundingBox) o.geometry.computeBoundingBox();
+      const b = o.geometry.boundingBox;
+      if (b) box.union(new THREE.Box3().copy(b).applyMatrix4(o.matrixWorld));
+    });
+    if (!any || lit || box.isEmpty()) {
+      child.userData.fogCull = null;
+      child.userData.bounds = null;
+      return;
+    }
+    const c = box.getCenter(new THREE.Vector3());
+    const r = box.getSize(new THREE.Vector3()).length() * 0.5;
+    // The sphere is for the frustum test (which needs all three axes); the
+    // fog test only ever cares about ground distance. `fogged` decides whether
+    // the fog may hide it at all — the frustum always may.
+    child.userData.bounds = { c, r, fogged };
+    child.userData.fogCull = fogged ? { x: c.x, z: c.z, r } : null;
+  }
+
+  /**
+   * THE FOG IS ALREADY A WALL — so stop drawing through it.
+   *
+   * The town's haze reaches full strength at FOG_FAR (see rendering/Renderer),
+   * which means every triangle past that line is being rasterised, shaded and
+   * blended to produce exactly the colour the empty background already is.
+   * The camera's far plane cannot do this job: the sun, the moon and the
+   * clouds live out past two hundred metres and pulling the plane in would
+   * clip the sky off the top of the picture.
+   *
+   * So the cull is done here, per piece of town, against bounds cached when it
+   * was settled. It is one squared distance per piece against numbers that
+   * never change — and it takes several hundred draw calls out of an open
+   * sightline down a street, which is the shape of view this game is mostly
+   * looking at.
+   *
+   * Anything whose materials opt OUT of fog (a lit window at night, an ember)
+   * keeps its distance and is never hidden: it is not the fog's to take.
+   */
+  /**
+   * Hide the parts of the town that cannot be seen. Called from the frame loop
+   * with the camera the frame is about to be drawn through — NOT from the
+   * simulation, which runs before the camera has been placed and would cull
+   * against where the player was looking last frame. Turning quickly is exactly
+   * when that is wrong, and exactly when it would show.
+   */
+  cull(camera) {
+    if (!camera || !this.scene?.fog) return;
+    // The renderer has not run yet, so the view matrix is this frame's only if
+    // we build it — the same two lines WebGLRenderer does at the top of render.
+    camera.updateMatrixWorld();
+    camera.matrixWorldInverse.copy(camera.matrixWorld).invert();
+    this.cullToFog(camera.position, this.scene.fog.far + 8, camera);
+  }
+
+  cullToFog(camPos, far, camera = null) {
+    // THE FRUSTUM TEST, DONE ONCE PER BUILDING INSTEAD OF ONCE PER BRICK.
+    //
+    // three.js culls per MESH and only per mesh: it walks into every group in
+    // the scene and tests all nine thousand of the town's meshes against the
+    // frustum, every frame, to throw away the seven eighths of them that are
+    // behind the player. A building is not nine hundred independent objects to
+    // a camera — it is one box, and if the box is off-screen so is everything
+    // in it. Testing the box first (against bounds cached when the piece was
+    // settled, since none of it can move) makes the renderer's own walk stop
+    // at the door.
+    if (camera) {
+      this._frustum ??= new THREE.Frustum();
+      this._projScreen ??= new THREE.Matrix4();
+      this._projScreen.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+      this._frustum.setFromProjectionMatrix(this._projScreen);
+      this._sphere ??= new THREE.Sphere();
+    }
+    const frustum = camera ? this._frustum : null;
+    const sphere = this._sphere;
+    const kids = this.group.children;
+    for (let i = 0; i < kids.length; i++) {
+      const child = kids[i];
+      // Anything that joined the town after it settled gets settled now.
+      if (child.userData.fogCull === undefined) this.settled(child);
+      const bounds = child.userData.bounds;
+      if (!bounds || child.userData.moves) continue;
+      let want = true;
+      const b = child.userData.fogCull;
+      if (b) {
+        // A room is a box inside a box: you see into one through a doorway or
+        // a window, from the street it stands on. It has no business being
+        // drawn from the far side of the district, fog or no fog.
+        const lim = child.userData.indoor ? INDOOR_FAR * INDOOR_FAR : far * far;
+        const dx = b.x - camPos.x, dz = b.z - camPos.z;
+        const d = Math.max(0, Math.hypot(dx, dz) - b.r);
+        want = d * d < lim;
+      }
+      if (want && frustum) {
+        sphere.center.copy(bounds.c);
+        sphere.radius = bounds.r + FRUSTUM_MARGIN;
+        want = frustum.intersectsSphere(sphere);
+      }
+      if (want) {
+        // Only ever un-hide what THIS hid. Something the game turned off for
+        // its own reasons stays off; the cull does not get to vote on it.
+        if (child.userData.fogHidden) { child.userData.fogHidden = false; child.visible = true; }
+      } else if (child.visible) {
+        child.visible = false;
+        child.userData.fogHidden = true;
+      }
+    }
   }
 
   /* ---------------- queries ---------------- */
@@ -416,6 +633,10 @@ export class World {
     this.flyby?.update(dt);
     this._updateWeaponCases(dt);
     this._updateClock();
+    // Everything above has finished moving whatever it moves; the town's own
+    // world matrices are not maintained by the renderer any more (see
+    // World.settle), so the movers carry theirs here.
+    this._stepMovers();
   }
 
   /** Drive the tower clock from the sky: sunrise = 06:00, noon = 12:00. */
@@ -1315,6 +1536,9 @@ export class World {
         seeds: maker.glow.seeds, spread: maker.glow.spread, lamp: maker.glow.lamp,
       });
     }
+    // The case is one of the few things in the town that moves — it packs
+    // itself away when the gun is taken — so it carries its own matrices.
+    this.mover(node);
     const cache = {
       cfg, node, gun: maker.gun, lid: maker.lidPivot, glow: maker.glow?.node,
       glowAnim, colliderId: node.userData.colliderId, taken: false, t: -1,
@@ -1680,6 +1904,8 @@ export class World {
       return spinner;
     };
     this.clockHands = { hour: mkHand(0.62, 0.13, 0.025), minute: mkHand(0.98, 0.09, 0.035) };
+    this.mover(this.clockHands.hour);
+    this.mover(this.clockHands.minute);
     const hub = new THREE.Mesh(new THREE.CircleGeometry(0.09, 12), darkMat);
     hub.position.set(cx, cy, faceZ - OUT - 0.045);
     hub.rotation.y = Math.PI;

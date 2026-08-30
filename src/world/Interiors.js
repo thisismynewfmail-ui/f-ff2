@@ -178,6 +178,9 @@ export class InteriorKit {
     const cache = WEAPON_CACHES.find((c) => c.building === built.spec.name);
     if (cache) this._placeWeaponCache(built, cache);
     mergeStatic(this._bucket);
+    // A room, and marked as one: the town's cull draws interiors only from the
+    // street they open onto (see World.cullToFog).
+    this._bucket.userData.indoor = true;
     this.w.group.add(this._bucket);
     this.populated.push(built.spec.name);
   }

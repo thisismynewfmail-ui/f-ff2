@@ -258,6 +258,7 @@ export class Anomalies {
       }
       const target = this._doorOpen ? -1.9 : 0;
       this._doorPivot.rotation.y += (target - this._doorPivot.rotation.y) * Math.min(1, dt * 2.4);
+      this._doorPivot.updateMatrixWorld(true);   // see World.settle
     }
 
     // playground: one swing keeps a slow arc no wind explains; its twin hangs dead
@@ -267,10 +268,15 @@ export class Anomalies {
       if (dx * dx + dz * dz < 14400) {
         swings[0].rotation.x = Math.sin(time * 1.05) * 0.3 * (0.55 + 0.45 * Math.sin(time * 0.037));
         swings[1].rotation.x = 0.03;
+        swings[0].updateMatrixWorld(true);
+        swings[1].updateMatrixWorld(true);
       }
     }
 
-    for (const r of this.w.windmillRotors ?? []) r.rotation.z += dt * 0.8;
+    for (const r of this.w.windmillRotors ?? []) {
+      r.rotation.z += dt * 0.8;
+      r.updateMatrixWorld(true);               // see World.settle
+    }
 
     // The park's moving parts. Distance-culled against the camera, because
     // there is no reason to ripple a flag on the far side of the map — but
@@ -317,9 +323,17 @@ export class Anomalies {
     // the camera: a weather vane forty metres behind you costs nothing, and a
     // hundred of them costs nothing either.
     if (camPos) {
+      // The town's world matrices are settled once and then left alone (see
+      // World.settle), so anything this pass moves has to carry its own. The
+      // in-range set is collected here and refreshed after the pass — one
+      // matrix each, for the handful of props inside the gate, rather than
+      // nine thousand for a town that is standing still.
+      const stirred = this._stirred ??= [];
+      stirred.length = 0;
       for (const a of this.w.animProps ?? []) {
         const dx = a.x - camPos.x, dz = a.z - camPos.z;
         if (dx * dx + dz * dz > 8100) continue;   // 90 m
+        if (a.node) stirred.push(a.node);
         if (a.kind === 'spin') {
           a.node.rotation[a.axis] += dt * a.speed;
         } else if (a.kind === 'press') {
@@ -433,6 +447,7 @@ export class Anomalies {
             + Math.sin(time * a.speed * 2.3 + a.phase * 1.7) * a.amp * 0.4;
         }
       }
+      for (let i = 0; i < stirred.length; i++) stirred[i].updateMatrixWorld(true);
     }
 
     // Surfaces that move without anything moving them. Materials are shared,

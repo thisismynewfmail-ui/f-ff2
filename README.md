@@ -1513,6 +1513,47 @@ cost across frames instead of spiking on one.
 Renders at 0.75 internal scale with nearest-neighbour upscaling — chunky
 and fast.
 
+**The town does not move, and is no longer asked whether it has.** Nine
+thousand meshes stand in it and almost every one is nailed down — a wall, a
+kerb, a chair in a room nobody is in — but three.js does not know that, so it
+was recomposing a matrix for each of eleven thousand scene nodes every frame:
+**seven milliseconds, twice the cost of the entire game simulation**, spent
+proving a town that cannot move has not moved. The static half of the graph is
+settled once at build time and then taken off the renderer's per-frame walk
+(`World.settle`); the handful of things that genuinely do move inside it — a
+district wall sinking, the clock's hands, the wind in the planting, the crow,
+the cube — carry their own matrices and cost the size of those subtrees instead
+of the size of the town.
+
+**And what cannot be seen is not drawn.** Two culls run against bounds cached
+when each piece of town was settled, before the frame the camera is about to
+render (not the one it just did, which is wrong precisely when you are turning
+quickly):
+
+- **the frustum, once per building instead of once per brick.** three.js culls
+  per mesh and only per mesh — it walks into every group and tests all nine
+  thousand meshes to throw away the seven eighths behind the player. A building
+  is one box to a camera; testing the box first makes the renderer's own walk
+  stop at the door.
+- **the fog wall.** The haze reaches full strength at 160 m, so everything past
+  it is being rasterised and shaded to produce exactly the colour the empty
+  background already is. The camera's far plane cannot do this job (the sun,
+  moon and clouds live out past two hundred metres), so it is done per piece
+  here. Interiors get a tighter line still: a furnished room is only ever seen
+  through the doorway of the building it is inside.
+
+Together those take a firefight from **1,917 draw calls and 24 ms of CPU a
+frame to 1,133 and 17 ms** — measured, in a real fight, in the real town.
+
+**The output scale fits the machine.** The CRT tube is the one pass that runs
+per DEVICE pixel, which on a high-density screen is four times the work for the
+same picture. Frame times are sampled, and if the budget is being missed for
+long enough that it is load rather than a hiccup, the tube steps down a rung;
+when the headroom returns it steps back up. It never goes below one device
+pixel per CSS pixel, and never touches the framing, the console's own
+resolution, the grade or the post chain — the game looks like itself the whole
+way down (`Renderer.adapt`).
+
 The audio has a budget of its own — inaudible layers are never built, a live
 voice cap makes new layers earn their slot, panning goes through a shared rack,
 speech is capped and detail-scaled by distance, and every sound is constructed a

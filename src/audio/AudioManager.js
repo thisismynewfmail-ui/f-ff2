@@ -277,12 +277,10 @@ export class AudioManager {
     const d = this._noiseBuf.getChannelData(0);
     for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
     this.speech = new SpeechSynth(this.ctx, this._noiseBuf);
-    // The shared panner rack (see THE VOICE GOVERNOR). Rungs are cut the first
-    // time a sound needs one and then stand for the life of the context; dead
-    // centre is the bus itself, so the great majority of the game's sounds —
-    // every weapon, every footstep, every chime — never touch a panner at all.
-    this._panRack = new Array(PAN_STEPS * 2 + 1).fill(null);
-    this._panRack[PAN_STEPS] = this.master;
+    // The shared panner rack is cut lazily, on the first sound that needs each
+    // rung, and re-cut if the bus is ever swapped — see _bus.
+    this._panRack = null;
+    this._rackFor = null;
     try {
       this.music = new MusicDirector(this.ctx, this.musicOut);
       if (this._musicOn && this._track) this.music.play(this._track, { fade: 1.2 });
@@ -350,6 +348,18 @@ export class AudioManager {
    * down only the parts of itself the mix still has room for.
    */
 
+  /**
+   * Is there a frame loop to feed the drip?
+   *
+   * An OFFLINE context has no frames: it renders the whole timeline in one go
+   * and then it is over. Queueing there would silently drop every layer past
+   * the first 140 ms — the bolt cycle off the end of a sniper shot, the wall
+   * landing at the end of a demolition — so offline, everything is booked
+   * where it stands. The audio comes out identical either way; only WHEN the
+   * nodes are made differs, and offline there is no main thread to spare.
+   */
+  get _dripping() { return typeof this.ctx?.startRendering !== 'function'; }
+
   /** Put a layer on the drip. `build(when)` is called with a fresh offset once
    *  its moment is close enough to hand to the scheduler. */
   _defer(at, build) {
@@ -413,8 +423,17 @@ export class AudioManager {
    * only be a node doing nothing. See THE VOICE GOVERNOR.
    */
   _bus(pan) {
+    if (!this.ctx) return this.master;
+    // A rung belongs to the bus it was cut for. Point the manager at a
+    // different bus — which is what rendering the mix offline does — and the
+    // old rack's nodes belong to a context this one cannot legally connect to,
+    // so the rack goes with it.
+    if (this._rackFor !== this.master) {
+      this._rackFor = this.master;
+      this._panRack = new Array(PAN_STEPS * 2 + 1).fill(null);
+      this._panRack[PAN_STEPS] = this.master;
+    }
     const rack = this._panRack;
-    if (!rack) return this.master;
     const i = PAN_STEPS + Math.max(-PAN_STEPS, Math.min(PAN_STEPS,
       Math.round((pan || 0) * PAN_STEPS)));
     let p = rack[i];
@@ -431,7 +450,7 @@ export class AudioManager {
     const ctx = this.ctx;
     if (!ctx) return;
     const now = ctx.currentTime;
-    if (when > SCHEDULE_AHEAD) {   // not yet — see THE DRIP
+    if (when > SCHEDULE_AHEAD && this._dripping) {   // not yet — see THE DRIP
       this._defer(now + when, (w) => this._noise(dur, filterType, freq, q, gain, w, pan, freqEnd));
       return;
     }
@@ -457,7 +476,7 @@ export class AudioManager {
     const ctx = this.ctx;
     if (!ctx) return;
     const now = ctx.currentTime;
-    if (when > SCHEDULE_AHEAD) {   // not yet — see THE DRIP
+    if (when > SCHEDULE_AHEAD && this._dripping) {   // not yet — see THE DRIP
       this._defer(now + when, (w) => this._tone(type, freq, dur, gain, w, pan, freqEnd));
       return;
     }

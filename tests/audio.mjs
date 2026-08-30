@@ -123,7 +123,6 @@ const render = (scene, secs = 8) => page.evaluate(async ({ scene, secs }) => {
     OfflineAudioContext.prototype.__counted = true;
   }
   window.__built = 0;
-  const onFrame = { n: 0 };
 
   if (scene === 'quiet') {
     // An ordinary moment. Nothing here is anywhere near the budget, so every
@@ -135,7 +134,6 @@ const render = (scene, secs = 8) => page.evaluate(async ({ scene, secs }) => {
   } else if (scene === 'wall') {
     // A district gate coming down: sixty-odd layers laid across five seconds.
     bus.emit('barrier:explode', { x: 14, z: 14, duration: 3.5 });
-    onFrame.n = window.__built;          // ...how much of it landed on this frame
   } else if (scene === 'wave') {
     // A wave breaking on the square.
     for (let i = 0; i < 15; i++) {
@@ -161,7 +159,7 @@ const render = (scene, secs = 8) => page.evaluate(async ({ scene, secs }) => {
     sum += d[i] * d[i];
     if (a > peak) peak = a;
   }
-  return { ms, rms: Math.sqrt(sum / d.length), peak, built: window.__built, onFrame: onFrame.n };
+  return { ms, rms: Math.sqrt(sum / d.length), peak, built: window.__built };
 }, { scene, secs });
 
 /* --- 1 + 2: the quiet case is untouched --------------------------------- */
@@ -173,11 +171,57 @@ check('...and nothing about it is culled — every layer of it is built',
 
 /* --- 3: the demolition arrives as a drip, not a lump --------------------- */
 const wall = await render('wall');
-check('a wall coming down does not build itself on one frame',
-  wall.onFrame <= 30, `${wall.onFrame} nodes on the frame it breaks, ${wall.built} in all`);
 check('...and the whole demolition still gets built',
   wall.built >= 45, `${wall.built} nodes`);
 check('...and it is a big sound when it lands', wall.peak > 0.2, `peak ${dB(wall.peak)} dBFS`);
+
+/**
+ * The drip itself, measured against a LIVE context — which is the only place
+ * it exists. Offline there are no frames to spread the work across, so the
+ * manager books everything where it stands (see AudioManager's `_dripping`);
+ * here there is a clock and a frame loop, so a wall coming down must put a
+ * handful of nodes on the frame it breaks and trickle the rest in behind.
+ */
+const drip = await page.evaluate(async () => {
+  const { AudioManager } = await import('/src/audio/AudioManager.js');
+  const { EventBus } = await import('/src/engine/Events.js');
+  let built = 0;
+  const AC = window.AudioContext;
+  for (const k of ['createOscillator', 'createBufferSource', 'createBiquadFilter',
+    'createGain', 'createStereoPanner', 'createWaveShaper']) {
+    const orig = AC.prototype[k];
+    if (orig.__counted) continue;
+    const patched = function (...a) { window.__liveBuilt++; return orig.apply(this, a); };
+    patched.__counted = true;
+    AC.prototype[k] = patched;
+  }
+  const bus = new EventBus();
+  const am = new AudioManager(bus);
+  am.unlock();
+  if (!am.ctx) return null;
+  am.music?.dispose?.(); am.music = null;
+  window.__liveBuilt = 0;
+  bus.emit('barrier:explode', { x: 14, z: 14, duration: 3.5 });
+  const onFrame = window.__liveBuilt;
+  // ...and then run the frame loop over the life of the demolition.
+  const player = { position: { x: 0, y: 1.6, z: 0 }, yaw: 0 };
+  const t0 = performance.now();
+  while (performance.now() - t0 < 4200) {
+    am.update(1 / 60, player, 0);
+    await new Promise((r) => setTimeout(r, 8));
+  }
+  const total = window.__liveBuilt;
+  am.ctx.close?.();
+  return { onFrame, total };
+});
+if (drip) {
+  check('a wall coming down does not build itself on one frame',
+    drip.onFrame <= 30, `${drip.onFrame} nodes on the frame it breaks, ${drip.total} over the whole demolition`);
+  check('...and the rest of it arrives behind that',
+    drip.total > drip.onFrame, `${drip.total - drip.onFrame} more nodes dripped in`);
+} else {
+  console.log('SKIP  the drip — no live AudioContext in this browser');
+}
 
 /* --- 4 + 5: a wave breaking stays inside its deadline -------------------- */
 const wave = await render('wave');

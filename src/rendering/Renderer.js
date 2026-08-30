@@ -34,6 +34,32 @@ export const HORIZONTAL_FOV = 90;
 export const FOG_FAR = 160;
 const RENDER_SCALE = 0.75;
 
+/* ========================= THE GAME FITS THE MACHINE =======================
+ *
+ * The tube is the one pass in this renderer that runs per DEVICE pixel, and on
+ * a high-density screen that is four times the work of the same picture on a
+ * 1080p panel — for a grille whose stripes are three pixels wide either way.
+ * On a machine with the fill rate to spare that is exactly the right trade and
+ * nothing here touches it. On a machine without it, it is the difference
+ * between a game and a slideshow, and a slideshow is not a look.
+ *
+ * So the output scale is watched rather than fixed. Frame times are sampled,
+ * and if the frame budget is being missed for long enough that it is load
+ * rather than a hiccup, the tube steps down one rung; when the headroom comes
+ * back it steps up again. It never goes below one device pixel per CSS pixel —
+ * that is the floor the picture was designed at — and it never changes the
+ * framing, the console's own resolution, the grade or the post chain, so the
+ * game looks like itself the whole way down. Nothing here is visible to
+ * gameplay: the simulation, the camera and the FOV are untouched.
+ */
+/** Output-scale rungs, best first. Multipliers on the posted pixel ratio. */
+const SCALE_RUNGS = [1, 0.82, 0.68, 0.55];
+/** Frame time we are trying to stay under, and the one we climb back at. */
+const BUDGET_MS = 20.5;      // ~48 fps: past here the game is visibly costing
+const HEADROOM_MS = 13.0;    // ~77 fps: comfortably paying for another rung
+/** Frames of evidence before either move, so a single hitch changes nothing. */
+const ADAPT_WINDOW = 45;
+
 export class Renderer {
   constructor(canvas) {
     this.canvas = canvas;
@@ -81,7 +107,40 @@ export class Renderer {
     // carrying its own private idea of what time it is (see WeaponView).
     this.daylight = 1;
 
+    // Output-scale governor — see THE GAME FITS THE MACHINE.
+    this._rung = 0;
+    this._samples = new Float32Array(ADAPT_WINDOW);
+    this._nSamples = 0;
+    this._holdOff = 0;
+
     window.addEventListener('resize', () => this.resize());
+    this.resize();
+  }
+
+  /**
+   * One frame's worth of evidence about whether this machine can afford the
+   * picture it is being asked to draw. Called from the frame loop with the
+   * frame's own wall time; moves the output scale at most one rung at a time
+   * and never inside the hold-off after a move (a resize reallocates the post
+   * chain's targets, which is itself a hitch).
+   */
+  adapt(frameMs) {
+    if (!this.postfx?.enabled) return;      // unposted is already the cheap path
+    if (this._holdOff > 0) { this._holdOff--; return; }
+    if (!(frameMs > 0) || frameMs > 500) return;   // a load stall is not a frame
+    this._samples[this._nSamples++] = frameMs;
+    if (this._nSamples < ADAPT_WINDOW) return;
+    this._nSamples = 0;
+    // The MEDIAN, not the mean: one 200 ms frame while a wave streams in must
+    // not be able to argue the whole picture down a rung on its own.
+    const sorted = Array.from(this._samples).sort((a, b) => a - b);
+    const med = sorted[ADAPT_WINDOW >> 1];
+    let rung = this._rung;
+    if (med > BUDGET_MS && rung < SCALE_RUNGS.length - 1) rung++;
+    else if (med < HEADROOM_MS && rung > 0) rung--;
+    if (rung === this._rung) return;
+    this._rung = rung;
+    this._holdOff = ADAPT_WINDOW * 2;
     this.resize();
   }
 
@@ -96,7 +155,11 @@ export class Renderer {
     // grille beats against the display's own grid. Capped at 2x, past which
     // the stripes are finer than anyone can see and it is only cost.
     // Unposted: the old reduced buffer at ratio 1, exactly as it always was.
-    const ratio = posted ? Math.min(2, window.devicePixelRatio || 1) : 1;
+    // ...and never below one device pixel per CSS pixel, whatever the governor
+    // thinks: that is the resolution the picture was drawn for.
+    const ratio = posted
+      ? Math.max(1, Math.min(2, window.devicePixelRatio || 1) * SCALE_RUNGS[this._rung ?? 0])
+      : 1;
     const bw = posted ? w : Math.floor(w * RENDER_SCALE);
     const bh = posted ? h : Math.floor(h * RENDER_SCALE);
     this.renderer.setPixelRatio(ratio);

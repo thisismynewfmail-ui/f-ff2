@@ -307,6 +307,10 @@ export class Vegetation {
                   + (s.lean ?? 0);           // the standing lean the wind holds
       if (s.axis === 'x') n.rotation.x = angle;
       else n.rotation.z = angle;
+      // The town is settled and off the renderer's books (see World.settle),
+      // so anything that moves inside it carries its own matrix. Only the
+      // planting within the gate above pays for this.
+      n.updateMatrixWorld(true);
     }
   }
 }
