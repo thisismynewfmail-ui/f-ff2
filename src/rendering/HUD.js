@@ -1375,16 +1375,16 @@ export class HUD {
     // --- console: SPRINT meter — vertical stamina cell that drains as the
     // player sprints and recharges otherwise (see Player stamina). ---
     const stam = Math.max(0, Math.min(1, d.stamina ?? 1));
-    this.sprintFill.style.height = (stam * 100).toFixed(1) + '%';
+    setHeightPct(this.sprintFill, stam);
     // The player's own lockout flag, so the lamp stays on for the whole winded
     // period rather than only while the meter reads empty.
     const winded = d.winded ?? (stam <= 0.02 && !d.sprinting);
     this.sprintPanel.classList.toggle('sprinting', !!d.sprinting);
     this.sprintPanel.classList.toggle('low', stam < 0.3 && !winded);
     this.sprintPanel.classList.toggle('winded', winded);
-    this.sprintState.textContent = winded ? 'WINDED'
+    setText(this.sprintState, winded ? 'WINDED'
       : d.sprinting ? 'RUN'
-      : stam > 0.985 ? 'READY' : 'REGEN';
+      : stam > 0.985 ? 'READY' : 'REGEN');
 
     // --- console: AIM indicator ---
     // `_alarm` still decays because damage events set it and the HP odometer's
@@ -1392,17 +1392,16 @@ export class HUD {
     // lamp on the panel for it to light any more.
     this._alarm = Math.max(0, this._alarm - dt * 2);
     this.aimLamp.classList.toggle('on', this._scoped);
-    this.aimState.textContent = this._scoped ? 'ON' : 'OFF';
+    setText(this.aimState, this._scoped ? 'ON' : 'OFF');
 
     // --- console: WEAPON panel (icon + fire mode) ---
     if (this._weaponShown !== cur.id) {
       this._weaponShown = cur.id;
       this._drawGlyph(this.weaponIcon, cur.id, '#e2c26a');
-      this.weaponMode.textContent = cur.reloading ? 'RELOAD' : cur.fireMode;
+      setText(this.weaponMode, cur.reloading ? 'RELOAD' : cur.fireMode);
     } else {
-      const mode = cur.reloading ? 'RELOAD'
-        : (cur.mag === 0 && cur.reserve === 0 && cur.id !== 'bat') ? 'EMPTY' : cur.fireMode;
-      if (this.weaponMode.textContent !== mode) this.weaponMode.textContent = mode;
+      setText(this.weaponMode, cur.reloading ? 'RELOAD'
+        : (cur.mag === 0 && cur.reserve === 0 && cur.id !== 'bat') ? 'EMPTY' : cur.fireMode);
     }
     this.weaponMode.classList.toggle('warn', cur.reloading);
     this.weaponMode.classList.toggle('empty', cur.mag === 0 && cur.reserve === 0 && cur.id !== 'bat');
@@ -1410,7 +1409,7 @@ export class HUD {
     // The charge line serves both: a reload filling a magazine, and an energy
     // cell filling itself. Same readout, same meaning — how long until it works.
     const charge = cur.reloading ? cur.reloadFrac : (cur.energy ? cur.chargeFrac : 0);
-    this.weaponCharge.style.width = (charge * 100).toFixed(1) + '%';
+    setPct(this.weaponCharge, charge);
     this.weaponCharge.classList.toggle('cell', !!cur.energy && !cur.reloading);
 
     // --- console: ARMS grid (persistent 6-slot armoury) ---
@@ -1447,19 +1446,19 @@ export class HUD {
       // empty: showing a dimmed silhouette of the Alien Blaster tells the
       // player there is a secret weapon in slot 6 and roughly what it looks
       // like, which is the one thing a secret must not do.
-      if (w.locked) { s.rsv.textContent = ''; return; }
+      if (w.locked) { setText(s.rsv, ''); return; }
       const rsv = w.mag === Infinity ? '∞' : w.energy ? '∞' : w.reserve === Infinity ? '∞' : w.reserve;
       const mag = w.mag === Infinity ? '·' : w.mag;
-      s.rsv.textContent = `${mag}·${rsv}`;
+      setText(s.rsv, `${mag}·${rsv}`);
     });
 
     // --- right side HUD: CONFIRMED KILLS tally device ---
     this._odoDigits(this.killsOdo, d.kills, 6);
     const killRatio = Math.min(1, d.kills / WIN_KILLS);
     this.killGauge.set(killRatio);
-    this.killBars.tot.style.width = (killRatio * 100).toFixed(3) + '%';
-    this.killBars.k.style.width = (((d.kills % 1000) / 1000) * 100).toFixed(1) + '%';
-    this.killBars.acc.style.width = (Math.max(0, Math.min(1, d.accuracy)) * 100).toFixed(1) + '%';
+    setPct(this.killBars.tot, killRatio, 3);
+    setPct(this.killBars.k, (d.kills % 1000) / 1000);
+    setPct(this.killBars.acc, d.accuracy);
     if (this._lastKills === undefined) this._lastKills = d.kills;
     if (d.kills > this._lastKills) {
       this._killBlip = 0.35;
@@ -1471,36 +1470,45 @@ export class HUD {
     this.killLamps.hit.classList.toggle('lit', this._killBlip > 0);
     this.killLamps.mile.classList.toggle('lit', this._milestone > 0 && Math.sin(now / 90) > -0.2);
     this.killLamps.pwr.classList.add('lit');
-    this.killLamps.pwr.style.opacity = (0.78 + 0.22 * Math.sin(now / 640)).toFixed(2);
-    this.remainEl.textContent = 'REMAINING ' + Math.max(0, WIN_KILLS - d.kills).toLocaleString('en-US');
+    setOpacity(this.killLamps.pwr, 0.78 + 0.22 * Math.sin(now / 640));
+    // toLocaleString is an Intl formatter; running one every frame for a number
+    // that changes on a kill is the single most expensive line on this panel.
+    const remain = Math.max(0, WIN_KILLS - d.kills);
+    if (this._remainShown !== remain) {
+      this._remainShown = remain;
+      setText(this.remainEl, 'REMAINING ' + remain.toLocaleString('en-US'));
+    }
 
     // --- left side HUD: WAVE field device ---
-    this.waveEl.textContent = d.wave.n === 0 ? '—' : String(d.wave.n).padStart(2, '0');
-    this.zoneEl.textContent = d.zoneName.toUpperCase();
+    setText(this.waveEl, d.wave.n === 0 ? '—' : String(d.wave.n).padStart(2, '0'));
+    if (this._zoneShown !== d.zoneName) {
+      this._zoneShown = d.zoneName;
+      setText(this.zoneEl, d.zoneName.toUpperCase());
+    }
     const active = d.wave.state === 'active';
     const respite = d.wave.state === 'respite';
     const quota = d.wave.quota || 0;
     const cleared = Math.min(d.wave.killsThisWave || 0, quota);
-    this.waveClearedEl.textContent = active ? cleared : d.wave.n === 0 ? 0 : quota;
-    this.waveQuotaEl.textContent = quota;
+    setText(this.waveClearedEl, active ? cleared : d.wave.n === 0 ? 0 : quota);
+    setText(this.waveQuotaEl, quota);
     // needle + red bar carry the same wave-clearance value the old bar did
     const waveRatio = active && quota ? Math.min(1, cleared / quota) : respite ? 1 : 0;
     this.waveGauge.set(waveRatio);
-    this.waveBars.clr.style.width = (waveRatio * 100).toFixed(1) + '%';
+    setPct(this.waveBars.clr, waveRatio);
     this.waveBars.clr.classList.toggle('done', !active);
     // blue bar drains with the respite clock (10 s standard breather)
     const respFrac = respite ? Math.max(0, Math.min(1, d.wave.respiteLeft / 10)) : 0;
-    this.waveBars.rsp.style.width = (respFrac * 100).toFixed(1) + '%';
+    setPct(this.waveBars.rsp, respFrac);
     const secFrac = d.secrets && d.secrets.total ? d.secrets.found / d.secrets.total : 0;
-    this.waveBars.sec.style.width = (secFrac * 100).toFixed(1) + '%';
+    setPct(this.waveBars.sec, secFrac);
     // state lamps: calm (pre-fight grace) / incoming (respite, blinking) / combat
     this.waveLamps.calm.classList.toggle('lit', respite && d.wave.n === 0);
     this.waveLamps.incoming.classList.toggle('lit', respite && Math.sin(now / 160) > -0.25);
     this.waveLamps.combat.classList.toggle('lit', active);
     this.supplyChip.classList.toggle('lit', respite && d.wave.n > 0);
-    this.respiteEl.textContent = respite
+    setText(this.respiteEl, respite
       ? (d.wave.n === 0 ? 'THEY ARE COMING · ' : 'RESPITE · ') + Math.ceil(d.wave.respiteLeft) + 's'
-      : 'HOLD THE LINE';
+      : 'HOLD THE LINE');
 
     // --- fly-in ARMORY names (chassis built once, occupants redrawn on change) ---
     if (!this.slotEls.length) {
@@ -1510,15 +1518,19 @@ export class HUD {
         cv.className = 'wm-glyph';
         const key = this._el('div', null, slot, 'wm-key'); key.textContent = i + 1;
         slot.appendChild(cv);
-        this._el('div', null, slot, 'wm-name');
-        this._el('div', null, slot, 'wm-ammo');
-        this.slotEls.push({ slot, cv, shown: undefined });
+        // Held, not looked up. These two were re-found with querySelector on
+        // every slot on every frame — twelve tree walks a frame for two nodes
+        // that are built here and never move.
+        const name = this._el('div', null, slot, 'wm-name');
+        const ammo = this._el('div', null, slot, 'wm-ammo');
+        this.slotEls.push({ slot, cv, name, ammo, shown: undefined });
       });
     }
     d.weapons.forEach((w, i) => {
-      const { slot, cv } = this.slotEls[i];
-      if (this.slotEls[i].shown !== w.id) {
-        this.slotEls[i].shown = w.id;
+      const el = this.slotEls[i];
+      const { slot, cv } = el;
+      if (el.shown !== w.id) {
+        el.shown = w.id;
         if (w.id) this._drawGlyph(cv, w.id, '#e0b840');
         else cv.getContext('2d').clearRect(0, 0, cv.width, cv.height);
       }
@@ -1529,11 +1541,10 @@ export class HUD {
       slot.classList.toggle('dry', !w.locked && w.mag === 0 && w.reserve === 0 && w.id !== 'bat');
       // A non-breaking space, not an empty string: the rack has to keep its
       // shape when a bay is blank, and a div with no text has no height.
-      slot.querySelector('.wm-name').textContent = w.locked ? '\u00a0' : (w.flavor || w.name);
-      const ammo = slot.querySelector('.wm-ammo');
-      ammo.textContent = w.locked ? '\u00a0'
+      setText(el.name, w.locked ? '\u00a0' : (w.flavor || w.name));
+      setText(el.ammo, w.locked ? '\u00a0'
         : w.mag === Infinity ? 'MELEE'
-        : `${w.mag} / ${w.reserve === Infinity ? '∞' : w.reserve}`;
+        : `${w.mag} / ${w.reserve === Infinity ? '∞' : w.reserve}`);
     });
     if (this._menuTimer > 0) {
       this._menuTimer -= dt;
@@ -1542,10 +1553,10 @@ export class HUD {
 
     // --- prompt ---
     if (d.prompt) {
-      this.promptEl.textContent = typeof d.prompt === 'function' ? d.prompt() : d.prompt;
-      this.promptEl.style.display = 'block';
+      setText(this.promptEl, typeof d.prompt === 'function' ? d.prompt() : d.prompt);
+      setDisplay(this.promptEl, 'block');
     } else {
-      this.promptEl.style.display = 'none';
+      setDisplay(this.promptEl, 'none');
     }
 
     // --- notice: teletype in, hold, sign off ---
@@ -1565,9 +1576,69 @@ export class HUD {
 
     // --- damage vignette + heal flash ---
     this._vignette = Math.max(0, this._vignette - dt * 1.4);
-    const lowHp = hpFrac < 0.3 ? (0.3 - hpFrac) * 1.6 * (0.7 + 0.3 * Math.sin(performance.now() / 220)) : 0;
-    document.getElementById('vignette').style.opacity = Math.min(1, this._vignette + lowHp);
+    const lowHp = hpFrac < 0.3 ? (0.3 - hpFrac) * 1.6 * (0.7 + 0.3 * Math.sin(now / 220)) : 0;
+    // Held from the frame they were built, not re-found by id every frame.
+    this._vignetteEl ??= document.getElementById('vignette');
+    this._healEl ??= document.getElementById('healflash');
+    setOpacity(this._vignetteEl, this._vignette + lowHp);
     this._heal = Math.max(0, this._heal - dt);
-    document.getElementById('healflash').style.opacity = this._heal;
+    setOpacity(this._healEl, this._heal);
   }
+}
+
+/* ============================ THE QUIET WRITES ============================
+ *
+ * The console is a hundred-odd little readouts and it is repainted sixty times
+ * a second, but almost none of it CHANGES sixty times a second: the ammo
+ * counter moves when you fire, the wave name when you cross a gate, the
+ * armoury rack twice a run. Writing a property that already holds the value it
+ * is being given is not free — it re-parses the string, dirties the node and
+ * hands the style engine a recalculation to prove nothing moved — and doing
+ * that for every field on the panel is a real slice of frame time spent
+ * confirming the HUD still says what it said last frame.
+ *
+ * So every field that is written every frame goes through one of these. They
+ * compare first and only touch the DOM when the answer is different, which
+ * turns the whole console back into what it looks like: a panel that updates
+ * when something happens.
+ */
+
+/** Set text only when it actually changed. */
+function setText(el, v) {
+  const s = String(v);
+  if (el._t === s) return;
+  el._t = s;
+  el.textContent = s;
+}
+
+/** Set a percentage width only when it actually changed. */
+function setPct(el, frac, dp = 1) {
+  const s = (Math.max(0, Math.min(1, frac)) * 100).toFixed(dp) + '%';
+  if (el._w === s) return;
+  el._w = s;
+  el.style.width = s;
+}
+
+/** Set a percentage height only when it actually changed. */
+function setHeightPct(el, frac, dp = 1) {
+  const s = (Math.max(0, Math.min(1, frac)) * 100).toFixed(dp) + '%';
+  if (el._h === s) return;
+  el._h = s;
+  el.style.height = s;
+}
+
+/** Show or hide only when the state actually changed. */
+function setDisplay(el, v) {
+  if (el._d === v) return;
+  el._d = v;
+  el.style.display = v;
+}
+
+/** Set an opacity only when it actually changed (to three decimals — past
+ *  that the difference is not a pixel, it is a string allocation). */
+function setOpacity(el, v) {
+  const s = Math.max(0, Math.min(1, v)).toFixed(3);
+  if (el._o === s) return;
+  el._o = s;
+  el.style.opacity = s;
 }

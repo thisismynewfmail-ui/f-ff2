@@ -115,6 +115,7 @@ export class CompanionCube {
     this.mesh.position.set(x, this.pos.y, z);
     this.mesh.rotation.y = Math.random() * Math.PI * 2;
     this.world.group.add(this.mesh);
+    this.world.settled(this.mesh);   // back in the town, at a new place
     this._colliderId = this.world.collision.addBoxCentered(
       x, this.baseY + CUBE_SIZE / 2, z, 0.34, 0.34, 0.34, 'furniture');
     Object.assign(this._interactable, { x, y: this.baseY, z });
@@ -130,6 +131,7 @@ export class CompanionCube {
     const restY = this.baseY + this.restOffset;
     if (this.pos.y <= restY) { this.pos.y = restY; this._falling = false; }
     this.mesh.position.y = this.pos.y;
+    this.mesh.updateMatrixWorld(true);   // it moves; see World.settle
   }
 }
 

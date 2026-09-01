@@ -101,6 +101,9 @@ export class Scarecrow {
     placed.position.set(this.pos.x, this.pos.y, this.pos.z);
     placed.rotation.y = this.bodyYaw;
     this.world.group.add(placed);
+    // The whole figure stirs — coat, rags, head, the can on its string — so it
+    // keeps its own world matrices (see World.settle).
+    this.world.mover(placed);
     this.group = placed;
 
     // frame: sways as one (coat + cross-post), the head rides on top of it
@@ -292,6 +295,7 @@ export class Scarecrow {
     g.position.set(bx, by, bz);
     g.rotation.y = this.bodyYaw + 0.7;
     this.world.group.add(g);
+    this.world.mover(g);          // the crow bolts; see World.settle
     this._crow = {
       group: g, head: headGrp, wingL, wingR,
       baseX: bx, baseY: by, baseZ: bz, state: 'perched', t: 0, twitch: 1.5, dirx: 0, dirz: 1,
@@ -334,6 +338,7 @@ export class Scarecrow {
     g.position.set(x, y, z);
     g.rotation.y = ENTRY;                     // the whole site lies along the entry
     w.group.add(g);
+    w.mover(g);                   // the wreck smoulders and shifts; see World.settle
 
     // ---- the scar. Opaque burnt ground, not a translucent smear over grass:
     //      a stain you can see through is a stain nobody notices from the air.
@@ -517,6 +522,7 @@ export class Scarecrow {
       q.position.set(x + 1.3, y + 1, z + 1.3);
       q.renderOrder = 3;
       w.group.add(q);
+      w.mover(q);                 // the smoke drifts; see World.settle
       this._crashSmoke.push({ q, mat, phase: i / 3 });
     }
 
@@ -540,6 +546,7 @@ export class Scarecrow {
     grip.rotation.x = 0.3;
     bg.add(body, cell, grip);
     w.group.add(bg);
+    w.mover(bg);                  // it turns on its plinth; see World.settle
     this._blasterNode = bg;
     this._blasterCell = cell;
 
@@ -619,6 +626,7 @@ export class Scarecrow {
     hat.getWorldPosition(wp);
     this._head.remove(hat);
     this.world.group.add(hat);
+    this.world.mover(hat);        // it is falling now; see World.settle
     hat.position.copy(wp);
     hat.rotation.set(-0.22, this.bodyYaw + this._headYaw, 0);
 

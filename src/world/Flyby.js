@@ -153,6 +153,7 @@ export class Flyby {
     g.scale.setScalar(1.4);
     this.node = g;
     this.world.group.add(g);
+    this.world.mover?.(g);   // it flies; see World.settle
   }
 
   /* ---------------- the flight ---------------- */

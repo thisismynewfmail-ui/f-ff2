@@ -418,6 +418,7 @@ export class Secrets {
       const a = this._shelfAnim;
       a.t += dt / 1.4;
       a.node.position.x = a.from - Math.min(1, a.t) * 2.0;
+      a.node.updateMatrixWorld(true);   // it slides aside; see World.settle
       if (a.t >= 1) this._shelfAnim = null;
     }
 

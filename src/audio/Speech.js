@@ -22,7 +22,8 @@
  *   - the whole voice is band-limited to roughly 300–3600 Hz, which is the
  *     speaker, and it is what makes it sit under gunfire instead of over it;
  *   - a waveshaper adds the fizz of an overdriven amplifier;
- *   - and there is a floor of carrier hiss under every line.
+ *   - and there is a floor of carrier hiss under every line close enough for
+ *     it to be part of the sound rather than part of the bill (see THE RUNGS).
  *
  * The result is deliberately not clean: it is meant to be UNDERSTANDABLE and
  * obviously artificial at the same time, which is exactly the register the
@@ -118,11 +119,47 @@ export class SpeechSynth {
    *               rate   >1 speaks faster (urgency)
    *               grit   0..1 how far gone the cabinet is
    *               shout  0..1 raises f0 and opens the vowels through the line
+   *               quality 2 = the whole machine, 1 and 0 progressively less of
+   *                      it — see THE RUNGS below
    * @returns the length of the line in seconds, so a caller can sequence it.
    */
-  speak(dest, line, { f0 = 118, gain = 0.5, when = 0, rate = 1, grit = 0.5, shout = 0 } = {}) {
+  speak(dest, line, {
+    f0 = 118, gain = 0.5, when = 0, rate = 1, grit = 0.5, shout = 0, quality = 2,
+  } = {}) {
     const ctx = this.ctx;
     if (!ctx) return 0;
+    /* --- THE RUNGS ------------------------------------------------------
+     *
+     * What a line costs is what it BUILDS, every 128 sample frames, for as long
+     * as it is speaking. Distance has already taken the top off the voice by
+     * the time the caller hands it over (see AudioManager.enemyLine), so the
+     * parts of the machine that only live up there are being computed in order
+     * to be filtered straight back out of the mix. What goes, goes in the
+     * order of what is least there to hear:
+     *
+     *   THE OVERSAMPLING, first. It exists to keep the waveshaper's fizz from
+     *   aliasing, and there is nothing left up there to alias once the line is
+     *   low-passed to under two kilohertz. It is also, by a distance, the most
+     *   expensive thing in the chain — a waveshaper at 2x runs its whole block
+     *   through two extra resampling passes.
+     *
+     *   THE CARRIER HISS, with it: a source, a filter and a gain spent on
+     *   something already forty decibels under a voice that is itself quiet.
+     *
+     *   THE CEILING AND THE THIRD FORMANT, last and only at the far rung,
+     *   where the air filter is a full octave below both of them and doing
+     *   their work for them.
+     *
+     * Nothing that carries survives being cut. The cabinet's horn and the
+     * octave-down buzz under the glottal source are on every rung — they are
+     * two of the cheapest nodes here and they are most of why the town sounds
+     * like a blown speaker with a person behind it — and near and alone, a
+     * fighter still gets the whole machine.
+     */
+    const q = quality | 0;
+    const full = q >= 2;          // the carrier hiss and the oversampled fizz
+    const formants = q >= 1 ? 3 : 2;
+    const ceiling = q >= 1;       // the cabinet's top end (redundant once far)
     const t0 = ctx.currentTime + when;
     const toks = String(line).trim().split(/\s+/).filter(Boolean);
     // total length first, so the source can be started and stopped exactly
@@ -135,19 +172,33 @@ export class SpeechSynth {
     out.gain.value = gain;
     const band = ctx.createBiquadFilter();     // the speaker's low end
     band.type = 'highpass'; band.frequency.value = 260; band.Q.value = 0.6;
-    const top = ctx.createBiquadFilter();      // ...and its ceiling
-    top.type = 'lowpass'; top.frequency.value = 3400 - grit * 900; top.Q.value = 0.8;
-    const horn = ctx.createBiquadFilter();     // the honk of a cone in a box
-    horn.type = 'peaking'; horn.frequency.value = 1700; horn.Q.value = 1.1; horn.gain.value = 5;
     const crunch = ctx.createWaveShaper();
     crunch.curve = this.curve;
-    crunch.oversample = '2x';
-    band.connect(horn).connect(top).connect(crunch).connect(out).connect(dest);
+    // Oversampling a waveshaper is two extra resampling passes per block. It
+    // is what keeps the fizz from aliasing on a voice you can hear the top of;
+    // on one that has already lost its top to distance there is nothing up
+    // there left to alias.
+    crunch.oversample = full ? '2x' : 'none';
+    // The horn stays on every rung. It is one biquad — the cheapest thing in
+    // this chain — and it is most of what makes the town sound like it is
+    // talking through a cabinet rather than through a synthesiser, which is
+    // exactly the wrong thing to spend on a saving this small.
+    const horn = ctx.createBiquadFilter();     // the honk of a cone in a box
+    horn.type = 'peaking'; horn.frequency.value = 1700; horn.Q.value = 1.1; horn.gain.value = 5;
+    let chain = band.connect(horn);
+    if (ceiling) {
+      const top = ctx.createBiquadFilter();    // ...and its ceiling
+      top.type = 'lowpass'; top.frequency.value = 3400 - grit * 900; top.Q.value = 0.8;
+      chain = chain.connect(top);
+    }
+    chain.connect(crunch).connect(out).connect(dest);
 
     /* --- the glottal source: a buzz, and a coarse one ---------------- */
     const src = ctx.createOscillator();
     src.type = 'sawtooth';
-    const buzz = ctx.createOscillator();       // a square an octave down adds body
+    // A square an octave down adds body, and body is the half of a voice that
+    // SURVIVES the distance — so this one is never the thing that is dropped.
+    const buzz = ctx.createOscillator();
     buzz.type = 'square';
     const buzzG = ctx.createGain();
     buzzG.gain.value = 0.3;
@@ -156,9 +207,10 @@ export class SpeechSynth {
     src.connect(glottal);
     buzz.connect(buzzG).connect(glottal);
 
-    // three resonators in parallel = one vowel
+    // resonators in parallel = one vowel. The third is what makes it sound
+    // like a person rather than a vowel; it is the first thing distance takes.
     const fs = [];
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i < formants; i++) {
       const f = ctx.createBiquadFilter();
       f.type = 'bandpass';
       f.Q.value = [9, 11, 13][i];
@@ -179,15 +231,21 @@ export class SpeechSynth {
     const nG = ctx.createGain();
     nG.gain.value = 0.0001;
     nz.connect(nf).connect(nG).connect(band);
-    // carrier hiss: always there, always just under the words
-    const hiss = ctx.createBufferSource();
-    hiss.buffer = this.noise;
-    hiss.loop = true;
-    const hf = ctx.createBiquadFilter();
-    hf.type = 'bandpass'; hf.frequency.value = 2400; hf.Q.value = 0.7;
-    const hG = ctx.createGain();
-    hG.gain.value = 0.012 * grit;
-    hiss.connect(hf).connect(hG).connect(band);
+    // Carrier hiss: always there, always just under the words — and at 0.012
+    // it is under them by enough that the far rung, which is quieter still and
+    // low-passed on the way out, spends a source, a filter and a gain on
+    // something no ear resolves. Near voices keep it.
+    let hiss = null, hG = null;
+    if (full) {
+      hiss = ctx.createBufferSource();
+      hiss.buffer = this.noise;
+      hiss.loop = true;
+      const hf = ctx.createBiquadFilter();
+      hf.type = 'bandpass'; hf.frequency.value = 2400; hf.Q.value = 0.7;
+      hG = ctx.createGain();
+      hG.gain.value = 0.012 * grit;
+      hiss.connect(hf).connect(hG).connect(band);
+    }
 
     /* --- lay the line out ------------------------------------------- */
     let t = t0;
@@ -233,7 +291,7 @@ export class SpeechSynth {
         // Shouting opens the mouth: F1 rises, which is audibly what a raised
         // voice does and is why a shouted vowel is a different vowel.
         const open = 1 + shout * 0.16;
-        for (let i = 0; i < 3; i++) fs[i].frequency.setTargetAtTime(v[i] * (i === 0 ? open : 1), t, 0.022);
+        for (let i = 0; i < fs.length; i++) fs[i].frequency.setTargetAtTime(v[i] * (i === 0 ? open : 1), t, 0.022);
         glottal.gain.setTargetAtTime(v[3] * (0.6 + shout * 0.5), t, 0.016);
         nG.gain.setTargetAtTime(0.0001, t, 0.02);
       }
@@ -242,7 +300,7 @@ export class SpeechSynth {
     // release
     glottal.gain.setTargetAtTime(0.0001, t, 0.02);
     nG.gain.setTargetAtTime(0.0001, t, 0.02);
-    hG.gain.setTargetAtTime(0.0001, t + 0.02, 0.03);
+    hG?.gain.setTargetAtTime(0.0001, t + 0.02, 0.03);
     out.gain.setValueAtTime(gain, t);
     out.gain.exponentialRampToValueAtTime(0.0001, t + 0.09);
 
@@ -250,7 +308,7 @@ export class SpeechSynth {
     src.start(t0); src.stop(stop);
     buzz.start(t0); buzz.stop(stop);
     nz.start(t0); nz.stop(stop);
-    hiss.start(t0); hiss.stop(stop);
+    if (hiss) { hiss.start(t0); hiss.stop(stop); }
     // Let the line go when it is over. Nothing here was ever disconnected, so
     // a long run left a graph of every sentence the town had ever spoken —
     // silent, since each one's output gain is ramped to nothing, but still

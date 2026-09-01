@@ -771,9 +771,15 @@ export class Game {
   start() {
     const loop = (now) => {
       this._raf = requestAnimationFrame(loop);
-      const dt = Math.min(0.05, (now - this._lastT) / 1000);
+      const raw = now - this._lastT;
+      const dt = Math.min(0.05, raw / 1000);
       this._lastT = now;
       this.frame(dt);
+      // What this machine actually managed, handed to the renderer's output
+      // governor. The RAW interval, not the clamped simulation step: the clamp
+      // is there to keep physics sane through a stall and would hide from the
+      // governor precisely the frames it exists to notice.
+      this.renderer.adapt(raw);
     };
     this._raf = requestAnimationFrame(loop);
   }
@@ -807,6 +813,9 @@ export class Game {
     this.shop.update(dt);
     // No first-person weapon floating over the title cinematic.
     this.renderer.overlayEnabled = !this.state.is('menu');
+    // What the camera cannot see is not drawn: the town is culled against the
+    // frame that is about to be rendered, not the one that just was.
+    this.world?.cull(this.renderer.camera);
     this.renderer.render();
     // Keep asking for the pointer if a resume did not get it first time (see
     // Input.requestPointerLock). Silently: the player is not told to go and
